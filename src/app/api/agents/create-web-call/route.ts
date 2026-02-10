@@ -1,0 +1,57 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const body = await request.json();
+  const { agent_id } = body;
+
+  if (!agent_id) {
+    return NextResponse.json({ error: "agent_id is required" }, { status: 400 });
+  }
+
+  // Get agent's Retell credentials
+  const { data: agent, error } = await supabase
+    .from("agents")
+    .select("retell_agent_id, retell_api_key_encrypted")
+    .eq("id", agent_id)
+    .single();
+
+  if (error || !agent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  const retellApiKey = agent.retell_api_key_encrypted || process.env.RETELL_API_KEY;
+  if (!retellApiKey) {
+    return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
+  }
+
+  try {
+    // Create web call via Retell API
+    const retellRes = await fetch("https://api.retellai.com/v2/create-web-call", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${retellApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        agent_id: agent.retell_agent_id,
+      }),
+    });
+
+    if (!retellRes.ok) {
+      return NextResponse.json(
+        { error: "Failed to create web call" },
+        { status: retellRes.status }
+      );
+    }
+
+    const data = await retellRes.json();
+    return NextResponse.json(data);
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to create web call" },
+      { status: 500 }
+    );
+  }
+}
