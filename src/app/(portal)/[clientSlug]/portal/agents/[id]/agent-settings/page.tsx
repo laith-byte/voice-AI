@@ -78,6 +78,8 @@ interface FunctionTool {
   id: string;
   name: string;
   description: string;
+  type?: string;
+  [key: string]: unknown;
 }
 
 export default function AgentSettingsPage() {
@@ -268,11 +270,12 @@ export default function AgentSettingsPage() {
       setVoice(data.voice ?? "nova");
       setFirstMessage(data.first_message ?? "");
 
-      // Functions
+      // Functions — preserve all fields from Retell (type, parameters, etc.)
       if (Array.isArray(data.functions)) {
         setFunctions(
           data.functions.map(
             (fn: Record<string, unknown>, idx: number) => ({
+              ...fn,
               id: (fn.id as string) ?? String(idx),
               name: (fn.name as string) ?? "",
               description: (fn.description as string) ?? "",
@@ -649,10 +652,11 @@ export default function AgentSettingsPage() {
       system_prompt: systemPrompt,
       llm_model: model,
       first_message: firstMessage,
-      functions: functions.map((fn) => ({
-        id: fn.id,
-        name: fn.name,
-        description: fn.description,
+      functions: functions.map(({ id, name, description, ...rest }) => ({
+        ...rest,
+        id,
+        name,
+        description,
       })),
       post_call_analysis: {
         model: postCallModel,
@@ -728,7 +732,7 @@ export default function AgentSettingsPage() {
   function addFunction() {
     setFunctions((prev) => [
       ...prev,
-      { id: Date.now().toString(), name: "", description: "" },
+      { id: Date.now().toString(), name: "", description: "", type: "custom" },
     ]);
   }
 
