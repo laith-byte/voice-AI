@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/api/auth";
 
 // Helper: fetch from Retell API
 async function retellFetch(path: string, apiKey: string, options?: RequestInit) {
@@ -18,8 +18,10 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
+
   const { id } = await params;
-  const supabase = await createClient();
 
   const { data: agent, error } = await supabase
     .from("agents")
@@ -142,8 +144,10 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
+
   const { id } = await params;
-  const supabase = await createClient();
   const body = await request.json();
 
   const { data: agent, error } = await supabase

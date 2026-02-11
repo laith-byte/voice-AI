@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/api/auth";
 import Retell from "retell-sdk";
 
 function getRetellClient(apiKey: string) {
@@ -11,8 +11,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
+
   const { id } = await params;
-  const supabase = await createClient();
   const body = await request.json();
 
   const { data: agent, error } = await supabase

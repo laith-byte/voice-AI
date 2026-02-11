@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api/auth";
 
 export async function POST(request: NextRequest) {
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
+
   const stripeLib = await import("@/lib/stripe");
   const body = await request.json();
   const { action, stripeAccountId } = body;

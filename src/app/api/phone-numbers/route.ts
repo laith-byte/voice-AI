@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/api/auth";
 
 export async function GET() {
-  const supabase = await createClient();
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
+
   const { data, error } = await supabase
     .from("phone_numbers")
     .select("*, agents(name), clients(name)")
@@ -12,11 +14,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const body = await request.json();
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const body = await request.json();
 
   const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
   if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
