@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { Phone, Clock, MessageSquare, MessagesSquare, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import {
   ComposedChart,
@@ -42,6 +43,8 @@ export default function AnalyticsPage() {
   const params = useParams();
   const agentId = params.id as string;
   const [dateRange, setDateRange] = useState("7");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [isChat, setIsChat] = useState(false);
@@ -60,34 +63,67 @@ export default function AnalyticsPage() {
       setIsChat(true);
     }
 
-    const days = parseInt(dateRange);
-    // Fetch double the range to cover both current and previous periods
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days * 2);
+    if (dateRange === "custom") {
+      if (!customStart || !customEnd) {
+        setLoading(false);
+        return;
+      }
+      const start = new Date(customStart);
+      const end = new Date(customEnd);
+      end.setHours(23, 59, 59, 999);
+      // Fetch a previous period of equal length for comparison
+      const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      const prevStart = new Date(start);
+      prevStart.setDate(prevStart.getDate() - rangeDays);
 
-    const { data, error } = await supabase
-      .from("call_logs")
-      .select("id, duration_seconds, status, metadata, started_at")
-      .eq("agent_id", agentId)
-      .gte("started_at", startDate.toISOString())
-      .order("started_at", { ascending: true });
+      const { data, error } = await supabase
+        .from("call_logs")
+        .select("id, duration_seconds, status, metadata, started_at")
+        .eq("agent_id", agentId)
+        .gte("started_at", prevStart.toISOString())
+        .lte("started_at", end.toISOString())
+        .order("started_at", { ascending: true });
 
-    if (!error && data) {
-      setCallLogs(data);
+      if (!error && data) {
+        setCallLogs(data);
+      }
+    } else {
+      const days = parseInt(dateRange);
+      // Fetch double the range to cover both current and previous periods
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days * 2);
+
+      const { data, error } = await supabase
+        .from("call_logs")
+        .select("id, duration_seconds, status, metadata, started_at")
+        .eq("agent_id", agentId)
+        .gte("started_at", startDate.toISOString())
+        .order("started_at", { ascending: true });
+
+      if (!error && data) {
+        setCallLogs(data);
+      }
     }
     setLoading(false);
-  }, [agentId, dateRange]);
+  }, [agentId, dateRange, customStart, customEnd]);
 
   useEffect(() => {
     fetchCallLogs();
   }, [fetchCallLogs]);
 
-  const days = parseInt(dateRange);
-  const now = new Date();
-  const currentPeriodStart = new Date(now);
-  currentPeriodStart.setDate(now.getDate() - days);
-  const previousPeriodStart = new Date(now);
-  previousPeriodStart.setDate(now.getDate() - days * 2);
+  const days = dateRange === "custom"
+    ? (customStart && customEnd
+        ? Math.max(1, Math.round((new Date(customEnd).getTime() - new Date(customStart).getTime()) / (1000 * 60 * 60 * 24)))
+        : 7)
+    : parseInt(dateRange);
+  const now = dateRange === "custom" && customEnd
+    ? (() => { const d = new Date(customEnd); d.setHours(23, 59, 59, 999); return d; })()
+    : new Date();
+  const currentPeriodStart = dateRange === "custom" && customStart
+    ? new Date(customStart)
+    : (() => { const d = new Date(now); d.setDate(now.getDate() - days); return d; })();
+  const previousPeriodStart = new Date(currentPeriodStart);
+  previousPeriodStart.setDate(previousPeriodStart.getDate() - days);
 
   const currentLogs = useMemo(
     () => callLogs.filter((log) => log.started_at && new Date(log.started_at) >= currentPeriodStart),
@@ -222,18 +258,37 @@ export default function AnalyticsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
           <p className="text-muted-foreground/80 text-sm mt-1">Agent performance overview</p>
         </div>
-        <Select value={dateRange} onValueChange={setDateRange}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="60">Last 60 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-            <SelectItem value="custom">Custom range</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-3">
+          {dateRange === "custom" && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="w-[145px] h-9 text-sm"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <Input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="w-[145px] h-9 text-sm"
+              />
+            </div>
+          )}
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="60">Last 60 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+              <SelectItem value="custom">Custom range</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {loading ? (
