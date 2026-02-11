@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
+import { FeatureGate } from "@/components/portal/feature-gate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -261,6 +263,7 @@ export default function ConversationsPage() {
   const selected = selectedConversation || conversations[0];
 
   return (
+    <FeatureGate feature="conversations">
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="page-header-glow">
@@ -289,7 +292,7 @@ export default function ConversationsPage() {
               <List className="w-4 h-4" />
             </Button>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => toast.info("Export feature coming soon.")}>
             <Download className="w-4 h-4 mr-1.5" />
             Export
           </Button>
@@ -555,5 +558,6 @@ export default function ConversationsPage() {
         </div>
       </div>
     </div>
+    </FeatureGate>
   );
 }

@@ -30,6 +30,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 const COLOR_PRESETS = [
   "#2563eb",
@@ -205,6 +206,9 @@ export default function WidgetPage() {
 
     if (error) {
       console.error("Error saving widget_config:", error);
+      toast.error("Failed to save widget configuration.");
+    } else {
+      toast.success("Widget configuration saved.");
     }
 
     setSaving(false);

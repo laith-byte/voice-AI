@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   if (agentId) query = query.eq("agent_id", agentId);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data);
 }
 
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       { onConflict: "phone,agent_id" }
     ).select();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
     return NextResponse.json(data, { status: 201 });
   }
 
@@ -49,6 +49,6 @@ export async function POST(request: NextRequest) {
     dynamic_vars: body.dynamic_vars || {},
   }).select().single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data, { status: 201 });
 }

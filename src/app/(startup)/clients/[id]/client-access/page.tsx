@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Save, Shield, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 interface FeatureAccess {
   key: string;
@@ -182,8 +183,10 @@ export default function ClientAccessPage() {
 
     if (error) {
       console.error("Error saving client access:", error);
+      toast.error("Failed to save permissions. Please try again.");
     } else {
       setHasChanges(false);
+      toast.success("Feature permissions saved.");
     }
 
     setSaving(false);

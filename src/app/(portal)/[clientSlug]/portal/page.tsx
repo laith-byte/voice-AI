@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import {
   Search,
   Bot,
@@ -453,9 +454,9 @@ export default function PortalAgentsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>Edit</DropdownMenuItem>
-                          <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toast.info("Agent editing coming soon.")}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => toast.info("Agent duplication coming soon.")}>Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => toast.info("Agent deletion coming soon.")}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

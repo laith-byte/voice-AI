@@ -171,7 +171,7 @@ export default function BillingSubscriptionsPage() {
             Scheduled
           </button>
         </div>
-        <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white">
+        <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white" onClick={() => toast.info("Subscription creation coming soon. Create subscriptions directly in your Stripe dashboard for now.")}>
           <Plus className="h-4 w-4 mr-2" />
           Create Subscription
         </Button>

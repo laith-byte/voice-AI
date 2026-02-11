@@ -14,8 +14,7 @@ export default function CustomCssPage() {
   const [css, setCss] = useState("");
 
   const handleSave = () => {
-    // TODO: API call to save custom CSS
-    console.log("Saving custom CSS for client:", params.id, css);
+    // Phase 2 — not yet implemented
   };
 
   return (

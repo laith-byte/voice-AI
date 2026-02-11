@@ -34,6 +34,7 @@ interface SetupStep {
 
 export default function DashboardHomePage() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [customDomain, setCustomDomain] = useState<string | null>(null);
   const [domainValid, setDomainValid] = useState(false);
 
@@ -52,6 +53,7 @@ export default function DashboardHomePage() {
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
+    setError(false);
     try {
       // 1. Get current user
       const {
@@ -151,6 +153,9 @@ export default function DashboardHomePage() {
       setHasClients(clientCount > 0);
       setRetellConnected((integrationsResult.data?.length ?? 0) > 0);
       setStripeConnected((stripeResult.data?.length ?? 0) > 0);
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -244,71 +249,86 @@ export default function DashboardHomePage() {
       </Card>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                <Users className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-[#6b7280]">Total Clients</p>
-                <p className="text-xl font-semibold text-[#111827]">
-                  {totalClients.toLocaleString()}
-                </p>
-              </div>
+      {error ? (
+        <div className="border border-red-200 bg-red-50 rounded-lg p-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <div>
+              <p className="text-sm font-medium text-red-800">Failed to load dashboard data</p>
+              <p className="text-xs text-red-600 mt-0.5">Please check your connection and try again.</p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-[#6b7280]">Total Clients</p>
+                  <p className="text-xl font-semibold text-[#111827]">
+                    {totalClients.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                <Bot className="h-5 w-5 text-purple-600" />
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                  <Bot className="h-5 w-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-[#6b7280]">Total Agents</p>
+                  <p className="text-xl font-semibold text-[#111827]">
+                    {totalAgents.toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-[#6b7280]">Total Agents</p>
-                <p className="text-xl font-semibold text-[#111827]">
-                  {totalAgents.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                <PhoneCall className="h-5 w-5 text-green-600" />
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                  <PhoneCall className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-[#6b7280]">Total Calls</p>
+                  <p className="text-xl font-semibold text-[#111827]">
+                    {totalCalls.toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-[#6b7280]">Total Calls</p>
-                <p className="text-xl font-semibold text-[#111827]">
-                  {totalCalls.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-orange-600" />
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-[#6b7280]">Total Minutes</p>
+                  <p className="text-xl font-semibold text-[#111827]">
+                    {totalMinutes.toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-[#6b7280]">Total Minutes</p>
-                <p className="text-xl font-semibold text-[#111827]">
-                  {totalMinutes.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Quick Actions + Domain */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

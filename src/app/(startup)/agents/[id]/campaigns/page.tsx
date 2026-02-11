@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 export default function CampaignsPage() {
   const params = useParams();
@@ -126,6 +127,7 @@ export default function CampaignsPage() {
 
       if (error) {
         console.error("Error saving campaign_config:", error);
+        toast.error("Failed to save campaign configuration.");
       }
 
       setLastSaved(formatTime(new Date()));

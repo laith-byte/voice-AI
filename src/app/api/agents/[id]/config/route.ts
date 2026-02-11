@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { decrypt } from "@/lib/crypto";
+import { getIntegrationKey } from "@/lib/integrations";
 
 // Helper: fetch from Retell API
 async function retellFetch(path: string, apiKey: string, options?: RequestInit) {
@@ -25,7 +27,7 @@ export async function GET(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted, platform")
+    .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id")
     .eq("id", id)
     .single();
 
@@ -33,7 +35,9 @@ export async function GET(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  const retellApiKey = agent.retell_api_key_encrypted || process.env.RETELL_API_KEY;
+  const retellApiKey = (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null)
+    || await getIntegrationKey(agent.organization_id, "retell")
+    || process.env.RETELL_API_KEY;
   if (!retellApiKey) {
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
@@ -152,7 +156,7 @@ export async function PATCH(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted, platform")
+    .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id")
     .eq("id", id)
     .single();
 
@@ -160,7 +164,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  const retellApiKey = agent.retell_api_key_encrypted || process.env.RETELL_API_KEY;
+  const retellApiKey = (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null)
+    || await getIntegrationKey(agent.organization_id, "retell")
+    || process.env.RETELL_API_KEY;
   if (!retellApiKey) {
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
@@ -183,7 +189,8 @@ export async function PATCH(
         });
         if (!llmRes.ok) {
           const err = await llmRes.text();
-          return NextResponse.json({ error: `Retell LLM update error: ${err}` }, { status: llmRes.status });
+          console.error("Retell LLM update error:", err);
+          return NextResponse.json({ error: "Failed to update agent LLM configuration" }, { status: llmRes.status });
         }
       }
     }
@@ -273,7 +280,8 @@ export async function PATCH(
 
       if (!retellRes.ok) {
         const err = await retellRes.text();
-        return NextResponse.json({ error: `Retell API error: ${err}` }, { status: retellRes.status });
+        console.error("Retell API error:", err);
+        return NextResponse.json({ error: "Failed to update agent configuration" }, { status: retellRes.status });
       }
     }
 

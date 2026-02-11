@@ -35,6 +35,7 @@ import { Save, Plus, Trash2, Loader2, ExternalLink, RotateCcw, Sparkles, Eye, Ch
 import type { Client } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { OnboardingTutorial } from "@/components/onboarding/onboarding-tutorial";
+import { toast } from "sonner";
 
 interface Member {
   id: string;
@@ -138,15 +139,16 @@ export default function ClientOverviewPage() {
 
     if (error) {
       console.error("Failed to save client:", error);
-      alert("Failed to save changes. Please try again.");
+      toast.error("Failed to save changes. Please try again.");
+    } else {
+      toast.success("Client updated successfully.");
     }
 
     setSaving(false);
   };
 
   const handleAddMember = () => {
-    // Real invite flow requires email sending, auth user creation, etc.
-    alert(`Invite flow not yet implemented. Would invite ${newMember.email} as ${newMember.role}.`);
+    toast.info("Member invitations coming soon. Use Settings > Team to invite members for now.");
     setAddMemberOpen(false);
     setNewMember({ email: "", role: "client_member" });
   };
@@ -163,11 +165,12 @@ export default function ClientOverviewPage() {
 
     if (error) {
       console.error("Failed to remove member:", error);
-      alert("Failed to remove member. Please try again.");
+      toast.error("Failed to remove member. Please try again.");
       return;
     }
 
     setMembers((prev) => prev.filter((m) => m.id !== memberId));
+    toast.success("Member removed.");
   };
 
   const handleResetOnboarding = async (memberId: string, memberName: string) => {
@@ -184,8 +187,9 @@ export default function ClientOverviewPage() {
 
     if (error) {
       console.error("Failed to reset onboarding:", error);
-      alert("Failed to reset onboarding. Please try again.");
+      toast.error("Failed to reset onboarding. Please try again.");
     } else {
+      toast.success("Onboarding reset successfully.");
       setMembers((prev) =>
         prev.map((m) =>
           m.id === memberId ? { ...m, onboarding_completed_at: null } : m

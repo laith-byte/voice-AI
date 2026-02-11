@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       }
 
       default:
-        console.log("Unhandled Retell webhook event:", event);
+        break;
     }
 
     // Forward to n8n/workflow webhooks configured on this agent

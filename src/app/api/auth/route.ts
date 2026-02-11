@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  if (!allowed) return rateLimitExceeded(resetMs);
+
   const body = await request.json();
   const { action } = body;
 
@@ -11,7 +16,7 @@ export async function POST(request: NextRequest) {
     case "sign-in": {
       const { email, password } = body;
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return NextResponse.json({ error: error.message }, { status: 401 });
+      if (error) return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
       return NextResponse.json({ user: data.user });
     }
 
@@ -24,7 +29,7 @@ export async function POST(request: NextRequest) {
           data: { full_name: fullName, role: role || "startup_admin" },
         },
       });
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error) return NextResponse.json({ error: "Failed to create account" }, { status: 400 });
       return NextResponse.json({ user: data.user });
     }
 
@@ -38,7 +43,7 @@ export async function POST(request: NextRequest) {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`,
       });
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error) return NextResponse.json({ error: "Failed to send password reset email" }, { status: 400 });
       return NextResponse.json({ success: true });
     }
 
@@ -100,7 +105,8 @@ export async function POST(request: NextRequest) {
         });
 
       if (inviteError) {
-        return NextResponse.json({ error: inviteError.message }, { status: 400 });
+        console.error("Invite error:", inviteError.message);
+        return NextResponse.json({ error: "Failed to invite member" }, { status: 400 });
       }
 
       // Create the user row in the users table
@@ -117,7 +123,8 @@ export async function POST(request: NextRequest) {
         );
 
       if (insertError) {
-        return NextResponse.json({ error: insertError.message }, { status: 500 });
+        console.error("User insert error:", insertError.message);
+        return NextResponse.json({ error: "Failed to create user record" }, { status: 500 });
       }
 
       return NextResponse.json({

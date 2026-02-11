@@ -9,6 +9,27 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action, stripeAccountId } = body;
 
+  // Validate stripeAccountId belongs to the user's organization
+  if (stripeAccountId) {
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user!.id)
+      .single();
+    if (!userData?.organization_id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+    const { data: conn } = await supabase
+      .from("stripe_connections")
+      .select("stripe_account_id")
+      .eq("organization_id", userData.organization_id)
+      .eq("stripe_account_id", stripeAccountId)
+      .single();
+    if (!conn) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+  }
+
   try {
     switch (action) {
       case "create_connect_account": {
@@ -97,7 +118,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Billing error:", error instanceof Error ? error.message : error);
+    return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 }

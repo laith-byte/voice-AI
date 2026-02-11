@@ -124,6 +124,17 @@ export async function updateSession(request: NextRequest) {
         url.pathname = "/dashboard";
         return NextResponse.redirect(url);
       }
+
+      // Validate that the slug in the URL matches the client user's actual slug
+      if (isClientUser) {
+        const slug = await getClientSlug(supabase, user.id);
+        const urlSlug = pathname.split("/")[1];
+        if (slug && urlSlug !== slug) {
+          const url = request.nextUrl.clone();
+          url.pathname = `/${slug}/portal`;
+          return NextResponse.redirect(url);
+        }
+      }
     }
   }
 

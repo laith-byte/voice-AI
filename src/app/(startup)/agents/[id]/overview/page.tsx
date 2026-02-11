@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { Copy, Check, Eye, EyeOff } from "lucide-react";
+import { Copy, Check, Lock } from "lucide-react";
 import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -17,17 +16,17 @@ export default function AgentOverviewPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [agent, setAgent] = useState<Agent | null>(null);
+  const [agent, setAgent] = useState<Omit<Agent, "retell_api_key_encrypted"> | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncMethod, setSyncMethod] = useState("webhook");
-  const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const fetchAgent = useCallback(async () => {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("agents")
-      .select("*")
+      .select("id, name, description, platform, retell_agent_id, knowledge_base_id, knowledge_base_name, webhook_url, organization_id, client_id, created_at, updated_at")
       .eq("id", id)
       .single();
 
@@ -37,7 +36,17 @@ export default function AgentOverviewPage() {
       return;
     }
 
-    setAgent(data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setAgent(data as any);
+
+    // Check if API key exists without fetching the value
+    const { count } = await supabase
+      .from("agents")
+      .select("id", { count: "exact", head: true })
+      .eq("id", id)
+      .not("retell_api_key_encrypted", "is", null);
+    setHasApiKey((count ?? 0) > 0);
+
     setLoading(false);
   }, [id]);
 
@@ -83,16 +92,10 @@ export default function AgentOverviewPage() {
     );
   }
 
-  const retellApiKey = agent.retell_api_key_encrypted;
   const agentId = agent.retell_agent_id;
   const kbId = agent.knowledge_base_id ?? "";
   const kbName = agent.knowledge_base_name ?? "";
   const webhookUrl = agent.webhook_url ?? "";
-
-  const maskedApiKey =
-    retellApiKey.length > 8
-      ? retellApiKey.slice(0, 7) + "****" + retellApiKey.slice(-4)
-      : "****";
 
   return (
     <div className="space-y-8 max-w-3xl">
@@ -141,28 +144,11 @@ export default function AgentOverviewPage() {
             <Label className="text-sm font-medium text-[#111827] mb-1.5 block">
               Retell API Key
             </Label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 relative">
-                <Input
-                  readOnly
-                  value={apiKeyVisible ? retellApiKey : maskedApiKey}
-                  className="font-mono text-sm pr-20"
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  <button
-                    onClick={() => setApiKeyVisible(!apiKeyVisible)}
-                    className="text-[#6b7280] hover:text-[#111827] transition-colors p-1"
-                    title={apiKeyVisible ? "Hide" : "Show"}
-                  >
-                    {apiKeyVisible ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                  <CopyButton value={retellApiKey} field="api-key" />
-                </div>
-              </div>
+            <div className="flex items-center gap-2 h-10 px-3 rounded-md border border-[#e5e7eb] bg-gray-50">
+              <Lock className="h-4 w-4 text-[#6b7280]" />
+              <span className="text-sm text-[#6b7280]">
+                {hasApiKey ? "Stored securely" : "No key configured"}
+              </span>
             </div>
           </div>
 

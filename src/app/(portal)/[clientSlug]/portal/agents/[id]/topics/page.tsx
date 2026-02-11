@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
+import { FeatureGate } from "@/components/portal/feature-gate";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -117,6 +118,7 @@ export default function TopicsPage() {
   }
 
   return (
+    <FeatureGate feature="topics">
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -266,5 +268,6 @@ export default function TopicsPage() {
         </Card>
       )}
     </div>
+    </FeatureGate>
   );
 }

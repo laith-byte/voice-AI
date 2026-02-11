@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
+import { FeatureGate } from "@/components/portal/feature-gate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -251,6 +252,7 @@ export default function AnalyticsPage() {
   }, [currentLogs]);
 
   return (
+    <FeatureGate feature="analytics">
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="page-header-glow">
@@ -561,5 +563,6 @@ export default function AnalyticsPage() {
         </>
       )}
     </div>
+    </FeatureGate>
   );
 }

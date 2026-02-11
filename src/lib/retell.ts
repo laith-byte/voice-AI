@@ -1,9 +1,9 @@
 import Retell from "retell-sdk";
 
-function getClient() {
-  const apiKey = process.env.RETELL_API_KEY;
-  if (!apiKey) throw new Error("RETELL_API_KEY is not set");
-  return new Retell({ apiKey });
+function getClient(apiKey?: string) {
+  const key = apiKey || process.env.RETELL_API_KEY;
+  if (!key) throw new Error("No Retell API key available");
+  return new Retell({ apiKey: key });
 }
 
 // Agent CRUD
@@ -50,6 +50,7 @@ export async function releasePhoneNumber(phoneNumberId: string) {
 }
 
 // Web Call
-export async function createWebCall(params: { agent_id: string; metadata?: Record<string, unknown> }) {
-  return getClient().call.createWebCall(params);
+export async function createWebCall(params: { agent_id: string; metadata?: Record<string, unknown>; apiKey?: string }) {
+  const { apiKey, ...callParams } = params;
+  return getClient(apiKey).call.createWebCall(callParams);
 }

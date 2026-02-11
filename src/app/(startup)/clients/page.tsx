@@ -121,6 +121,7 @@ export default function ClientsPage() {
     if (res.ok) {
       setDialogOpen(false);
       setNewClient({ name: "", slug: "", language: "English", dashboard_theme: "light" });
+      toast.success("Client created.");
       fetchClients();
     } else {
       const data = await res.json().catch(() => null);

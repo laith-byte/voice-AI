@@ -5,7 +5,19 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Trash2, CreditCard, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 export default function BillingConnectPage() {
   return (
@@ -59,8 +71,8 @@ function BillingConnectContent() {
         setIsConnected(false);
         setStripeAccountId(null);
       }
-    } catch {
-      // silently fail
+    } catch (error) {
+      console.error("Failed to check Stripe connection:", error);
     } finally {
       setLoading(false);
     }
@@ -146,8 +158,9 @@ function BillingConnectContent() {
 
       // Redirect to Stripe onboarding
       window.location.href = data.url;
-    } catch {
-      // silently fail
+    } catch (error) {
+      console.error("Failed to connect Stripe:", error);
+      toast.error("Failed to connect Stripe account. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -163,8 +176,10 @@ function BillingConnectContent() {
         .update({ is_connected: false })
         .eq("organization_id", organizationId);
       setIsConnected(false);
-    } catch {
-      // silently fail
+      toast.success("Stripe account disconnected.");
+    } catch (error) {
+      console.error("Failed to disconnect Stripe:", error);
+      toast.error("Failed to disconnect Stripe account.");
     } finally {
       setActionLoading(false);
     }
@@ -184,8 +199,9 @@ function BillingConnectContent() {
 
       // Redirect to Stripe onboarding to update account
       window.location.href = data.url;
-    } catch {
-      // silently fail
+    } catch (error) {
+      console.error("Failed to update Stripe account:", error);
+      toast.error("Failed to update Stripe account. Please try again.");
     } finally {
       setActionLoading(false);
     }
@@ -257,19 +273,39 @@ function BillingConnectContent() {
                   {actionLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   Update Stripe Account
                 </Button>
-                <Button
-                  variant="outline"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                  onClick={handleDisconnect}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4 mr-2" />
-                  )}
-                  Disconnect Stripe Account
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      disabled={actionLoading}
+                    >
+                      {actionLoading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 mr-2" />
+                      )}
+                      Disconnect Stripe Account
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Disconnect Stripe Account?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will disconnect your Stripe account. You will not be able to process payments until you reconnect. This action can be reversed by reconnecting.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        onClick={handleDisconnect}
+                      >
+                        Disconnect
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </>
             ) : (
               <Button

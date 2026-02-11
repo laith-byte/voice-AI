@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 interface Workflow {
   id: string;
@@ -109,6 +110,7 @@ export default function WorkflowsPage() {
             wf.id === id ? { ...wf, active: !newActive } : wf
           )
         );
+        toast.error("Failed to update workflow status.");
       }
     },
     [workflows]
@@ -132,7 +134,12 @@ export default function WorkflowsPage() {
         .select("id, name, description, webhook_url, is_active, created_at")
         .single();
 
-      if (error || !data) return;
+      if (error || !data) {
+        if (error) toast.error("Failed to create workflow.");
+        return;
+      }
+
+      toast.success("Workflow created.");
 
       const newWorkflow: Workflow = {
         id: data.id,

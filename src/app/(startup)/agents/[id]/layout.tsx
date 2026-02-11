@@ -20,7 +20,7 @@ export default function AgentDetailLayout({
   const params = useParams();
   const id = params.id as string;
 
-  const [agent, setAgent] = useState<(Agent & { clients?: { name: string } | null }) | null>(null);
+  const [agent, setAgent] = useState<(Omit<Agent, "retell_api_key_encrypted"> & { clients?: { name: string } | null }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
@@ -31,7 +31,7 @@ export default function AgentDetailLayout({
     const supabase = createClient();
     const { data, error } = await supabase
       .from("agents")
-      .select("*, clients(name)")
+      .select("id, name, description, platform, retell_agent_id, knowledge_base_id, knowledge_base_name, webhook_url, organization_id, client_id, created_at, updated_at, clients(name)")
       .eq("id", id)
       .single();
 
@@ -41,7 +41,8 @@ export default function AgentDetailLayout({
       return;
     }
 
-    setAgent(data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setAgent(data as any);
     setEditedName(data.name);
     setLoading(false);
   }, [id]);

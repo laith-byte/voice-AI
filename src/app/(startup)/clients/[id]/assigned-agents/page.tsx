@@ -33,6 +33,7 @@ import { Label } from "@/components/ui/label";
 import { Plus, Bot, Unlink, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import type { Agent } from "@/types/database";
 
 function PlatformBadge({ platform }: { platform: string }) {
@@ -139,9 +140,11 @@ export default function AssignedAgentsPage() {
 
     if (error) {
       console.error("Error assigning agent:", error);
+      toast.error("Failed to assign agent. Please try again.");
     } else {
       setAssignDialogOpen(false);
       setSelectedAgentId("");
+      toast.success("Agent assigned.");
       await fetchAgents();
     }
 
@@ -159,7 +162,9 @@ export default function AssignedAgentsPage() {
 
     if (error) {
       console.error("Error unassigning agent:", error);
+      toast.error("Failed to unassign agent. Please try again.");
     } else {
+      toast.success("Agent unassigned.");
       await fetchAgents();
     }
 

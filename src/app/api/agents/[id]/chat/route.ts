@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { decrypt } from "@/lib/crypto";
+import { getIntegrationKey } from "@/lib/integrations";
 import Retell from "retell-sdk";
 
 function getRetellClient(apiKey: string) {
@@ -31,7 +33,9 @@ export async function POST(
     return NextResponse.json({ error: "Agent is not a chat agent" }, { status: 400 });
   }
 
-  const retellApiKey = agent.retell_api_key_encrypted || process.env.RETELL_API_KEY;
+  const retellApiKey = (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null)
+    || await getIntegrationKey(agent.organization_id, "retell")
+    || process.env.RETELL_API_KEY;
   if (!retellApiKey) {
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
@@ -176,7 +180,7 @@ export async function POST(
   } catch (err) {
     console.error("Chat API error:", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Chat API error" },
+      { error: "Chat API error" },
       { status: 500 }
     );
   }

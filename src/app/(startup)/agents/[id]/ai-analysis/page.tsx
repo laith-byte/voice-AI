@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 import type { AiAnalysisConfig, Topic } from "@/types/database";
 
 export default function AiAnalysisPage() {
@@ -143,6 +144,9 @@ export default function AiAnalysisPage() {
 
     if (error) {
       console.error("Error saving ai_analysis_config:", error);
+      toast.error("Failed to save configuration. Please try again.");
+    } else {
+      toast.success("Configuration saved.");
     }
 
     setSaving(false);
@@ -174,11 +178,13 @@ export default function AiAnalysisPage() {
 
     if (error) {
       console.error("Error adding topic:", error);
+      toast.error("Failed to add topic. Please try again.");
       return;
     }
 
     if (data) {
       setTopics((prev) => [...prev, data as Topic]);
+      toast.success("Topic added.");
     }
 
     setNewTopicName("");
@@ -191,10 +197,12 @@ export default function AiAnalysisPage() {
 
     if (error) {
       console.error("Error removing topic:", error);
+      toast.error("Failed to remove topic. Please try again.");
       return;
     }
 
     setTopics((prev) => prev.filter((t) => t.id !== id));
+    toast.success("Topic removed.");
   }
 
   function formatDate(dateStr: string) {

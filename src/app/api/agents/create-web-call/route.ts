@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { decrypt } from "@/lib/crypto";
+import { getIntegrationKey } from "@/lib/integrations";
+import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  if (!allowed) return rateLimitExceeded(resetMs);
+
   const supabase = await createClient();
   const body = await request.json();
   const { agent_id } = body;
@@ -21,7 +28,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  const retellApiKey = agent.retell_api_key_encrypted || process.env.RETELL_API_KEY;
+  const retellApiKey = (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null)
+    || await getIntegrationKey(agent.organization_id, "retell")
+    || process.env.RETELL_API_KEY;
   if (!retellApiKey) {
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }

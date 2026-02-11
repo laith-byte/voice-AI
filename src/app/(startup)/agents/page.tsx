@@ -45,7 +45,6 @@ export default function AgentsPage() {
     name: "",
     platform: "retell",
     retell_agent_id: "",
-    retell_api_key_encrypted: "",
   });
 
   const fetchAgents = useCallback(async () => {
@@ -82,7 +81,7 @@ export default function AgentsPage() {
 
     if (res.ok) {
       setDialogOpen(false);
-      setNewAgent({ name: "", platform: "retell", retell_agent_id: "", retell_api_key_encrypted: "" });
+      setNewAgent({ name: "", platform: "retell", retell_agent_id: "" });
       toast.success("Agent created");
       fetchAgents();
     } else {

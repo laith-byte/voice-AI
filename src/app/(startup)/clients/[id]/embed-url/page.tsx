@@ -14,8 +14,7 @@ export default function EmbedUrlPage() {
   const [domain, setDomain] = useState("");
 
   const handleSave = () => {
-    // TODO: API call to save embed domain
-    console.log("Saving embed domain:", domain, "for client:", params.id);
+    // Phase 2 — not yet implemented
   };
 
   return (

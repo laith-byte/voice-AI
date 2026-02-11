@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { decrypt } from "@/lib/crypto";
+import { getIntegrationKey } from "@/lib/integrations";
 import { createServiceClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -28,7 +30,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    const retellApiKey = agent.retell_api_key_encrypted || process.env.RETELL_API_KEY;
+    const retellApiKey = (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null)
+      || await getIntegrationKey(agent.organization_id, "retell")
+      || process.env.RETELL_API_KEY;
     if (!retellApiKey) {
       return NextResponse.json(
         { error: "No Retell API key configured" },

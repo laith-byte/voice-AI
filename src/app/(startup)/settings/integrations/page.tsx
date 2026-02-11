@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, Plus, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,6 @@ interface IntegrationRow {
   organization_id: string;
   provider: Provider;
   name: string;
-  api_key_encrypted: string;
   is_connected: boolean;
   connected_at: string | null;
 }
@@ -93,7 +93,7 @@ export default function SettingsIntegrationsPage() {
       // 3. Fetch integrations for this org
       const { data, error } = await supabase
         .from("integrations")
-        .select("id, organization_id, provider, name, api_key_encrypted, is_connected, connected_at")
+        .select("id, organization_id, provider, name, is_connected, connected_at")
         .eq("organization_id", userData.organization_id);
 
       if (!error && data) {
@@ -111,18 +111,18 @@ export default function SettingsIntegrationsPage() {
   const handleAddIntegration = async () => {
     if (!orgId || !dialogProvider || !apiKeyInput.trim()) return;
     setSaving(true);
-    const supabase = createClient();
 
-    const { error } = await supabase.from("integrations").insert({
-      organization_id: orgId,
-      provider: dialogProvider,
-      name: PROVIDER_META[dialogProvider].name,
-      api_key_encrypted: apiKeyInput.trim(),
-      is_connected: true,
-      connected_at: new Date().toISOString(),
+    const res = await fetch("/api/integrations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: dialogProvider,
+        name: PROVIDER_META[dialogProvider].name,
+        api_key: apiKeyInput.trim(),
+      }),
     });
 
-    if (!error) {
+    if (res.ok) {
       setDialogOpen(false);
       setApiKeyInput("");
       setDialogProvider(null);
@@ -133,14 +133,12 @@ export default function SettingsIntegrationsPage() {
 
   const handleDisconnect = async (integrationId: string) => {
     setDisconnecting(integrationId);
-    const supabase = createClient();
 
-    const { error } = await supabase
-      .from("integrations")
-      .delete()
-      .eq("id", integrationId);
+    const res = await fetch(`/api/integrations?id=${integrationId}`, {
+      method: "DELETE",
+    });
 
-    if (!error) {
+    if (res.ok) {
       await fetchIntegrations();
     }
     setDisconnecting(null);
@@ -211,7 +209,7 @@ export default function SettingsIntegrationsPage() {
                 <div className="mt-4">
                   {connected && integration ? (
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="text-xs">
+                      <Button variant="outline" size="sm" className="text-xs" onClick={() => toast.info("Integration configuration coming soon.")}>
                         Configure
                       </Button>
                       <Button

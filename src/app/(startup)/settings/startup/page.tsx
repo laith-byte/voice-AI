@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Upload,
   Copy,
-  Eye,
-  EyeOff,
+  Lock,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -15,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 export default function SettingsStartupPage() {
   const [loading, setLoading] = useState(true);
@@ -22,8 +22,10 @@ export default function SettingsStartupPage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [startupName, setStartupName] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [editingApiKey, setEditingApiKey] = useState(false);
+  const [savingApiKey, setSavingApiKey] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [gdprEnabled, setGdprEnabled] = useState(false);
   const [hipaaEnabled, setHipaaEnabled] = useState(false);
@@ -63,15 +65,23 @@ export default function SettingsStartupPage() {
       // 4. Fetch organization_settings
       const { data: settings } = await supabase
         .from("organization_settings")
-        .select("gdpr_enabled, hipaa_enabled, openai_api_key_encrypted")
+        .select("gdpr_enabled, hipaa_enabled")
         .eq("organization_id", organizationId)
         .single();
 
       if (settings) {
         setGdprEnabled(settings.gdpr_enabled ?? false);
         setHipaaEnabled(settings.hipaa_enabled ?? false);
-        setApiKey(settings.openai_api_key_encrypted ?? "");
       }
+
+      // 5. Check if API key is configured (without fetching the value)
+      const { count } = await supabase
+        .from("organization_settings")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", organizationId)
+        .not("openai_api_key_encrypted", "is", null);
+
+      setHasApiKey((count ?? 0) > 0);
     } catch (error) {
       console.error("Failed to fetch startup settings:", error);
     } finally {
@@ -100,11 +110,62 @@ export default function SettingsStartupPage() {
         .eq("id", orgId);
       if (error) {
         console.error("Failed to save organization name:", error);
+        toast.error("Failed to save. Please try again.");
+      } else {
+        toast.success("Startup name updated.");
       }
     } catch (error) {
       console.error("Failed to save organization name:", error);
+      toast.error("Failed to save. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveApiKey() {
+    if (!apiKeyInput.trim()) return;
+    setSavingApiKey(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openai_api_key: apiKeyInput.trim() }),
+      });
+      if (res.ok) {
+        setHasApiKey(true);
+        setApiKeyInput("");
+        setEditingApiKey(false);
+        toast.success("API key saved securely.");
+      } else {
+        toast.error("Failed to save API key.");
+      }
+    } catch (error) {
+      console.error("Failed to save API key:", error);
+      toast.error("Failed to save API key.");
+    } finally {
+      setSavingApiKey(false);
+    }
+  }
+
+  async function handleRemoveApiKey() {
+    setSavingApiKey(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ openai_api_key: null }),
+      });
+      if (res.ok) {
+        setHasApiKey(false);
+        toast.success("API key removed.");
+      } else {
+        toast.error("Failed to remove API key.");
+      }
+    } catch (error) {
+      console.error("Failed to remove API key:", error);
+      toast.error("Failed to remove API key.");
+    } finally {
+      setSavingApiKey(false);
     }
   }
 
@@ -121,15 +182,18 @@ export default function SettingsStartupPage() {
       {/* Dashboard Logo */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Dashboard Logo</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Dashboard Logo</CardTitle>
+            <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5">Coming Soon</span>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-8 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer">
+          <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-8 flex flex-col items-center justify-center opacity-50">
             <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
               <Upload className="h-5 w-5 text-[#6b7280]" />
             </div>
             <p className="text-sm font-medium text-[#111827]">
-              Click to upload or drag and drop
+              Logo upload available soon
             </p>
             <p className="text-xs text-[#6b7280] mt-1">
               SVG, PNG or JPG (max. 800x400px)
@@ -141,15 +205,18 @@ export default function SettingsStartupPage() {
       {/* Login Page Logo */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Login Page Logo</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Login Page Logo</CardTitle>
+            <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2.5 py-0.5">Coming Soon</span>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-8 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer">
+          <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-8 flex flex-col items-center justify-center opacity-50">
             <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
               <Upload className="h-5 w-5 text-[#6b7280]" />
             </div>
             <p className="text-sm font-medium text-[#111827]">
-              Click to upload or drag and drop
+              Logo upload available soon
             </p>
             <p className="text-xs text-[#6b7280] mt-1">
               SVG, PNG or JPG (max. 800x400px)
@@ -209,37 +276,60 @@ export default function SettingsStartupPage() {
           <CardTitle className="text-base">AI API Key</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-2 max-w-sm">
-            <div className="relative flex-1">
+          {editingApiKey ? (
+            <div className="space-y-3 max-w-sm">
               <Input
-                type={showApiKey ? "text" : "password"}
-                value={apiKey}
-                readOnly
-                className="pr-10 font-mono text-sm"
+                type="password"
+                placeholder="Enter your OpenAI API key..."
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="font-mono text-sm"
               />
-              <button
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-              >
-                {showApiKey ? (
-                  <EyeOff className="h-4 w-4 text-[#6b7280]" />
-                ) : (
-                  <Eye className="h-4 w-4 text-[#6b7280]" />
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <Button
+                  className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
+                  onClick={handleSaveApiKey}
+                  disabled={!apiKeyInput.trim() || savingApiKey}
+                >
+                  {savingApiKey && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Save Key
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => { setEditingApiKey(false); setApiKeyInput(""); }}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleCopy("apikey", apiKey)}
-            >
-              {copiedField === "apikey" ? (
-                <CheckCircle2 className="h-4 w-4 text-green-600" />
-              ) : (
-                <Copy className="h-4 w-4" />
+          ) : (
+            <div className="flex items-center gap-3 max-w-sm">
+              <div className="flex items-center gap-2 flex-1 h-10 px-3 rounded-md border border-[#e5e7eb] bg-gray-50">
+                <Lock className="h-4 w-4 text-[#6b7280]" />
+                <span className="text-sm text-[#6b7280]">
+                  {hasApiKey ? "Key configured" : "No key configured"}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditingApiKey(true)}
+              >
+                {hasApiKey ? "Update" : "Add Key"}
+              </Button>
+              {hasApiKey && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  onClick={handleRemoveApiKey}
+                  disabled={savingApiKey}
+                >
+                  Remove
+                </Button>
               )}
-            </Button>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -313,6 +403,7 @@ export default function SettingsStartupPage() {
           <Button
             variant="outline"
             className="bg-red-50 text-red-600 border-red-200 hover:bg-red-100 hover:text-red-700"
+            onClick={() => toast.error("Please contact support to delete your organization.")}
           >
             Delete Organization
           </Button>

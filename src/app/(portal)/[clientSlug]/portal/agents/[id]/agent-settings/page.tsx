@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
+import { FeatureGate } from "@/components/portal/feature-gate";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -785,6 +786,7 @@ export default function AgentSettingsPage() {
   }
 
   return (
+    <FeatureGate feature="agent_settings">
     <div className="p-6 space-y-6">
       {/* Hero Header */}
       <div className="rounded-xl border bg-primary/5 dark:bg-primary/5 p-6 animate-fade-in">
@@ -2022,5 +2024,6 @@ export default function AgentSettingsPage() {
         firstMessage={firstMessage}
       />
     </div>
+    </FeatureGate>
   );
 }

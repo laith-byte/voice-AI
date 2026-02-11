@@ -130,6 +130,7 @@ export default function PhoneNumbersPage() {
       console.error("Error assigning agent:", error);
       toast.error("Failed to assign phone number to agent");
     } else {
+      toast.success("Phone number assigned to agent.");
       await fetchPhoneNumbers();
     }
 
@@ -152,6 +153,7 @@ export default function PhoneNumbersPage() {
       console.error("Error unassigning agent:", error);
       toast.error("Failed to unassign phone number from agent");
     } else {
+      toast.success("Phone number unassigned.");
       await fetchPhoneNumbers();
     }
 

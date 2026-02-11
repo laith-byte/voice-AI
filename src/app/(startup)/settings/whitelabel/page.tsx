@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 const themeColors = [
   "#2563eb", "#3b82f6", "#6366f1", "#8b5cf6",
@@ -203,9 +204,13 @@ export default function SettingsWhitelabelPage() {
         );
       if (error) {
         console.error("Failed to save branding settings:", error);
+        toast.error("Failed to save branding settings.");
+      } else {
+        toast.success("Branding & domain settings saved.");
       }
     } catch (error) {
       console.error("Failed to save branding settings:", error);
+      toast.error("Failed to save branding settings.");
     } finally {
       setSavingBranding(false);
     }
@@ -237,12 +242,14 @@ export default function SettingsWhitelabelPage() {
 
         if (error) {
           console.error("Failed to save email template:", error);
+          toast.error("Failed to save email template.");
         } else if (data) {
           setEmailTemplates((prev) =>
             prev.map((t) =>
               t.id === existing.id ? (data as EmailTemplateRow) : t
             )
           );
+          toast.success("Email template saved.");
         }
       } else {
         // Insert new
@@ -260,12 +267,15 @@ export default function SettingsWhitelabelPage() {
 
         if (error) {
           console.error("Failed to save email template:", error);
+          toast.error("Failed to save email template.");
         } else if (data) {
           setEmailTemplates((prev) => [...prev, data as EmailTemplateRow]);
+          toast.success("Email template saved.");
         }
       }
     } catch (error) {
       console.error("Failed to save email template:", error);
+      toast.error("Failed to save email template.");
     } finally {
       setSavingTemplate(false);
     }
