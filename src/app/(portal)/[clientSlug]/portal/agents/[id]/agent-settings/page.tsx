@@ -609,10 +609,6 @@ export default function AgentSettingsPage() {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    const parsedVocabulary = vocabulary
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
     const parsedFallbackVoiceIds = fallbackVoiceIds
       .split(",")
       .map((s) => s.trim())
@@ -689,7 +685,7 @@ export default function AgentSettingsPage() {
       payload.realtime_transcription = {
         denoising_mode: denoisingMode,
         transcription_mode: transcriptionMode,
-        vocabulary_specialization: parsedVocabulary,
+        vocabulary_specialization: vocabulary.trim(),
         boosted_keywords: parsedBoostedKeywords,
       };
       payload.call_settings = {
