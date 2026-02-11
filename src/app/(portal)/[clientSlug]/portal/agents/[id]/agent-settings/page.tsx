@@ -34,7 +34,6 @@ import {
   Pencil,
   ChevronDown,
   Play,
-  Code,
   Save,
   Loader2,
   Plus,
@@ -94,6 +93,7 @@ export default function AgentSettingsPage() {
   const isChat = agent?.platform === "retell-chat";
 
   // Agent Config state -- populated from Retell API
+  const [llmId, setLlmId] = useState<string | null>(null);
   const [language, setLanguage] = useState("en");
   const [model, setModel] = useState("gpt-4o");
   const [voice, setVoice] = useState("nova");
@@ -262,6 +262,7 @@ export default function AgentSettingsPage() {
       const data = await res.json();
 
       // Main fields
+      setLlmId(data.llm_id ?? null);
       setSystemPrompt(data.system_prompt ?? "");
       setModel(data.llm_model ?? "gpt-4o");
       setVoice(data.voice ?? "nova");
@@ -644,6 +645,7 @@ export default function AgentSettingsPage() {
 
     // Build full config payload matching the API structure
     const payload: Record<string, unknown> = {
+      ...(llmId && { llm_id: llmId }),
       system_prompt: systemPrompt,
       llm_model: model,
       first_message: firstMessage,
@@ -837,10 +839,6 @@ export default function AgentSettingsPage() {
             <Button variant="outline" onClick={() => setPrototypeOpen(true)} className="bg-white/80 dark:bg-background hover:bg-white dark:hover:bg-accent">
               <Play className="w-4 h-4 mr-2" />
               {isChat ? "Test Chat" : "Test Call"}
-            </Button>
-            <Button variant="outline" className="bg-white/80 dark:bg-background hover:bg-white dark:hover:bg-accent">
-              <Code className="w-4 h-4 mr-2" />
-              Embed Code
             </Button>
             <Button
               className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/20"
