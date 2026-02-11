@@ -22,12 +22,15 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
   // Support bulk import
   if (Array.isArray(body.leads)) {
     const { data, error } = await supabase.from("leads").upsert(
       body.leads.map((lead: { phone: string; name?: string; tags?: string[]; dynamic_vars?: Record<string, string> }) => ({
         ...lead,
-        organization_id: body.organization_id,
+        organization_id: userData.organization_id,
         agent_id: body.agent_id,
       })),
       { onConflict: "phone,agent_id" }
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
 
   const { data, error } = await supabase.from("leads").insert({
-    organization_id: body.organization_id,
+    organization_id: userData.organization_id,
     agent_id: body.agent_id,
     phone: body.phone,
     name: body.name,

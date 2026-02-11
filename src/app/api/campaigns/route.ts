@@ -22,8 +22,11 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
   const { data, error } = await supabase.from("campaigns").insert({
-    organization_id: body.organization_id,
+    organization_id: userData.organization_id,
     agent_id: body.agent_id,
     name: body.name,
     status: "draft",

@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const rawBody = await request.text();
+
+    // Verify webhook signature from Retell
+    const signature = request.headers.get("x-retell-signature");
+    const apiKey = process.env.RETELL_API_KEY;
+    if (!apiKey || !signature || !Retell.verify(rawBody, apiKey, signature)) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    const body = JSON.parse(rawBody);
     const event: string = body.event;
     const call = body.call || {};
 
