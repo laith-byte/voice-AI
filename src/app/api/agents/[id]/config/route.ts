@@ -23,7 +23,7 @@ export async function GET(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted")
+    .select("retell_agent_id, retell_api_key_encrypted, platform")
     .eq("id", id)
     .single();
 
@@ -36,9 +36,14 @@ export async function GET(
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
 
+  const isChat = agent.platform === "retell-chat";
+
   try {
-    // Fetch agent from Retell
-    const agentRes = await retellFetch(`/get-agent/${agent.retell_agent_id}`, retellApiKey);
+    // Fetch agent from Retell (different endpoint for chat agents)
+    const endpoint = isChat
+      ? `/get-chat-agent/${agent.retell_agent_id}`
+      : `/get-agent/${agent.retell_agent_id}`;
+    const agentRes = await retellFetch(endpoint, retellApiKey);
     if (!agentRes.ok) {
       return NextResponse.json({ error: "Failed to fetch from Retell" }, { status: agentRes.status });
     }
@@ -64,14 +69,25 @@ export async function GET(
     const firstMessage = (llmConfig.begin_message as string) || "";
     const tools = (llmConfig.general_tools as unknown[]) || (llmConfig.tools as unknown[]) || [];
 
-    const config = {
+    const config: Record<string, unknown> = {
+      platform: agent.platform || "retell",
       system_prompt: systemPrompt,
       llm_model: model,
-      voice: retellAgent.voice_id || "Hailey",
       first_message: firstMessage,
       functions: tools,
       llm_id: engine?.llm_id || null,
-      speech_settings: {
+    };
+
+    if (isChat) {
+      // Chat agents have no voice/speech/transcription/call settings
+      config.chat_settings = {
+        max_tokens: retellAgent.max_tokens,
+        temperature: retellAgent.temperature,
+      };
+    } else {
+      // Voice agent fields
+      config.voice = retellAgent.voice_id || "Hailey";
+      config.speech_settings = {
         background_sound: retellAgent.ambient_sound,
         background_sound_volume: retellAgent.ambient_sound_volume,
         responsiveness: retellAgent.responsiveness,
@@ -85,34 +101,35 @@ export async function GET(
           : undefined,
         reminder_max_count: retellAgent.reminder_max_count,
         pronunciation: retellAgent.pronunciation_dictionary,
-      },
-      realtime_transcription: {
-        denoising_mode: retellAgent.denoising,
-        transcription_mode: retellAgent.transcription_mode,
-        vocabulary_specialization: retellAgent.vocabulary_specialization,
+      };
+      config.realtime_transcription = {
+        denoising_mode: retellAgent.denoising_mode,
+        transcription_mode: retellAgent.stt_mode,
+        vocabulary_specialization: retellAgent.vocab_specialization,
         boosted_keywords: retellAgent.boosted_keywords,
-      },
-      call_settings: {
+      };
+      config.call_settings = {
         voicemail_detection: retellAgent.voicemail_detection,
         keypad_input_detection: retellAgent.enable_keypad_input,
         end_call_after_silence: retellAgent.end_call_after_silence_ms,
         max_call_duration: retellAgent.max_call_duration_ms,
         pause_before_speaking: retellAgent.pause_before_speaking_sec,
         ring_duration: retellAgent.ring_duration_sec,
-      },
-      post_call_analysis: {
-        model: retellAgent.post_call_analysis_model,
-        data: retellAgent.post_call_analysis_data,
-      },
-      security_fallback: {
-        data_storage_setting: retellAgent.data_storage,
-        pii_redaction: retellAgent.pii_redaction_config,
-        secure_urls: retellAgent.opt_in_secure_urls,
-        fallback_voice_ids: retellAgent.fallback_voice_ids,
-        default_dynamic_vars: retellAgent.default_dynamic_variables,
-      },
-      mcps: retellAgent.mcp_servers || [],
+      };
+    }
+
+    config.post_call_analysis = {
+      model: retellAgent.post_call_analysis_model,
+      data: retellAgent.post_call_analysis_data,
     };
+    config.security_fallback = {
+      data_storage_setting: retellAgent.data_storage,
+      pii_redaction: retellAgent.pii_redaction_config,
+      secure_urls: retellAgent.opt_in_secure_urls,
+      fallback_voice_ids: retellAgent.fallback_voice_ids,
+      default_dynamic_vars: retellAgent.default_dynamic_variables,
+    };
+    config.mcps = retellAgent.mcp_servers || [];
 
     return NextResponse.json(config);
   } catch {
@@ -131,7 +148,7 @@ export async function PATCH(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted")
+    .select("retell_agent_id, retell_api_key_encrypted, platform")
     .eq("id", id)
     .single();
 
@@ -143,6 +160,8 @@ export async function PATCH(
   if (!retellApiKey) {
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
+
+  const isChat = agent.platform === "retell-chat";
 
   try {
     // If the agent uses a separate LLM (llm_id), update the LLM object
@@ -202,9 +221,9 @@ export async function PATCH(
     // Realtime transcription
     if (body.realtime_transcription) {
       const r = body.realtime_transcription;
-      if (r.denoising_mode !== undefined) retellUpdate.denoising = r.denoising_mode;
-      if (r.transcription_mode !== undefined) retellUpdate.transcription_mode = r.transcription_mode;
-      if (r.vocabulary_specialization !== undefined) retellUpdate.vocabulary_specialization = r.vocabulary_specialization;
+      if (r.denoising_mode !== undefined) retellUpdate.denoising_mode = r.denoising_mode;
+      if (r.transcription_mode !== undefined) retellUpdate.stt_mode = r.transcription_mode;
+      if (r.vocabulary_specialization !== undefined) retellUpdate.vocab_specialization = r.vocabulary_specialization;
       if (r.boosted_keywords !== undefined) retellUpdate.boosted_keywords = r.boosted_keywords;
     }
 
@@ -240,7 +259,10 @@ export async function PATCH(
 
     // Only call agent update if there are agent-level fields to update
     if (Object.keys(retellUpdate).length > 0) {
-      const retellRes = await retellFetch(`/update-agent/${agent.retell_agent_id}`, retellApiKey, {
+      const updateEndpoint = isChat
+        ? `/update-chat-agent/${agent.retell_agent_id}`
+        : `/update-agent/${agent.retell_agent_id}`;
+      const retellRes = await retellFetch(updateEndpoint, retellApiKey, {
         method: "PATCH",
         body: JSON.stringify(retellUpdate),
       });

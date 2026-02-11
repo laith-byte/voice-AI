@@ -10,10 +10,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "agent_id is required" }, { status: 400 });
   }
 
-  // Get agent's Retell credentials
+  // Get agent's Retell credentials and org/client info
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted")
+    .select("retell_agent_id, retell_api_key_encrypted, organization_id, client_id")
     .eq("id", agent_id)
     .single();
 
@@ -36,6 +36,12 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         agent_id: agent.retell_agent_id,
+        metadata: {
+          source: "portal",
+          internal_agent_id: agent_id,
+          client_id: agent.client_id,
+          organization_id: agent.organization_id,
+        },
       }),
     });
 
@@ -47,7 +53,11 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await retellRes.json();
-    return NextResponse.json(data);
+    // Return both access_token and call_id to the client
+    return NextResponse.json({
+      access_token: data.access_token,
+      call_id: data.call_id,
+    });
   } catch {
     return NextResponse.json(
       { error: "Failed to create web call" },

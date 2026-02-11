@@ -12,14 +12,13 @@ import {
   UserPlus,
   Megaphone,
   Settings,
-  Palette,
-  Brain,
   ArrowLeft,
   Bell,
   LogOut,
   Key,
   ChevronUp,
   Menu,
+  HelpCircle,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +41,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ChangePassword } from "@/components/auth/change-password";
+import { useOnboardingContext } from "@/components/onboarding/onboarding-provider";
 
 // Map nav items to their corresponding client_access feature keys
 const agentNavItems = [
@@ -51,21 +51,21 @@ const agentNavItems = [
   { label: "Leads", href: "leads", icon: UserPlus, featureKey: "leads" },
   { label: "Campaigns", href: "campaigns", icon: Megaphone, featureKey: "campaigns" },
   { label: "Agent Settings", href: "agent-settings", icon: Settings, featureKey: "agent_settings" },
-  { label: "Widget", href: "widget", icon: Palette, featureKey: null },
-  { label: "AI Analysis", href: "ai-analysis", icon: Brain, featureKey: null },
 ];
 
-export function PortalSidebar() {
+export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const params = useParams();
   const agentId = params?.id as string | undefined;
+  const { retriggerTutorial } = useOnboardingContext();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [userInitials, setUserInitials] = useState("");
+  const [clientName, setClientName] = useState("");
   const [allowedFeatures, setAllowedFeatures] = useState<Record<string, boolean> | null>(null);
 
   const isAgentView = !!agentId;
@@ -104,8 +104,18 @@ export function PortalSidebar() {
       setUserInitials("U");
     }
 
-    // Fetch client_access permissions if user has a client_id
+    // Fetch client name and access permissions if user has a client_id
     if (userData?.client_id) {
+      const { data: clientData } = await supabase
+        .from("clients")
+        .select("name")
+        .eq("id", userData.client_id)
+        .single();
+
+      if (clientData?.name) {
+        setClientName(clientData.name);
+      }
+
       const { data: accessData } = await supabase
         .from("client_access")
         .select("feature, enabled")
@@ -152,41 +162,43 @@ export function PortalSidebar() {
   const sidebarContent = (
     <>
       {/* Logo */}
-      <div className="p-5 border-b border-border">
-        <Link href="/portal" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+      <div className="p-5">
+        <Link href={`/${clientSlug}/portal`} className="flex items-center gap-2.5">
+          <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center" style={{ boxShadow: '0 2px 8px rgba(37, 99, 235, 0.35)' }}>
             <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <span className="font-semibold text-sm">Invaria Labs</span>
+          <span className="font-semibold text-sm text-white">{clientName || "Invaria Labs"}</span>
         </Link>
+        <div className="mt-4 h-px" style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)' }} />
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-3 px-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 py-1 px-3 space-y-0.5 overflow-y-auto">
         {isAgentView ? (
           <>
             <Link
-              href="/portal"
-              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors mb-2"
+              href={`/${clientSlug}/portal`}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-400 hover:bg-white/[0.06] hover:text-slate-200 transition-all duration-200 mb-2"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Agents
             </Link>
-            <div className="h-px bg-border my-2" />
+            <div className="h-px my-2" style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%)' }} />
             {filteredAgentNavItems.map((item) => {
-              const href = `/portal/agents/${agentId}/${item.href}`;
+              const href = `/${clientSlug}/portal/agents/${agentId}/${item.href}`;
               const isActive = pathname === href;
               return (
                 <Link
                   key={item.href}
                   href={href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                     isActive
-                      ? "bg-blue-50 text-blue-600 font-medium"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      ? "bg-white/10 text-white font-medium"
+                      : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
                   }`}
+                  style={isActive ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
                 >
                   <item.icon className="w-4 h-4" />
                   {item.label}
@@ -196,12 +208,13 @@ export function PortalSidebar() {
           </>
         ) : (
           <Link
-            href="/portal"
-            className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
-              pathname === "/portal"
-                ? "bg-blue-50 text-blue-600 font-medium"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+            href={`/${clientSlug}/portal`}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+              pathname === `/${clientSlug}/portal`
+                ? "bg-white/10 text-white font-medium"
+                : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
             }`}
+            style={pathname === `/${clientSlug}/portal` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
           >
             <Bot className="w-4 h-4" />
             Agents
@@ -210,37 +223,41 @@ export function PortalSidebar() {
       </nav>
 
       {/* Notification bell */}
-      <div className="px-4 py-2 border-t border-border">
-        <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground w-full px-3 py-2 rounded-md hover:bg-accent transition-colors">
+      <div className="px-4 py-2 border-t border-white/[0.06]">
+        <button className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-200">
           <Bell className="w-4 h-4" />
           Notifications
-          <Badge variant="secondary" className="ml-auto text-[10px] h-5 px-1.5 bg-blue-100 text-blue-600">
+          <Badge variant="secondary" className="ml-auto text-[10px] h-5 px-1.5 bg-primary/20 text-primary-foreground font-medium">
             0
           </Badge>
         </button>
       </div>
 
       {/* User profile */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-white/[0.06]">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2.5 w-full p-2 rounded-md hover:bg-accent transition-colors text-left">
-              <Avatar className="w-8 h-8">
-                <AvatarFallback className="bg-blue-100 text-blue-600 text-xs font-medium">
+            <button className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
+              <Avatar className="w-8 h-8 ring-2 ring-transparent group-hover:ring-primary/20 transition-all duration-200">
+                <AvatarFallback className="bg-primary/20 text-primary-foreground text-xs font-medium">
                   {userInitials || "U"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{userName || "User"}</p>
-                <p className="text-xs text-muted-foreground truncate">{userEmail || ""}</p>
+                <p className="text-sm font-medium truncate leading-tight text-white">{userName || "User"}</p>
+                <p className="text-xs text-slate-500 truncate leading-tight mt-0.5">{userEmail || ""}</p>
               </div>
-              <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              <ChevronUp className="w-4 h-4 text-slate-500" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
               <Key className="w-4 h-4 mr-2" />
               Change Password
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={retriggerTutorial}>
+              <HelpCircle className="w-4 h-4 mr-2" />
+              Take a Tour
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-red-600">
@@ -256,32 +273,32 @@ export function PortalSidebar() {
   return (
     <>
       {/* Desktop sidebar - hidden on mobile */}
-      <aside className="hidden md:flex w-60 h-screen border-r border-border bg-white flex-col fixed left-0 top-0 z-40">
+      <aside className="hidden md:flex w-60 h-screen sidebar-colored flex-col fixed left-0 top-0 z-40" style={{ boxShadow: '1px 0 0 0 rgba(255,255,255,0.05)' }}>
         {sidebarContent}
       </aside>
 
       {/* Mobile header bar - visible on mobile only */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-white border-b border-border flex items-center px-4">
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 border-b border-white/[0.06] flex items-center px-4" style={{ backgroundColor: 'var(--sidebar-bg-start)' }}>
         <button
           onClick={() => setMobileOpen(true)}
-          className="p-2 -ml-2 rounded-md hover:bg-accent transition-colors"
+          className="p-2 -ml-2 rounded-lg hover:bg-white/[0.06] text-white transition-all duration-200"
           aria-label="Open menu"
         >
           <Menu className="w-5 h-5" />
         </button>
-        <Link href="/portal" className="flex items-center gap-2 ml-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
+        <Link href={`/${clientSlug}/portal`} className="flex items-center gap-2 ml-2">
+          <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center" style={{ boxShadow: '0 1px 4px rgba(37, 99, 235, 0.2)' }}>
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <span className="font-semibold text-sm">Invaria Labs</span>
+          <span className="font-semibold text-sm text-white">{clientName || "Invaria Labs"}</span>
         </Link>
       </div>
 
       {/* Mobile sheet drawer */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-60 p-0" showCloseButton={false}>
+        <SheetContent side="left" className="w-60 p-0 !border-r-white/[0.06]" style={{ backgroundColor: 'var(--sidebar-bg-start)' }} showCloseButton={false}>
           <SheetTitle className="sr-only">Navigation menu</SheetTitle>
           <div className="flex flex-col h-full">
             {sidebarContent}

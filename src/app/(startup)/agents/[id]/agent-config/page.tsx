@@ -70,7 +70,7 @@ export default function AgentConfigPage() {
   const [backchanneling, setBackchanneling] = useState(false);
 
   // Transcription state
-  const [denoisingMode, setDenoisingMode] = useState("auto");
+  const [denoisingMode, setDenoisingMode] = useState("aggressive");
   const [transcriptionMode, setTranscriptionMode] = useState("default");
   const [vocabulary, setVocabulary] = useState("");
   const [boostedKeywords, setBoostedKeywords] = useState("");
@@ -140,7 +140,7 @@ export default function AgentConfigPage() {
       // Realtime transcription
       const rt = data.realtime_transcription;
       if (rt) {
-        setDenoisingMode(rt.denoising_mode ?? "auto");
+        setDenoisingMode(rt.denoising_mode ?? "aggressive");
         setTranscriptionMode(rt.transcription_mode ?? "default");
         // vocabulary_specialization may be an array — join for display
         if (Array.isArray(rt.vocabulary_specialization)) {

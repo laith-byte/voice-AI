@@ -31,9 +31,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Save, Plus, Trash2, Loader2 } from "lucide-react";
+import { Save, Plus, Trash2, Loader2, ExternalLink, RotateCcw, Sparkles, Eye, CheckCircle2, Clock } from "lucide-react";
 import type { Client } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
+import { OnboardingTutorial } from "@/components/onboarding/onboarding-tutorial";
 
 interface Member {
   id: string;
@@ -41,6 +42,7 @@ interface Member {
   email: string;
   avatar_url: string | null;
   role: "client_admin" | "client_member";
+  onboarding_completed_at: string | null;
 }
 
 function RoleBadge({ role }: { role: Member["role"] }) {
@@ -80,6 +82,7 @@ export default function ClientOverviewPage() {
     email: "",
     role: "client_member" as Member["role"],
   });
+  const [previewOnboarding, setPreviewOnboarding] = useState(false);
 
   const fetchClient = useCallback(async () => {
     const supabase = createClient();
@@ -98,7 +101,7 @@ export default function ClientOverviewPage() {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("users")
-      .select("id, name, email, avatar_url, role")
+      .select("id, name, email, avatar_url, role, onboarding_completed_at")
       .eq("client_id", id)
       .in("role", ["client_admin", "client_member"]);
 
@@ -167,6 +170,30 @@ export default function ClientOverviewPage() {
     setMembers((prev) => prev.filter((m) => m.id !== memberId));
   };
 
+  const handleResetOnboarding = async (memberId: string, memberName: string) => {
+    const confirmed = window.confirm(
+      `Reset onboarding for ${memberName}? They will see the tutorial again on next login.`
+    );
+    if (!confirmed) return;
+
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("users")
+      .update({ onboarding_completed_at: null })
+      .eq("id", memberId);
+
+    if (error) {
+      console.error("Failed to reset onboarding:", error);
+      alert("Failed to reset onboarding. Please try again.");
+    } else {
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === memberId ? { ...m, onboarding_completed_at: null } : m
+        )
+      );
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -184,8 +211,62 @@ export default function ClientOverviewPage() {
     );
   }
 
+  const onboardedCount = members.filter((m) => m.onboarding_completed_at).length;
+  const pendingCount = members.filter((m) => !m.onboarding_completed_at).length;
+
   return (
     <div className="space-y-6">
+      {/* Client Portal Experience Card */}
+      <Card className="rounded-lg border-blue-200/50 bg-gradient-to-r from-blue-50/50 via-white to-indigo-50/50">
+        <CardContent className="p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                <Eye className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-[#111827]">Client Portal Experience</h3>
+                <p className="text-sm text-[#6b7280] mt-0.5">
+                  View the portal exactly as {client.name}&apos;s team sees it, or preview the onboarding tutorial they go through on first login.
+                </p>
+                <div className="flex items-center gap-3 mt-2">
+                  {members.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                        <span className="text-[#6b7280]">{onboardedCount} onboarded</span>
+                      </div>
+                      {pendingCount > 0 && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Clock className="w-3.5 h-3.5 text-amber-500" />
+                          <span className="text-[#6b7280]">{pendingCount} pending</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 sm:shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewOnboarding(true)}
+              >
+                <Sparkles className="w-4 h-4 mr-1.5" />
+                Preview Onboarding
+              </Button>
+              <a href="/login" target="_blank" rel="noopener noreferrer">
+                <Button size="sm" className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white">
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  View as Client
+                </Button>
+              </a>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Client Info Form */}
       <Card className="rounded-lg">
         <CardHeader>
@@ -372,13 +453,14 @@ export default function ClientOverviewPage() {
                 <TableHead className="pl-6">Member</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Onboarding</TableHead>
                 <TableHead className="text-right pr-6">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {members.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-[#6b7280] py-8">
+                  <TableCell colSpan={5} className="text-center text-[#6b7280] py-8">
                     No members found for this client.
                   </TableCell>
                 </TableRow>
@@ -401,15 +483,41 @@ export default function ClientOverviewPage() {
                     <TableCell>
                       <RoleBadge role={member.role} />
                     </TableCell>
+                    <TableCell>
+                      {member.onboarding_completed_at ? (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Completed
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1">
+                          <Clock className="w-3 h-3" />
+                          Pending
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => handleRemoveMember(member.id)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {member.onboarding_completed_at && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            className="text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
+                            title="Reset onboarding — member will see the tutorial again"
+                            onClick={() => handleResetOnboarding(member.id, member.name)}
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleRemoveMember(member.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -418,6 +526,13 @@ export default function ClientOverviewPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Onboarding Tutorial Preview */}
+      <OnboardingTutorial
+        open={previewOnboarding}
+        onOpenChange={setPreviewOnboarding}
+        onComplete={() => setPreviewOnboarding(false)}
+      />
     </div>
   );
 }

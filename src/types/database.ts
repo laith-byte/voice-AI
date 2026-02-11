@@ -20,6 +20,7 @@ export interface User {
   role: UserRole;
   organization_id: string;
   client_id: string | null;
+  onboarding_completed_at: string | null;
   created_at: string;
 }
 

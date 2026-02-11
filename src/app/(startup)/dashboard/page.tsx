@@ -11,21 +11,44 @@ import {
   ExternalLink,
   Trash2,
   AlertTriangle,
-  BookOpen,
-  HelpCircle,
-  Video,
-  MessageCircle,
-  Calendar,
-  Handshake,
   Loader2,
   Settings,
+  CheckCircle2,
+  Circle,
+  Users,
+  Bot,
+  PhoneCall,
+  Clock,
+  UserPlus,
+  BarChart3,
+  Receipt,
+  Zap,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+
+interface SetupStep {
+  label: string;
+  href: string;
+  complete: boolean;
+}
 
 export default function DashboardHomePage() {
   const [loading, setLoading] = useState(true);
   const [customDomain, setCustomDomain] = useState<string | null>(null);
   const [domainValid, setDomainValid] = useState(false);
+
+  // KPI state
+  const [totalClients, setTotalClients] = useState(0);
+  const [totalAgents, setTotalAgents] = useState(0);
+  const [totalCalls, setTotalCalls] = useState(0);
+  const [totalMinutes, setTotalMinutes] = useState(0);
+
+  // Setup checklist state
+  const [retellConnected, setRetellConnected] = useState(false);
+  const [hasAgents, setHasAgents] = useState(false);
+  const [hasClients, setHasClients] = useState(false);
+  const [hasDomain, setHasDomain] = useState(false);
+  const [stripeConnected, setStripeConnected] = useState(false);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -44,29 +67,90 @@ export default function DashboardHomePage() {
         .single();
       if (!userData?.organization_id) return;
 
-      const organizationId = userData.organization_id;
+      const orgId = userData.organization_id;
 
-      // 3. Fetch organization custom_domain
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("custom_domain")
-        .eq("id", organizationId)
-        .single();
+      // Run all queries in parallel
+      const [
+        orgResult,
+        whitelabelResult,
+        agentsResult,
+        clientsResult,
+        callLogsResult,
+        integrationsResult,
+        stripeResult,
+      ] = await Promise.all([
+        // Organization custom_domain
+        supabase
+          .from("organizations")
+          .select("custom_domain")
+          .eq("id", orgId)
+          .single(),
+        // Whitelabel settings
+        supabase
+          .from("whitelabel_settings")
+          .select("domain_valid, custom_domain")
+          .eq("organization_id", orgId)
+          .single(),
+        // Agents count
+        supabase
+          .from("agents")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId),
+        // Clients count
+        supabase
+          .from("clients")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId),
+        // Call logs (duration_seconds for total minutes + count)
+        supabase
+          .from("call_logs")
+          .select("duration_seconds")
+          .eq("organization_id", orgId),
+        // Retell integration check
+        supabase
+          .from("integrations")
+          .select("id")
+          .eq("organization_id", orgId)
+          .eq("provider", "retell")
+          .eq("is_connected", true)
+          .limit(1),
+        // Stripe connection check
+        supabase
+          .from("stripe_connections")
+          .select("id")
+          .eq("organization_id", orgId)
+          .limit(1),
+      ]);
 
-      if (org) {
-        setCustomDomain(org.custom_domain ?? null);
+      // Domain
+      if (orgResult.data) {
+        setCustomDomain(orgResult.data.custom_domain ?? null);
+      }
+      if (whitelabelResult.data) {
+        setDomainValid(whitelabelResult.data.domain_valid ?? false);
+        setHasDomain(!!whitelabelResult.data.custom_domain);
       }
 
-      // 4. Fetch domain_valid from whitelabel_settings
-      const { data: wl } = await supabase
-        .from("whitelabel_settings")
-        .select("domain_valid")
-        .eq("organization_id", organizationId)
-        .single();
+      // KPIs
+      const agentCount = agentsResult.count ?? 0;
+      const clientCount = clientsResult.count ?? 0;
+      setTotalAgents(agentCount);
+      setTotalClients(clientCount);
 
-      if (wl) {
-        setDomainValid(wl.domain_valid ?? false);
+      if (callLogsResult.data) {
+        setTotalCalls(callLogsResult.data.length);
+        const totalSec = callLogsResult.data.reduce(
+          (sum, log) => sum + (log.duration_seconds ?? 0),
+          0
+        );
+        setTotalMinutes(Math.round((totalSec / 60) * 100) / 100);
       }
+
+      // Setup checklist
+      setHasAgents(agentCount > 0);
+      setHasClients(clientCount > 0);
+      setRetellConnected((integrationsResult.data?.length ?? 0) > 0);
+      setStripeConnected((stripeResult.data?.length ?? 0) > 0);
     } finally {
       setLoading(false);
     }
@@ -75,6 +159,17 @@ export default function DashboardHomePage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const setupSteps: SetupStep[] = [
+    { label: "Connect Retell integration", href: "/settings/integrations", complete: retellConnected },
+    { label: "Add your first agent", href: "/agents", complete: hasAgents },
+    { label: "Add your first client", href: "/clients", complete: hasClients },
+    { label: "Set up custom domain", href: "/settings/whitelabel", complete: hasDomain },
+    { label: "Connect Stripe", href: "/billing/connect", complete: stripeConnected },
+  ];
+
+  const completedCount = setupSteps.filter((s) => s.complete).length;
+  const allComplete = completedCount === setupSteps.length;
 
   if (loading) {
     return (
@@ -91,57 +186,220 @@ export default function DashboardHomePage() {
         <p className="text-muted-foreground text-sm mt-1">Welcome to your Invaria Labs dashboard</p>
       </div>
 
-      {/* Domain Card */}
+      {/* Setup Checklist */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Globe className="w-5 h-5 text-muted-foreground" />
+              <Zap className="w-5 h-5 text-muted-foreground" />
               <div>
-                <CardTitle className="text-base">Custom Domain</CardTitle>
+                <CardTitle className="text-base">Getting Started</CardTitle>
                 <CardDescription className="text-sm">
-                  {customDomain ?? "No custom domain configured"}
+                  {allComplete
+                    ? "You're all set!"
+                    : `${completedCount}/${setupSteps.length} steps complete`}
                 </CardDescription>
               </div>
             </div>
-            {customDomain && (
-              <Badge
-                variant="secondary"
-                className={
-                  domainValid
-                    ? "bg-green-50 text-green-700 border-green-200"
-                    : "bg-red-50 text-red-700 border-red-200"
-                }
-              >
-                {domainValid ? "Active" : "Inactive"}
+            {allComplete && (
+              <Badge className="bg-green-50 text-green-700 border-green-200">
+                Setup Complete
               </Badge>
             )}
           </div>
         </CardHeader>
         <CardContent>
-          {customDomain ? (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <a href={`https://${customDomain}`} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                  Visit
-                </a>
-              </Button>
-              <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Remove
-              </Button>
+          {/* Progress bar */}
+          <div className="w-full h-2 bg-gray-100 rounded-full mb-4">
+            <div
+              className="h-2 bg-blue-600 rounded-full transition-all duration-500"
+              style={{ width: `${(completedCount / setupSteps.length) * 100}%` }}
+            />
+          </div>
+
+          {!allComplete && (
+            <div className="space-y-2">
+              {setupSteps.map((step) => (
+                <div key={step.label} className="flex items-center gap-3">
+                  {step.complete ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
+                  ) : (
+                    <Circle className="w-5 h-5 text-gray-300 shrink-0" />
+                  )}
+                  {step.complete ? (
+                    <span className="text-sm text-muted-foreground line-through">{step.label}</span>
+                  ) : (
+                    <Link
+                      href={step.href}
+                      className="text-sm text-blue-600 hover:underline"
+                    >
+                      {step.label}
+                    </Link>
+                  )}
+                </div>
+              ))}
             </div>
-          ) : (
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/settings/whitelabel">
-                <Settings className="w-3.5 h-3.5 mr-1.5" />
-                Set Up Domain
-              </Link>
-            </Button>
           )}
         </CardContent>
       </Card>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Users className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-[#6b7280]">Total Clients</p>
+                <p className="text-xl font-semibold text-[#111827]">
+                  {totalClients.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                <Bot className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs text-[#6b7280]">Total Agents</p>
+                <p className="text-xl font-semibold text-[#111827]">
+                  {totalAgents.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                <PhoneCall className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs text-[#6b7280]">Total Calls</p>
+                <p className="text-xl font-semibold text-[#111827]">
+                  {totalCalls.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-xs text-[#6b7280]">Total Minutes</p>
+                <p className="text-xl font-semibold text-[#111827]">
+                  {totalMinutes.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick Actions + Domain */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Domain Card */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Globe className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <CardTitle className="text-base">Custom Domain</CardTitle>
+                  <CardDescription className="text-sm">
+                    {customDomain ?? "No custom domain configured"}
+                  </CardDescription>
+                </div>
+              </div>
+              {customDomain && (
+                <Badge
+                  variant="secondary"
+                  className={
+                    domainValid
+                      ? "bg-green-50 text-green-700 border-green-200"
+                      : "bg-red-50 text-red-700 border-red-200"
+                  }
+                >
+                  {domainValid ? "Active" : "Inactive"}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {customDomain ? (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <a href={`https://${customDomain}`} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                    Visit
+                  </a>
+                </Button>
+                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/settings/whitelabel">
+                  <Settings className="w-3.5 h-3.5 mr-1.5" />
+                  Set Up Domain
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Quick Actions</CardTitle>
+            <CardDescription className="text-sm">Common tasks and shortcuts</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" className="justify-start" asChild>
+                <Link href="/clients">
+                  <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                  Add Client
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="justify-start" asChild>
+                <Link href="/agents">
+                  <Bot className="w-3.5 h-3.5 mr-1.5" />
+                  Add Agent
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="justify-start" asChild>
+                <Link href="/settings/usage">
+                  <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
+                  View Usage
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="justify-start" asChild>
+                <Link href="/billing">
+                  <Receipt className="w-3.5 h-3.5 mr-1.5" />
+                  Manage Billing
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Cloudflare Warning */}
       {customDomain && (
@@ -152,107 +410,6 @@ export default function DashboardHomePage() {
           </AlertDescription>
         </Alert>
       )}
-
-      {/* Resources */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Resources</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <a href="#" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm">Demo Hub</h3>
-                  <p className="text-xs text-muted-foreground">Explore demos and examples</p>
-                </div>
-              </CardContent>
-            </Card>
-          </a>
-          <a href="#" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                  <HelpCircle className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm">Help Center</h3>
-                  <p className="text-xs text-muted-foreground">Documentation and guides</p>
-                </div>
-              </CardContent>
-            </Card>
-          </a>
-          <a href="#" className="block">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
-              <CardContent className="p-5 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                  <Video className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="font-medium text-sm">Tutorial Videos</h3>
-                  <p className="text-xs text-muted-foreground">Watch video walkthroughs</p>
-                </div>
-              </CardContent>
-            </Card>
-          </a>
-        </div>
-      </div>
-
-      {/* Additional Help */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Additional Help</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="hover:shadow-md transition-shadow">
-            <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center">
-                <MessageCircle className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-medium text-sm">Contact Support</h3>
-                <p className="text-xs text-muted-foreground mt-1">Get help from our team</p>
-              </div>
-              <Button variant="outline" size="sm" className="mt-2" asChild>
-                <a href="mailto:support@invarialabs.com">
-                  Contact Us
-                </a>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card className="hover:shadow-md transition-shadow">
-            <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <h3 className="font-medium text-sm">Schedule a Call</h3>
-                <p className="text-xs text-muted-foreground mt-1">Book a 1-on-1 session</p>
-              </div>
-              <Button variant="outline" size="sm" className="mt-2" asChild>
-                <a href="#">
-                  Schedule
-                </a>
-              </Button>
-            </CardContent>
-          </Card>
-          <Card className="hover:shadow-md transition-shadow">
-            <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-purple-50 flex items-center justify-center">
-                <Handshake className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <h3 className="font-medium text-sm">Partner Support</h3>
-                <p className="text-xs text-muted-foreground mt-1">Partnership resources</p>
-              </div>
-              <Button variant="outline" size="sm" className="mt-2" asChild>
-                <a href="#">
-                  Learn More
-                </a>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
     </div>
   );
 }

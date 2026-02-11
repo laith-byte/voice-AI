@@ -63,7 +63,7 @@ const defaultConfig: AgentConfig = {
     backchannel_words: ["yeah", "uh-huh"],
   },
   realtime_transcription: {
-    denoising_mode: "remove_noise",
+    denoising_mode: "aggressive",
     transcription_mode: "speed",
     vocabulary_specialization: "general",
     boosted_keywords: [],

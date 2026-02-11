@@ -1,0 +1,1 @@
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS dashboard_color TEXT DEFAULT '#2563eb';

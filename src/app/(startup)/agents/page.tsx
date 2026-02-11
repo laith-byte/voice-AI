@@ -83,6 +83,7 @@ export default function AgentsPage() {
     if (res.ok) {
       setDialogOpen(false);
       setNewAgent({ name: "", platform: "retell", retell_agent_id: "", retell_api_key_encrypted: "" });
+      toast.success("Agent created");
       fetchAgents();
     } else {
       const data = await res.json().catch(() => null);
@@ -121,7 +122,7 @@ export default function AgentsPage() {
             <DialogHeader>
               <DialogTitle>Add New Agent</DialogTitle>
               <DialogDescription>
-                Create a new voice agent. You&apos;ll need the Retell Agent ID to connect it.
+                Connect a Retell voice agent. Find the Agent ID in your Retell dashboard.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
@@ -160,17 +161,9 @@ export default function AgentsPage() {
                   className="font-mono text-sm"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="retell-api-key">Retell API Key</Label>
-                <Input
-                  id="retell-api-key"
-                  type="password"
-                  placeholder="key_xxxxxxxxxxxx"
-                  value={newAgent.retell_api_key_encrypted}
-                  onChange={(e) => setNewAgent({ ...newAgent, retell_api_key_encrypted: e.target.value })}
-                  className="font-mono text-sm"
-                />
-              </div>
+              <p className="text-xs text-[#6b7280]">
+                Uses the global Retell API key from Settings &gt; Integrations.
+              </p>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
