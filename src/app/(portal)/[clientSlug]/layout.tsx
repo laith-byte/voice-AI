@@ -1,6 +1,7 @@
 import { PortalSidebar } from "@/components/layout/portal-sidebar";
 import { OnboardingProvider } from "@/components/onboarding/onboarding-provider";
 import { DashboardThemeProvider } from "@/components/portal/dashboard-theme-provider";
+import { PortalChatWidget } from "@/components/portal/chat-widget";
 
 export default async function PortalLayout({
   children,
@@ -21,6 +22,7 @@ export default async function PortalLayout({
             {children}
           </main>
         </div>
+        <PortalChatWidget />
       </OnboardingProvider>
     </DashboardThemeProvider>
   );

@@ -2,22 +2,38 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-async function getClientSlug(supabase: SupabaseClient, userId: string): Promise<string | null> {
+interface ClientInfo {
+  slug: string | null;
+  clientId: string | null;
+  onboardingStatus: string | null;
+}
+
+async function getClientInfo(supabase: SupabaseClient, userId: string): Promise<ClientInfo> {
   const { data: userData } = await supabase
     .from("users")
     .select("client_id")
     .eq("id", userId)
     .single();
 
-  if (!userData?.client_id) return null;
+  if (!userData?.client_id) return { slug: null, clientId: null, onboardingStatus: null };
 
-  const { data: clientData } = await supabase
-    .from("clients")
-    .select("slug")
-    .eq("id", userData.client_id)
-    .single();
+  // Fetch client slug and onboarding status in parallel
+  const [clientResult, onboardingResult] = await Promise.all([
+    supabase.from("clients").select("slug").eq("id", userData.client_id).single(),
+    supabase.from("client_onboarding").select("status").eq("client_id", userData.client_id).maybeSingle(),
+  ]);
 
-  return clientData?.slug ?? null;
+  return {
+    slug: clientResult.data?.slug ?? null,
+    clientId: userData.client_id,
+    onboardingStatus: onboardingResult.data?.status ?? null,
+  };
+}
+
+// Backwards-compatible wrapper
+async function getClientSlug(supabase: SupabaseClient, userId: string): Promise<string | null> {
+  const info = await getClientInfo(supabase, userId);
+  return info.slug;
 }
 
 // Check if a pathname is a slug-based portal route: /<slug>/portal/...
@@ -64,8 +80,11 @@ export async function updateSession(request: NextRequest) {
   const publicRoutes = ["/login", "/forgot-password", "/reset-password", "/pricing", "/auth/callback"];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
+  // API routes handle their own auth — don't redirect them
+  const isApiRoute = pathname.startsWith("/api/");
+
   // If not authenticated and not on a public route, redirect to login
-  if (!user && !isPublicRoute && pathname !== "/") {
+  if (!user && !isPublicRoute && !isApiRoute && pathname !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -80,8 +99,18 @@ export async function updateSession(request: NextRequest) {
     if (isPublicRoute || pathname === "/") {
       const url = request.nextUrl.clone();
       if (isClientUser) {
-        const slug = await getClientSlug(supabase, user.id);
-        url.pathname = slug ? `/${slug}/portal` : "/login";
+        const clientInfo = await getClientInfo(supabase, user.id);
+        if (clientInfo.slug) {
+          // If onboarding is incomplete, go straight to wizard
+          const needsOnboarding = clientInfo.onboardingStatus &&
+            clientInfo.onboardingStatus !== "completed" &&
+            clientInfo.onboardingStatus !== "skipped";
+          url.pathname = needsOnboarding
+            ? `/${clientInfo.slug}/portal/onboarding`
+            : `/${clientInfo.slug}/portal`;
+        } else {
+          url.pathname = "/login";
+        }
       } else {
         url.pathname = "/dashboard";
       }
@@ -127,12 +156,30 @@ export async function updateSession(request: NextRequest) {
 
       // Validate that the slug in the URL matches the client user's actual slug
       if (isClientUser) {
-        const slug = await getClientSlug(supabase, user.id);
+        const clientInfo = await getClientInfo(supabase, user.id);
         const urlSlug = pathname.split("/")[1];
-        if (slug && urlSlug !== slug) {
+        if (clientInfo.slug && urlSlug !== clientInfo.slug) {
           const url = request.nextUrl.clone();
-          url.pathname = `/${slug}/portal`;
+          url.pathname = `/${clientInfo.slug}/portal`;
           return NextResponse.redirect(url);
+        }
+
+        // Auto-redirect to onboarding wizard if onboarding is incomplete
+        // Only redirect when landing on the portal root, not when already navigating
+        if (
+          clientInfo.slug &&
+          clientInfo.onboardingStatus &&
+          clientInfo.onboardingStatus !== "completed" &&
+          clientInfo.onboardingStatus !== "skipped"
+        ) {
+          const portalRoot = `/${clientInfo.slug}/portal`;
+          const onboardingPath = `/${clientInfo.slug}/portal/onboarding`;
+          // Only redirect from portal root to onboarding (not from sub-pages)
+          if (pathname === portalRoot || pathname === `${portalRoot}/`) {
+            const url = request.nextUrl.clone();
+            url.pathname = onboardingPath;
+            return NextResponse.redirect(url);
+          }
         }
       }
     }

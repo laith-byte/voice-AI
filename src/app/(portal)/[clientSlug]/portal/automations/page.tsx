@@ -240,7 +240,7 @@ export default function PortalAutomationsPage() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6 md:ml-60 mt-14 md:mt-0">
+      <div className="p-4 md:p-6">
         <div className="flex items-center justify-center min-h-[400px]">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -249,8 +249,8 @@ export default function PortalAutomationsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 md:ml-60 mt-14 md:mt-0">
-      <div className="max-w-5xl mx-auto space-y-8">
+    <div className="p-4 md:p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         {/* Page Header */}
         <div>
           <div className="flex items-center gap-3">

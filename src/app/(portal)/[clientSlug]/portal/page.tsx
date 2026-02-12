@@ -20,7 +20,11 @@ import {
   TrendingUp,
   TrendingDown,
   PhoneCall,
+  MessageSquare,
+  Rocket,
+  Sparkles,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,11 +43,17 @@ interface AgentRow {
 
 interface RecentCall {
   id: string;
+  retell_call_id: string | null;
   agent_id: string;
   agent_name: string;
-  caller_number: string | null;
+  from_number: string | null;
   duration_seconds: number | null;
   started_at: string;
+  summary: string | null;
+  status: string | null;
+  metadata: Record<string, unknown> | null;
+  transcript: string | null;
+  type: "voice" | "chat";
 }
 
 function getGreeting(): string {
@@ -51,6 +61,31 @@ function getGreeting(): string {
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
+}
+
+function getDateGroup(dateStr: string): "Today" | "This Week" | "Earlier" {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay());
+
+  if (date >= startOfToday) return "Today";
+  if (date >= startOfWeek) return "This Week";
+  return "Earlier";
+}
+
+function getPreviewText(call: RecentCall): string | null {
+  if (call.summary) {
+    return call.summary.length > 80 ? call.summary.slice(0, 80) + "..." : call.summary;
+  }
+  if (call.transcript) {
+    const firstLine = call.transcript.split("\n").find((l) => l.trim());
+    if (firstLine) {
+      return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine;
+    }
+  }
+  return null;
 }
 
 export default function PortalAgentsPage() {
@@ -71,6 +106,10 @@ export default function PortalAgentsPage() {
   // Recent activity
   const [recentCalls, setRecentCalls] = useState<RecentCall[]>([]);
 
+  // Onboarding status
+  const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState(1);
+
   const fetchData = useCallback(async () => {
     const supabase = createClient();
 
@@ -90,6 +129,18 @@ export default function PortalAgentsPage() {
           .single();
         if (clientData) setClientName(clientData.name);
       }
+    }
+
+    // Fetch onboarding status
+    try {
+      const onboardingRes = await fetch("/api/onboarding/status");
+      if (onboardingRes.ok) {
+        const onboardingData = await onboardingRes.json();
+        setOnboardingStatus(onboardingData.status ?? "not_started");
+        setOnboardingStep(onboardingData.current_step ?? 1);
+      }
+    } catch {
+      // Onboarding check is non-critical
     }
 
     // Fetch agents (RLS handles client scoping)
@@ -121,13 +172,13 @@ export default function PortalAgentsPage() {
             .select("agent_id, duration_seconds, started_at")
             .in("agent_id", agentIds)
             .gte("started_at", sixtyDaysAgo.toISOString()),
-          // Recent 5 calls
+          // Recent 4 calls
           supabase
             .from("call_logs")
-            .select("id, agent_id, caller_number, duration_seconds, started_at")
+            .select("id, retell_call_id, agent_id, from_number, duration_seconds, started_at, summary, status, metadata, transcript")
             .in("agent_id", agentIds)
             .order("started_at", { ascending: false })
-            .limit(5),
+            .limit(4),
           // Count distinct agents with calls in previous 30 days for trend
           supabase
             .from("call_logs")
@@ -167,14 +218,23 @@ export default function PortalAgentsPage() {
         // Recent calls
         if (recentCallsResult.data) {
           setRecentCalls(
-            recentCallsResult.data.map((c) => ({
-              id: c.id,
-              agent_id: c.agent_id,
-              agent_name: agentNameMap.get(c.agent_id) ?? "Unknown Agent",
-              caller_number: c.caller_number,
-              duration_seconds: c.duration_seconds,
-              started_at: c.started_at,
-            }))
+            recentCallsResult.data.map((c) => {
+              const meta = c.metadata as Record<string, unknown> | null;
+              return {
+                id: c.id,
+                retell_call_id: c.retell_call_id ?? null,
+                agent_id: c.agent_id,
+                agent_name: agentNameMap.get(c.agent_id) ?? "Unknown Agent",
+                from_number: c.from_number,
+                duration_seconds: c.duration_seconds,
+                started_at: c.started_at,
+                summary: c.summary ?? null,
+                status: c.status ?? null,
+                metadata: meta,
+                transcript: c.transcript ?? null,
+                type: (meta?.type === "chat" ? "chat" : "voice") as "voice" | "chat",
+              };
+            })
           );
         }
       }
@@ -232,6 +292,43 @@ export default function PortalAgentsPage() {
           Here&apos;s an overview of your agents and recent activity
         </p>
       </div>
+
+      {/* Onboarding Banner */}
+      {onboardingStatus && onboardingStatus !== "completed" && onboardingStatus !== "skipped" && (
+        <Card className="animate-fade-in-up glass-card border-primary/20 bg-gradient-to-r from-primary/[0.04] via-primary/[0.02] to-transparent overflow-hidden">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
+                  {onboardingStatus === "not_started" ? (
+                    <Sparkles className="w-6 h-6 text-white" />
+                  ) : (
+                    <Rocket className="w-6 h-6 text-white" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-semibold text-[15px]">
+                    {onboardingStatus === "not_started"
+                      ? "Welcome! Let's set up your AI agent"
+                      : `Continue setup (Step ${onboardingStep} of 6)`}
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {onboardingStatus === "not_started"
+                      ? "Get your AI voice agent up and running in just a few minutes."
+                      : "You're almost there! Pick up right where you left off."}
+                  </p>
+                </div>
+              </div>
+              <Link href={`/${clientSlug}/portal/onboarding`}>
+                <Button className="gap-2 shadow-sm bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary/80">
+                  {onboardingStatus === "not_started" ? "Get Started" : "Continue Setup"}
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Loading State */}
       {loading ? (
@@ -371,41 +468,90 @@ export default function PortalAgentsPage() {
             <CardContent>
               {recentCalls.length > 0 ? (
                 <div className="space-y-1">
-                  {recentCalls.map((call) => (
-                    <div
-                      key={call.id}
-                      className="group flex items-center justify-between py-3 px-3 rounded-lg hover:bg-primary/[0.04] hover:shadow-sm transition-all"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/10 flex items-center justify-center">
-                          <PhoneCall className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{call.agent_name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {call.caller_number || "Unknown caller"}
-                          </p>
-                        </div>
+                  {(["Today", "This Week", "Earlier"] as const).map((group) => {
+                    const groupCalls = recentCalls.filter(
+                      (c) => getDateGroup(c.started_at) === group
+                    );
+                    if (groupCalls.length === 0) return null;
+                    return (
+                      <div key={group}>
+                        <p className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider px-3 pt-3 pb-1">
+                          {group}
+                        </p>
+                        {groupCalls.map((call) => {
+                          const isChat = call.type === "chat";
+                          const preview = getPreviewText(call);
+                          const callHref = `/${clientSlug}/portal/agents/${call.agent_id}/conversations?callId=${encodeURIComponent(call.retell_call_id || call.id)}`;
+                          return (
+                            <Link
+                              key={call.id}
+                              href={callHref}
+                              className="group flex items-center justify-between py-3 px-3 rounded-lg hover:bg-primary/[0.04] hover:shadow-sm transition-all"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div
+                                  className={cn(
+                                    "w-9 h-9 rounded-xl flex items-center justify-center ring-1 shrink-0",
+                                    isChat
+                                      ? "bg-gradient-to-br from-blue-500/15 to-blue-500/5 ring-blue-500/10"
+                                      : "bg-gradient-to-br from-primary/15 to-primary/5 ring-primary/10"
+                                  )}
+                                >
+                                  {isChat ? (
+                                    <MessageSquare className="w-4 h-4 text-blue-600" />
+                                  ) : (
+                                    <PhoneCall className="w-4 h-4 text-primary" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-medium truncate">{call.agent_name}</p>
+                                    <span
+                                      className={cn(
+                                        "w-2 h-2 rounded-full shrink-0",
+                                        call.status === "completed" || call.status === "ended"
+                                          ? "bg-green-500"
+                                          : call.status === "in-progress" || call.status === "active"
+                                            ? "bg-yellow-500 animate-pulse"
+                                            : "bg-gray-400"
+                                      )}
+                                    />
+                                  </div>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {isChat ? "Chat session" : call.from_number || "Unknown caller"}
+                                  </p>
+                                  {preview && (
+                                    <p className="text-xs text-muted-foreground/60 truncate mt-0.5">
+                                      {preview}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4 text-right shrink-0">
+                                <div>
+                                  <p className="text-sm font-medium font-mono" style={{ fontFeatureSettings: '"tnum"' }}>
+                                    {formatDuration(call.duration_seconds)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground/70">
+                                    {formatRelativeTime(call.started_at)}
+                                  </p>
+                                </div>
+                                <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </Link>
+                          );
+                        })}
                       </div>
-                      <div className="flex items-center gap-4 text-right">
-                        <div>
-                          <p className="text-sm font-medium font-mono" style={{ fontFeatureSettings: '"tnum"' }}>{formatDuration(call.duration_seconds)}</p>
-                          <p className="text-xs text-muted-foreground/70">{formatRelativeTime(call.started_at)}</p>
-                        </div>
-                        <Link href={`/${clientSlug}/portal/agents/${call.agent_id}/conversations`}>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <ArrowRight className="w-4 h-4" />
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 empty-state-circle"><PhoneCall className="w-8 h-8 text-muted-foreground/60" /></div>
-                  <p className="text-sm text-muted-foreground">No recent calls</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">Call activity will appear here</p>
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 empty-state-circle">
+                    <PhoneCall className="w-8 h-8 text-muted-foreground/60" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">Call and chat activity will appear here</p>
                 </div>
               )}
             </CardContent>

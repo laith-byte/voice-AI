@@ -53,7 +53,6 @@ import {
   Sparkles,
   Check,
   RotateCcw,
-  Palette,
   MessageSquareText,
   Clock,
   Info,
@@ -63,6 +62,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { PrototypeCallDialog } from "@/components/agents/prototype-call-dialog";
 import { useRetellCall } from "@/hooks/use-retell-call";
+
 import { useDashboardTheme } from "@/components/portal/dashboard-theme-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -156,7 +156,7 @@ export default function AgentSettingsPage() {
   const [chatSending, setChatSending] = useState(false);
   const [chatStarting, setChatStarting] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const { color: dashboardColor, setColor: setDashboardColor, saveColor } = useDashboardTheme();
+  const { color: dashboardColor } = useDashboardTheme();
   const { isCallActive, isAgentTalking, isMuted, transcript, startCall, stopCall, toggleMute } = useRetellCall();
   const [isConnecting, setIsConnecting] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -202,16 +202,6 @@ export default function AgentSettingsPage() {
   const [autoTaggingPrompt, setAutoTaggingPrompt] = useState(
     "Analyze the conversation and assign relevant topic tags. Consider the main subject discussed, the type of inquiry, and any specific products or services mentioned."
   );
-
-  const colorPresets = [
-    { name: "Blue", value: "#2563eb" },
-    { name: "Indigo", value: "#4f46e5" },
-    { name: "Violet", value: "#7c3aed" },
-    { name: "Emerald", value: "#059669" },
-    { name: "Rose", value: "#e11d48" },
-    { name: "Orange", value: "#ea580c" },
-    { name: "Slate", value: "#475569" },
-  ];
 
   // Call duration timer
   useEffect(() => {
@@ -465,8 +455,7 @@ export default function AgentSettingsPage() {
         agent_id: agentId,
         description: widgetDescription,
       });
-    await saveColor(dashboardColor);
-    toast.success("Widget & dashboard color saved");
+    toast.success("Widget settings saved");
     setWidgetSaving(false);
   };
 
@@ -1572,52 +1561,8 @@ export default function AgentSettingsPage() {
                 </CardContent>
               </Card>
 
-              <Card className="overflow-hidden animate-fade-in-up stagger-2 glass-card rounded-xl">
-                <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
-                  <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-md bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center">
-                      <Palette className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Dashboard Color</h3>
-                      <p className="text-[11px] text-muted-foreground">Applies to your entire portal</p>
-                    </div>
-                  </div>
-                </div>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {colorPresets.map((preset) => (
-                      <button
-                        key={preset.value}
-                        onClick={() => setDashboardColor(preset.value)}
-                        className={cn(
-                          "w-8 h-8 rounded-full border-2 transition-all hover:scale-110",
-                          dashboardColor === preset.value
-                            ? "border-foreground scale-110 shadow-md"
-                            : "border-transparent"
-                        )}
-                        style={{ backgroundColor: preset.value }}
-                        title={preset.name}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      value={dashboardColor}
-                      onChange={(e) => setDashboardColor(e.target.value)}
-                      className="text-xs font-mono h-8 flex-1"
-                      placeholder="#2563eb"
-                    />
-                    <div
-                      className="w-8 h-8 rounded-md border shrink-0"
-                      style={{ backgroundColor: dashboardColor }}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
               {!isChat && audioDevices.length > 0 && (
-                <Card className="overflow-hidden animate-fade-in-up stagger-3 glass-card rounded-xl">
+                <Card className="overflow-hidden animate-fade-in-up stagger-2 glass-card rounded-xl">
                   <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
                     <div className="flex items-center gap-2">
                       <div className="h-7 w-7 rounded-md bg-sky-100 dark:bg-sky-900/50 flex items-center justify-center">

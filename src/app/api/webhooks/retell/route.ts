@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { executePostCallActions } from "@/lib/post-call-actions";
+import { executeRecipes } from "@/lib/automation-recipes";
 import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
@@ -115,6 +117,29 @@ export async function POST(request: NextRequest) {
 
       default:
         break;
+    }
+
+    // Execute post-call actions (email summary, SMS, webhook, etc.)
+    if (clientId && (event === "call_ended" || event === "call_analyzed")) {
+      // Fetch the stored call log to pass to actions
+      const { data: callLogRow } = await supabase
+        .from("call_logs")
+        .select("*")
+        .eq("retell_call_id", call.call_id)
+        .single();
+
+      if (callLogRow) {
+        // Run both post-call actions and automation recipes in parallel
+        // Don't block the webhook response
+        Promise.all([
+          executePostCallActions(callLogRow, clientId).catch((err) =>
+            console.error("Post-call actions error:", err)
+          ),
+          executeRecipes(callLogRow, clientId).catch((err) =>
+            console.error("Automation recipes error:", err)
+          ),
+        ]);
+      }
     }
 
     // Forward to n8n/workflow webhooks configured on this agent

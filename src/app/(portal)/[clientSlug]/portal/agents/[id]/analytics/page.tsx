@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { Phone, Clock, MessageSquare, MessagesSquare, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { Phone, Clock, MessageSquare, MessagesSquare, TrendingUp, TrendingDown, CheckCircle2, Users, Timer, ArrowDownUp, PhoneIncoming, PhoneOutgoing } from "lucide-react";
 import {
   ComposedChart,
   Area,
@@ -27,6 +27,8 @@ import {
   Pie,
   Cell,
   Legend,
+  BarChart,
+  Bar,
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 
@@ -36,6 +38,9 @@ interface CallLog {
   status: string | null;
   metadata: Record<string, unknown> | null;
   started_at: string | null;
+  evaluation: string | null;
+  from_number: string | null;
+  direction: string | null;
 }
 
 const DONUT_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
@@ -79,7 +84,7 @@ export default function AnalyticsPage() {
 
       const { data, error } = await supabase
         .from("call_logs")
-        .select("id, duration_seconds, status, metadata, started_at")
+        .select("id, duration_seconds, status, metadata, started_at, evaluation, from_number, direction")
         .eq("agent_id", agentId)
         .gte("started_at", prevStart.toISOString())
         .lte("started_at", end.toISOString())
@@ -96,7 +101,7 @@ export default function AnalyticsPage() {
 
       const { data, error } = await supabase
         .from("call_logs")
-        .select("id, duration_seconds, status, metadata, started_at")
+        .select("id, duration_seconds, status, metadata, started_at, evaluation, from_number, direction")
         .eq("agent_id", agentId)
         .gte("started_at", startDate.toISOString())
         .order("started_at", { ascending: true });
@@ -157,6 +162,55 @@ export default function AnalyticsPage() {
   const currentCallCount = currentLogs.length;
   const previousCallCount = previousLogs.length;
   const callCountChange = previousCallCount > 0 ? ((currentCallCount - previousCallCount) / previousCallCount) * 100 : 0;
+
+  // KPI: Success Rate
+  const currentSuccessCount = useMemo(() => {
+    return currentLogs.filter((l) => {
+      if (!l.evaluation) return false;
+      const ev = l.evaluation.toLowerCase();
+      return ev.includes("true") || ev.includes("success") || ev.includes("passed");
+    }).length;
+  }, [currentLogs]);
+  const previousSuccessCount = useMemo(() => {
+    return previousLogs.filter((l) => {
+      if (!l.evaluation) return false;
+      const ev = l.evaluation.toLowerCase();
+      return ev.includes("true") || ev.includes("success") || ev.includes("passed");
+    }).length;
+  }, [previousLogs]);
+  const currentSuccessRate = currentCallCount > 0 ? (currentSuccessCount / currentCallCount) * 100 : 0;
+  const previousSuccessRate = previousCallCount > 0 ? (previousSuccessCount / previousCallCount) * 100 : 0;
+  const successRateChange = previousSuccessRate > 0 ? currentSuccessRate - previousSuccessRate : 0;
+
+  // KPI: Avg Call Duration (seconds)
+  const currentAvgDuration = useMemo(() => {
+    const withDuration = currentLogs.filter((l) => l.duration_seconds && l.duration_seconds > 0);
+    if (withDuration.length === 0) return 0;
+    return Math.round(withDuration.reduce((s, l) => s + (l.duration_seconds || 0), 0) / withDuration.length);
+  }, [currentLogs]);
+  const previousAvgDuration = useMemo(() => {
+    const withDuration = previousLogs.filter((l) => l.duration_seconds && l.duration_seconds > 0);
+    if (withDuration.length === 0) return 0;
+    return Math.round(withDuration.reduce((s, l) => s + (l.duration_seconds || 0), 0) / withDuration.length);
+  }, [previousLogs]);
+  const avgDurationChange = previousAvgDuration > 0 ? ((currentAvgDuration - previousAvgDuration) / previousAvgDuration) * 100 : 0;
+  const formatAvgDuration = (secs: number) => {
+    if (secs < 60) return `${secs}s`;
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}m ${s}s`;
+  };
+
+  // KPI: Unique Callers
+  const currentUnique = useMemo(() => {
+    const numbers = new Set(currentLogs.filter((l) => l.from_number).map((l) => l.from_number));
+    return numbers.size;
+  }, [currentLogs]);
+  const previousUnique = useMemo(() => {
+    const numbers = new Set(previousLogs.filter((l) => l.from_number).map((l) => l.from_number));
+    return numbers.size;
+  }, [previousLogs]);
+  const uniqueChange = previousUnique > 0 ? ((currentUnique - previousUnique) / previousUnique) * 100 : 0;
 
   // Line chart data: group by date for current and previous periods
   const callMinutesData = useMemo(() => {
@@ -251,6 +305,67 @@ export default function AnalyticsPage() {
       }));
   }, [currentLogs]);
 
+  // Duration Distribution (histogram buckets)
+  const durationDistData = useMemo(() => {
+    const buckets = [
+      { label: "0-30s", min: 0, max: 30, count: 0 },
+      { label: "30s-1m", min: 30, max: 60, count: 0 },
+      { label: "1-2m", min: 60, max: 120, count: 0 },
+      { label: "2-5m", min: 120, max: 300, count: 0 },
+      { label: "5-10m", min: 300, max: 600, count: 0 },
+      { label: "10m+", min: 600, max: Infinity, count: 0 },
+    ];
+    for (const log of currentLogs) {
+      const dur = log.duration_seconds || 0;
+      for (const bucket of buckets) {
+        if (dur >= bucket.min && dur < bucket.max) {
+          bucket.count += 1;
+          break;
+        }
+      }
+    }
+    return buckets.map((b) => ({ name: b.label, count: b.count }));
+  }, [currentLogs]);
+
+  // Peak Hours Heatmap (hour x day-of-week)
+  const peakHoursData = useMemo(() => {
+    const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+    for (const log of currentLogs) {
+      if (!log.started_at) continue;
+      const d = new Date(log.started_at);
+      const day = d.getDay(); // 0=Sun, 6=Sat
+      const hour = d.getHours();
+      grid[day][hour] += 1;
+    }
+    const maxVal = Math.max(1, ...grid.flat());
+    return { grid, maxVal };
+  }, [currentLogs]);
+
+  // Inbound vs Outbound
+  const directionData = useMemo(() => {
+    let inbound = 0;
+    let outbound = 0;
+    let unknown = 0;
+    for (const log of currentLogs) {
+      if (log.direction === "inbound") inbound++;
+      else if (log.direction === "outbound") outbound++;
+      else unknown++;
+    }
+    const result: { name: string; value: number; color: string }[] = [];
+    if (inbound > 0) result.push({ name: "Inbound", value: inbound, color: "#2563eb" });
+    if (outbound > 0) result.push({ name: "Outbound", value: outbound, color: "#10b981" });
+    if (unknown > 0 && inbound === 0 && outbound === 0) result.push({ name: "Unknown", value: unknown, color: "#94a3b8" });
+    return result;
+  }, [currentLogs]);
+
+  const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
+    if (i === 0) return "12a";
+    if (i < 12) return `${i}a`;
+    if (i === 12) return "12p";
+    return `${i - 12}p`;
+  });
+
   return (
     <FeatureGate feature="analytics">
     <div className="p-6 space-y-6">
@@ -295,13 +410,27 @@ export default function AnalyticsPage() {
 
       {loading ? (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[1, 2].map((i) => (
-              <div key={i} className="rounded-xl border p-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-xl border p-6">
                 <div className="flex items-center justify-between">
                   <div className="space-y-2">
                     <Skeleton className="h-3 w-28" />
-                    <Skeleton className="h-8 w-16" />
+                    <Skeleton className="h-9 w-20" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <Skeleton className="h-12 w-12 rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[1, 2].map((i) => (
+              <div key={i} className="rounded-xl border p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-28" />
+                    <Skeleton className="h-9 w-20" />
                     <Skeleton className="h-3 w-32" />
                   </div>
                   <Skeleton className="h-12 w-12 rounded-xl" />
@@ -314,28 +443,23 @@ export default function AnalyticsPage() {
               <div key={i} className="rounded-xl border p-6">
                 <Skeleton className="h-5 w-40 mb-2" />
                 <Skeleton className="h-3 w-48 mb-4" />
-                <Skeleton className="h-[300px] w-full rounded-lg" />
+                <Skeleton className="h-[280px] w-full rounded-lg" />
               </div>
             ))}
-          </div>
-          <div className="rounded-xl border p-6">
-            <Skeleton className="h-5 w-40 mb-2" />
-            <Skeleton className="h-3 w-56 mb-4" />
-            <Skeleton className="h-[300px] w-full rounded-lg" />
           </div>
         </div>
       ) : (
         <>
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* KPI Row 1: Primary Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="animate-fade-in-up stagger-1 glass-card rounded-xl">
-              <CardContent className="p-5">
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
                       {isChat ? "Total Messages" : "Total Call Minutes"}
                     </p>
-                    <div className="flex items-baseline gap-2 mt-2">
+                    <div className="flex items-baseline gap-2.5 mt-2">
                       <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{currentMinutes}</span>
                       {previousMinutes > 0 && (
                         <div className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ring-1 ring-inset ${minutesChange >= 0 ? "bg-green-500/15 text-green-700 ring-green-500/20" : "bg-red-500/15 text-red-700 ring-red-500/20"}`}>
@@ -344,7 +468,7 @@ export default function AnalyticsPage() {
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground/70 mt-1">vs. {previousMinutes} previous period</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1.5">vs. {previousMinutes} previous period</p>
                   </div>
                   <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/12 to-primary/4 flex items-center justify-center shadow-sm transition-transform duration-200 hover:rotate-3 hover:scale-110">
                     {isChat ? <MessagesSquare className="w-6 h-6 text-primary" /> : <Clock className="w-6 h-6 text-primary" />}
@@ -353,13 +477,13 @@ export default function AnalyticsPage() {
               </CardContent>
             </Card>
             <Card className="animate-fade-in-up stagger-2 glass-card rounded-xl">
-              <CardContent className="p-5">
+              <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
                       {isChat ? "Number of Conversations" : "Number of Calls"}
                     </p>
-                    <div className="flex items-baseline gap-2 mt-2">
+                    <div className="flex items-baseline gap-2.5 mt-2">
                       <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{currentCallCount}</span>
                       {previousCallCount > 0 && (
                         <div className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ring-1 ring-inset ${callCountChange >= 0 ? "bg-green-500/15 text-green-700 ring-green-500/20" : "bg-red-500/15 text-red-700 ring-red-500/20"}`}>
@@ -368,7 +492,7 @@ export default function AnalyticsPage() {
                         </div>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground/70 mt-1">vs. {previousCallCount} previous period</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1.5">vs. {previousCallCount} previous period</p>
                   </div>
                   <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500/12 to-green-500/4 flex items-center justify-center shadow-sm transition-transform duration-200 hover:rotate-3 hover:scale-110">
                     {isChat ? <MessageSquare className="w-6 h-6 text-green-600" /> : <Phone className="w-6 h-6 text-green-600" />}
@@ -376,18 +500,87 @@ export default function AnalyticsPage() {
                 </div>
               </CardContent>
             </Card>
+            <Card className="animate-fade-in-up stagger-3 glass-card rounded-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Success Rate</p>
+                    <div className="flex items-baseline gap-2.5 mt-2">
+                      <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{currentSuccessRate.toFixed(0)}%</span>
+                      {previousCallCount > 0 && (
+                        <div className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ring-1 ring-inset ${successRateChange >= 0 ? "bg-green-500/15 text-green-700 ring-green-500/20" : "bg-red-500/15 text-red-700 ring-red-500/20"}`}>
+                          {successRateChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {successRateChange >= 0 ? "+" : ""}{successRateChange.toFixed(1)}pp
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground/70 mt-1.5">{currentSuccessCount} of {currentCallCount} successful</p>
+                  </div>
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/12 to-emerald-500/4 flex items-center justify-center shadow-sm transition-transform duration-200 hover:rotate-3 hover:scale-110">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Charts */}
+          {/* KPI Row 2: Secondary Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="animate-fade-in-up stagger-4 glass-card rounded-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Average Duration</p>
+                    <div className="flex items-baseline gap-2.5 mt-2">
+                      <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{formatAvgDuration(currentAvgDuration)}</span>
+                      {previousAvgDuration > 0 && (
+                        <div className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ring-1 ring-inset ${avgDurationChange >= 0 ? "bg-green-500/15 text-green-700 ring-green-500/20" : "bg-red-500/15 text-red-700 ring-red-500/20"}`}>
+                          {avgDurationChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {avgDurationChange >= 0 ? "+" : ""}{avgDurationChange.toFixed(1)}%
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground/70 mt-1.5">vs. {formatAvgDuration(previousAvgDuration)} previous period</p>
+                  </div>
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/12 to-amber-500/4 flex items-center justify-center shadow-sm transition-transform duration-200 hover:rotate-3 hover:scale-110">
+                    <Timer className="w-6 h-6 text-amber-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="animate-fade-in-up stagger-5 glass-card rounded-xl">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Unique Callers</p>
+                    <div className="flex items-baseline gap-2.5 mt-2">
+                      <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{currentUnique}</span>
+                      {previousUnique > 0 && (
+                        <div className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-semibold ring-1 ring-inset ${uniqueChange >= 0 ? "bg-green-500/15 text-green-700 ring-green-500/20" : "bg-red-500/15 text-red-700 ring-red-500/20"}`}>
+                          {uniqueChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                          {uniqueChange >= 0 ? "+" : ""}{uniqueChange.toFixed(1)}%
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground/70 mt-1.5">vs. {previousUnique} previous period</p>
+                  </div>
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500/12 to-violet-500/4 flex items-center justify-center shadow-sm transition-transform duration-200 hover:rotate-3 hover:scale-110">
+                    <Users className="w-6 h-6 text-violet-600" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Trend Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Minutes/Messages Chart */}
-            <Card className="animate-fade-in-up stagger-3 glass-card rounded-xl">
+            <Card className="animate-fade-in-up glass-card rounded-xl">
               <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
                 <CardTitle className="text-lg font-semibold tracking-tight">{isChat ? "Total Messages" : "Total Call Minutes"}</CardTitle>
                 <p className="text-sm text-muted-foreground/70">Latest vs Previous period</p>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={callMinutesData}>
                       <defs>
@@ -399,52 +592,23 @@ export default function AnalyticsPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                       <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#94a3b8" />
                       <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                      <Tooltip
-                        contentStyle={{
-                          borderRadius: "12px",
-                          border: "none",
-                          boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)",
-                          backdropFilter: "blur(8px)",
-                          backgroundColor: "rgba(255,255,255,0.85)",
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="current"
-                        fill="url(#gradientMinutes)"
-                        stroke="none"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="current"
-                        stroke="#2563eb"
-                        strokeWidth={2}
-                        dot={{ r: 4, fill: "#2563eb" }}
-                        name="Current"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="previous"
-                        stroke="#94a3b8"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={{ r: 3, fill: "#94a3b8" }}
-                        name="Previous"
-                      />
+                      <Tooltip contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)", backdropFilter: "blur(8px)", backgroundColor: "rgba(255,255,255,0.85)" }} />
+                      <Area type="monotone" dataKey="current" fill="url(#gradientMinutes)" stroke="none" />
+                      <Line type="monotone" dataKey="current" stroke="#2563eb" strokeWidth={2} dot={{ r: 4, fill: "#2563eb" }} name="Current" />
+                      <Line type="monotone" dataKey="previous" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3, fill: "#94a3b8" }} name="Previous" />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Calls/Conversations Chart */}
-            <Card className="animate-fade-in-up stagger-4 glass-card rounded-xl">
+            <Card className="animate-fade-in-up glass-card rounded-xl">
               <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
                 <CardTitle className="text-lg font-semibold tracking-tight">{isChat ? "Number of Conversations" : "Number of Calls"}</CardTitle>
                 <p className="text-sm text-muted-foreground/70">Latest vs Previous period</p>
               </CardHeader>
               <CardContent>
-                <div className="h-[300px]">
+                <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={numberOfCallsData}>
                       <defs>
@@ -456,38 +620,10 @@ export default function AnalyticsPage() {
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                       <XAxis dataKey="date" tick={{ fontSize: 12 }} stroke="#94a3b8" />
                       <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                      <Tooltip
-                        contentStyle={{
-                          borderRadius: "12px",
-                          border: "none",
-                          boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)",
-                          backdropFilter: "blur(8px)",
-                          backgroundColor: "rgba(255,255,255,0.85)",
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="current"
-                        fill="url(#gradientCalls)"
-                        stroke="none"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="current"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        dot={{ r: 4, fill: "#10b981" }}
-                        name="Current"
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="previous"
-                        stroke="#94a3b8"
-                        strokeWidth={2}
-                        strokeDasharray="5 5"
-                        dot={{ r: 3, fill: "#94a3b8" }}
-                        name="Previous"
-                      />
+                      <Tooltip contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)", backdropFilter: "blur(8px)", backgroundColor: "rgba(255,255,255,0.85)" }} />
+                      <Area type="monotone" dataKey="current" fill="url(#gradientCalls)" stroke="none" />
+                      <Line type="monotone" dataKey="current" stroke="#10b981" strokeWidth={2} dot={{ r: 4, fill: "#10b981" }} name="Current" />
+                      <Line type="monotone" dataKey="previous" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3, fill: "#94a3b8" }} name="Previous" />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -495,8 +631,143 @@ export default function AnalyticsPage() {
             </Card>
           </div>
 
-          {/* Donut Chart - Reason Ended */}
-          <Card className="animate-fade-in-up stagger-5 glass-card rounded-xl">
+          {/* Distribution Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Duration Distribution */}
+            <Card className="animate-fade-in-up glass-card rounded-xl">
+              <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
+                <CardTitle className="text-lg font-semibold tracking-tight">Duration Distribution</CardTitle>
+                <p className="text-sm text-muted-foreground/70">How long calls typically last</p>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={durationDistData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                      <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" allowDecimals={false} />
+                      <Tooltip formatter={(value) => [`${value} calls`, "Count"]} contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)", backdropFilter: "blur(8px)", backgroundColor: "rgba(255,255,255,0.85)" }} />
+                      <Bar dataKey="count" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={48} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Inbound vs Outbound */}
+            <Card className="animate-fade-in-up glass-card rounded-xl">
+              <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
+                <CardTitle className="text-lg font-semibold tracking-tight">
+                  {isChat ? "Channel Split" : "Inbound vs Outbound"}
+                </CardTitle>
+                <p className="text-sm text-muted-foreground/70">Call direction breakdown</p>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[280px] flex items-center justify-center">
+                  {directionData.length > 0 ? (
+                    <div className="w-full flex items-center gap-6">
+                      <div className="flex-1">
+                        <ResponsiveContainer width="100%" height={220}>
+                          <PieChart>
+                            <Pie data={directionData} cx="50%" cy="50%" innerRadius={60} outerRadius={95} paddingAngle={4} dataKey="value" isAnimationActive animationDuration={800}>
+                              {directionData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              formatter={(value) => {
+                                const v = Number(value) || 0;
+                                const total = directionData.reduce((s, e) => s + e.value, 0);
+                                return [`${v} (${total > 0 ? ((v / total) * 100).toFixed(0) : 0}%)`, ""];
+                              }}
+                              contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)", backgroundColor: "rgba(255,255,255,0.85)" }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="space-y-3 pr-4">
+                        {directionData.map((d) => (
+                          <div key={d.name} className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${d.color}15` }}>
+                              {d.name === "Inbound" ? <PhoneIncoming className="w-4 h-4" style={{ color: d.color }} /> : d.name === "Outbound" ? <PhoneOutgoing className="w-4 h-4" style={{ color: d.color }} /> : <Phone className="w-4 h-4" style={{ color: d.color }} />}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{d.name}</p>
+                              <p className="text-xs text-muted-foreground">{d.value} call{d.value !== 1 ? "s" : ""}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 empty-state-circle">
+                        <ArrowDownUp className="w-7 h-7 text-muted-foreground/60" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">No direction data available</p>
+                      <p className="text-xs text-muted-foreground/70 mt-1">Direction is recorded for phone calls</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Call Activity Heatmap */}
+          <Card className="animate-fade-in-up glass-card rounded-xl">
+            <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
+              <CardTitle className="text-lg font-semibold tracking-tight">Call Activity</CardTitle>
+              <p className="text-sm text-muted-foreground/70">When your agent receives calls — based on actual call data for this period</p>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {currentLogs.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <div className="min-w-[640px]">
+                    <div className="flex ml-10 mb-1">
+                      {HOUR_LABELS.map((h, i) => (
+                        <div key={i} className="flex-1 text-center text-[9px] text-muted-foreground/70">{i % 3 === 0 ? h : ""}</div>
+                      ))}
+                    </div>
+                    {DAY_LABELS.map((day, dayIdx) => (
+                      <div key={day} className="flex items-center gap-1 mb-[3px]">
+                        <span className="w-9 text-[11px] text-muted-foreground font-medium text-right pr-1">{day}</span>
+                        <div className="flex flex-1 gap-[2px]">
+                          {peakHoursData.grid[dayIdx].map((count, hourIdx) => {
+                            const intensity = count / peakHoursData.maxVal;
+                            return (
+                              <div
+                                key={hourIdx}
+                                className="flex-1 rounded-[3px] transition-colors duration-150"
+                                style={{
+                                  height: "24px",
+                                  backgroundColor: count === 0 ? "#f1f5f9" : `rgba(37, 99, 235, ${0.15 + intensity * 0.85})`,
+                                }}
+                                title={`${day} ${HOUR_LABELS[hourIdx]}: ${count} call${count !== 1 ? "s" : ""}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-end gap-1 mt-3 mr-1">
+                      <span className="text-[10px] text-muted-foreground mr-1">Less</span>
+                      {[0, 0.25, 0.5, 0.75, 1].map((level) => (
+                        <div key={level} className="w-4 h-4 rounded-[3px]" style={{ backgroundColor: level === 0 ? "#f1f5f9" : `rgba(37, 99, 235, ${0.15 + level * 0.85})` }} />
+                      ))}
+                      <span className="text-[10px] text-muted-foreground ml-1">More</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm text-muted-foreground">No data for this period</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Reason Call Ended */}
+          <Card className="animate-fade-in-up glass-card rounded-xl">
             <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
               <CardTitle className="text-lg font-semibold tracking-tight">{isChat ? "Reason Chat Ended" : "Reason Call Ended"}</CardTitle>
               <p className="text-sm text-muted-foreground/70">{isChat ? "Distribution of chat ending reasons" : "Distribution of call ending reasons"}</p>
@@ -506,19 +777,7 @@ export default function AnalyticsPage() {
                 {callEndedData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie
-                        data={callEndedData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={80}
-                        outerRadius={120}
-                        paddingAngle={3}
-                        dataKey="value"
-                        isAnimationActive
-                        animationBegin={200}
-                        animationDuration={800}
-                        label={false}
-                      >
+                      <Pie data={callEndedData} cx="50%" cy="50%" innerRadius={80} outerRadius={120} paddingAngle={3} dataKey="value" isAnimationActive animationBegin={200} animationDuration={800} label={false}>
                         {callEndedData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
@@ -530,22 +789,9 @@ export default function AnalyticsPage() {
                           const pct = total > 0 ? ((v / total) * 100).toFixed(1) : "0";
                           return [`${v} (${pct}%)`, ""];
                         }}
-                        contentStyle={{
-                          borderRadius: "12px",
-                          border: "none",
-                          boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)",
-                          backdropFilter: "blur(8px)",
-                          backgroundColor: "rgba(255,255,255,0.85)",
-                        }}
+                        contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 12px -2px rgba(0,0,0,0.1)", backdropFilter: "blur(8px)", backgroundColor: "rgba(255,255,255,0.85)" }}
                       />
-                      <Legend
-                        verticalAlign="middle"
-                        align="right"
-                        layout="vertical"
-                        iconType="circle"
-                        iconSize={8}
-                        formatter={(value) => <span className="text-sm text-foreground">{value}</span>}
-                      />
+                      <Legend verticalAlign="middle" align="right" layout="vertical" iconType="circle" iconSize={8} formatter={(value) => <span className="text-sm text-foreground">{value}</span>} />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (

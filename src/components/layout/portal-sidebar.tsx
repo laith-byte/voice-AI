@@ -19,6 +19,10 @@ import {
   ChevronUp,
   Menu,
   HelpCircle,
+  Palette,
+  Building2,
+  CreditCard,
+  Sparkles,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -40,8 +44,21 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Input } from "@/components/ui/input";
 import { ChangePassword } from "@/components/auth/change-password";
 import { useOnboardingContext } from "@/components/onboarding/onboarding-provider";
+import { useDashboardTheme } from "@/components/portal/dashboard-theme-provider";
+import { cn } from "@/lib/utils";
+
+const colorPresets = [
+  { name: "Blue", value: "#2563eb" },
+  { name: "Indigo", value: "#4f46e5" },
+  { name: "Violet", value: "#7c3aed" },
+  { name: "Emerald", value: "#059669" },
+  { name: "Rose", value: "#e11d48" },
+  { name: "Orange", value: "#ea580c" },
+  { name: "Slate", value: "#475569" },
+];
 
 // Map nav items to their corresponding client_access feature keys
 const agentNavItems = [
@@ -59,7 +76,9 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
   const params = useParams();
   const agentId = params?.id as string | undefined;
   const { retriggerTutorial } = useOnboardingContext();
+  const { color: dashboardColor, setColor, saveColor } = useDashboardTheme();
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const [userName, setUserName] = useState("");
@@ -207,18 +226,56 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
             })}
           </>
         ) : (
-          <Link
-            href={`/${clientSlug}/portal`}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-              pathname === `/${clientSlug}/portal`
-                ? "bg-white/10 text-white font-medium"
-                : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
-            }`}
-            style={pathname === `/${clientSlug}/portal` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
-          >
-            <Bot className="w-4 h-4" />
-            Agents
-          </Link>
+          <>
+            <Link
+              href={`/${clientSlug}/portal`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                pathname === `/${clientSlug}/portal`
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}
+              style={pathname === `/${clientSlug}/portal` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+            >
+              <Bot className="w-4 h-4" />
+              Agents
+            </Link>
+            <Link
+              href={`/${clientSlug}/portal/settings/business`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                pathname === `/${clientSlug}/portal/settings/business`
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}
+              style={pathname === `/${clientSlug}/portal/settings/business` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+            >
+              <Building2 className="w-4 h-4" />
+              Business Settings
+            </Link>
+            <Link
+              href={`/${clientSlug}/portal/automations`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                pathname === `/${clientSlug}/portal/automations`
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}
+              style={pathname === `/${clientSlug}/portal/automations` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+            >
+              <Sparkles className="w-4 h-4" />
+              Automations
+            </Link>
+            <Link
+              href={`/${clientSlug}/portal/billing`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                pathname === `/${clientSlug}/portal/billing`
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}
+              style={pathname === `/${clientSlug}/portal/billing` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+            >
+              <CreditCard className="w-4 h-4" />
+              Billing
+            </Link>
+          </>
         )}
       </nav>
 
@@ -258,6 +315,10 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
             <DropdownMenuItem onClick={retriggerTutorial}>
               <HelpCircle className="w-4 h-4 mr-2" />
               Take a Tour
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setColorPickerOpen(true)}>
+              <Palette className="w-4 h-4 mr-2" />
+              Dashboard Color
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-red-600">
@@ -312,6 +373,46 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
             <DialogTitle>Change Password</DialogTitle>
           </DialogHeader>
           <ChangePassword onClose={() => setChangePasswordOpen(false)} />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={colorPickerOpen} onOpenChange={setColorPickerOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Dashboard Color</DialogTitle>
+            <p className="text-sm text-muted-foreground">Applies to your entire portal</p>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="flex flex-wrap gap-2.5">
+              {colorPresets.map((preset) => (
+                <button
+                  key={preset.value}
+                  onClick={() => saveColor(preset.value)}
+                  className={cn(
+                    "w-9 h-9 rounded-full border-2 transition-all hover:scale-110",
+                    dashboardColor === preset.value
+                      ? "border-foreground scale-110 shadow-md"
+                      : "border-transparent"
+                  )}
+                  style={{ backgroundColor: preset.value }}
+                  title={preset.name}
+                />
+              ))}
+            </div>
+            <div className="flex gap-2 items-center">
+              <Input
+                value={dashboardColor}
+                onChange={(e) => setColor(e.target.value)}
+                onBlur={() => saveColor(dashboardColor)}
+                className="text-sm font-mono h-9 flex-1"
+                placeholder="#2563eb"
+              />
+              <div
+                className="w-9 h-9 rounded-md border shrink-0"
+                style={{ backgroundColor: dashboardColor }}
+              />
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>

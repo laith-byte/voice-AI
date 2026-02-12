@@ -20,29 +20,14 @@ export default function PricingCards({ plans, orgSlug, stripeAccountId }: Pricin
   const popularIndex = plans.length >= 3 ? 1 : -1;
 
   async function handleGetStarted(plan: ClientPlan) {
-    if (!stripeAccountId || !plan.stripe_monthly_price_id) return;
+    if (!plan.stripe_monthly_price_id) return;
 
     setLoadingPlanId(plan.id);
     try {
-      const lineItems: { price: string; quantity: number }[] = [
-        { price: plan.stripe_monthly_price_id, quantity: 1 },
-      ];
-
-      // Add setup fee as a separate line item if configured
-      if (plan.stripe_setup_price_id) {
-        lineItems.push({ price: plan.stripe_setup_price_id, quantity: 1 });
-      }
-
-      const res = await fetch("/api/billing", {
+      const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create_checkout",
-          stripe_account_id: stripeAccountId,
-          line_items: lineItems,
-          success_url: `${window.location.origin}/pricing/${orgSlug}?success=true`,
-          cancel_url: `${window.location.origin}/pricing/${orgSlug}?canceled=true`,
-        }),
+        body: JSON.stringify({ plan_id: plan.id }),
       });
 
       const data = await res.json();
@@ -69,7 +54,7 @@ export default function PricingCards({ plans, orgSlug, stripeAccountId }: Pricin
         const features = Array.isArray(plan.features)
           ? (plan.features as string[])
           : [];
-        const canCheckout = !!stripeAccountId && !!plan.stripe_monthly_price_id;
+        const canCheckout = !!plan.stripe_monthly_price_id;
         const isLoading = loadingPlanId === plan.id;
 
         return (

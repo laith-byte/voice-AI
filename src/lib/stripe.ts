@@ -73,3 +73,34 @@ export async function listCoupons(stripeAccountId?: string) {
     stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
   );
 }
+
+export function constructWebhookEvent(payload: string | Buffer, sig: string, secret: string) {
+  return getStripe().webhooks.constructEvent(payload, sig, secret);
+}
+
+export async function retrieveCheckoutSession(sessionId: string, stripeAccountId?: string) {
+  return getStripe().checkout.sessions.retrieve(
+    sessionId,
+    { expand: ["customer", "subscription"] },
+    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
+  );
+}
+
+export async function createBillingPortalSession(
+  customerId: string,
+  returnUrl: string,
+  stripeAccountId?: string
+) {
+  return getStripe().billingPortal.sessions.create(
+    { customer: customerId, return_url: returnUrl },
+    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
+  );
+}
+
+export async function retrieveSubscription(subscriptionId: string, stripeAccountId?: string) {
+  return getStripe().subscriptions.retrieve(
+    subscriptionId,
+    { expand: ["default_payment_method"] },
+    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
+  );
+}
