@@ -166,7 +166,7 @@ export default function DashboardHomePage() {
   }, [fetchData]);
 
   const setupSteps: SetupStep[] = [
-    { label: "Connect Retell integration", href: "/settings/integrations", complete: retellConnected },
+    { label: "Connect voice AI integration", href: "/settings/integrations", complete: retellConnected },
     { label: "Add your first agent", href: "/agents", complete: hasAgents },
     { label: "Add your first client", href: "/clients", complete: hasClients },
     { label: "Set up custom domain", href: "/settings/whitelabel", complete: hasDomain },

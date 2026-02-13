@@ -208,7 +208,7 @@ export default function SaaSTemplatesPage() {
               <SelectValue placeholder="Select voice provider" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="retell">Retell</SelectItem>
+              <SelectItem value="retell">Voice AI</SelectItem>
               <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
               <SelectItem value="vapi">Vapi</SelectItem>
             </SelectContent>
@@ -345,14 +345,14 @@ export default function SaaSTemplatesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="retell">Retell</SelectItem>
+                    <SelectItem value="retell">Voice AI</SelectItem>
                     <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tpl-retell-id">Retell Agent ID (optional)</Label>
+              <Label htmlFor="tpl-retell-id">Voice Agent ID (optional)</Label>
               <Input
                 id="tpl-retell-id"
                 placeholder="agent_xxxxxxxxxxxx"

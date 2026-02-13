@@ -121,7 +121,7 @@ export default function AgentsPage() {
             <DialogHeader>
               <DialogTitle>Add New Agent</DialogTitle>
               <DialogDescription>
-                Connect a Retell voice agent. Find the Agent ID in your Retell dashboard.
+                Connect a voice agent. Find the Agent ID in your voice provider dashboard.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
@@ -144,14 +144,14 @@ export default function AgentsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="retell">Retell</SelectItem>
+                    <SelectItem value="retell">Voice AI</SelectItem>
                     <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
                     <SelectItem value="vapi">Vapi</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="retell-agent-id">Retell Agent ID</Label>
+                <Label htmlFor="retell-agent-id">Voice Agent ID</Label>
                 <Input
                   id="retell-agent-id"
                   placeholder="agent_xxxxxxxxxxxx"
@@ -161,7 +161,7 @@ export default function AgentsPage() {
                 />
               </div>
               <p className="text-xs text-[#6b7280]">
-                Uses the global Retell API key from Settings &gt; Integrations.
+                Uses the global Voice AI API key from Settings &gt; Integrations.
               </p>
             </div>
             <DialogFooter>

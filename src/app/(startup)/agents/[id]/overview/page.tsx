@@ -142,7 +142,7 @@ export default function AgentOverviewPage() {
           {/* Retell API Key */}
           <div>
             <Label className="text-sm font-medium text-[#111827] mb-1.5 block">
-              Retell API Key
+              Voice AI API Key
             </Label>
             <div className="flex items-center gap-2 h-10 px-3 rounded-md border border-[#e5e7eb] bg-gray-50">
               <Lock className="h-4 w-4 text-[#6b7280]" />
@@ -206,7 +206,7 @@ export default function AgentOverviewPage() {
           Webhook URL
         </h2>
         <p className="text-sm text-[#6b7280] mb-4">
-          Configure the webhook endpoint that receives call events from Retell.
+          Configure the webhook endpoint that receives call events from the voice platform.
         </p>
         <div className="flex items-center gap-2">
           <div className="flex-1 relative">

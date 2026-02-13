@@ -34,7 +34,7 @@ const PROVIDER_META: Record<
   { name: string; description: string; icon: string; color: string }
 > = {
   retell: {
-    name: "Retell",
+    name: "Voice AI",
     description: "AI-powered voice agents for phone calls",
     icon: "R",
     color: "bg-indigo-100 text-indigo-600",

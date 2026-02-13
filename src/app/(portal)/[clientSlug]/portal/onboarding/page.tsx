@@ -33,12 +33,18 @@ import {
   User,
   Mail,
   Sparkles,
+  AlertTriangle,
+  Zap,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { RetellWebClient } from "retell-client-js-sdk";
 import { createClient } from "@/lib/supabase/client";
 
 import { WizardProgress } from "@/components/onboarding/wizard-progress";
+import { TestCallCoaching } from "@/components/onboarding/test-call-coaching";
+import { TestCallTranscript } from "@/components/onboarding/test-call-transcript";
+import { TestCallReport } from "@/components/onboarding/test-call-report";
+import { QuickFixModal } from "@/components/onboarding/quick-fix-modal";
 
 import { HoursEditor } from "@/components/business-settings/hours-editor";
 import { ServicesList } from "@/components/business-settings/services-list";
@@ -48,6 +54,12 @@ import { PoliciesList } from "@/components/business-settings/policies-list";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+interface TestScenario {
+  title: string;
+  description: string;
+  opening: string;
+}
 
 interface Template {
   id: string;
@@ -60,6 +72,10 @@ interface Template {
   industry_icon: string | null;
   use_case_icon: string | null;
   use_case_description: string | null;
+  test_scenarios: TestScenario[] | null;
+  default_services: { name: string }[] | null;
+  default_faqs: { question: string }[] | null;
+  default_policies: { name: string }[] | null;
 }
 
 interface Industry {
@@ -124,18 +140,14 @@ export default function OnboardingWizardPage() {
   const [callStarting, setCallStarting] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [testCallCompleted, setTestCallCompleted] = useState(false);
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const [selectedScenario, setSelectedScenario] = useState<number | null>(null);
+  const [showQuickFix, setShowQuickFix] = useState(false);
+  const callStartTimeRef = useRef<number | null>(null);
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
 
   // Step 6 state
   const [phoneOption, setPhoneOption] = useState("temporary");
   const [goingLive, setGoingLive] = useState(false);
-
-  // ---------------------------------------------------------------------------
-  // Auto-scroll transcript
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [transcript]);
 
   // ---------------------------------------------------------------------------
   // Fetch onboarding status & templates on mount
@@ -182,7 +194,7 @@ export default function OnboardingWizardPage() {
       const supabase = createClient();
       const { data: templateData } = await supabase
         .from("agent_templates")
-        .select("id, name, vertical, icon, description, industry, use_case, industry_icon, use_case_icon, use_case_description")
+        .select("id, name, vertical, icon, description, industry, use_case, industry_icon, use_case_icon, use_case_description, test_scenarios, default_services, default_faqs, default_policies")
         .eq("wizard_enabled", true)
         .order("name");
 
@@ -336,6 +348,8 @@ export default function OnboardingWizardPage() {
   async function startTestCall() {
     setCallStarting(true);
     setTranscript([]);
+    setTestCallCompleted(false);
+    setCallDurationSeconds(0);
     try {
       const res = await fetch("/api/onboarding/test-call", { method: "POST" });
       if (!res.ok) {
@@ -350,11 +364,17 @@ export default function OnboardingWizardPage() {
       client.on("call_started", () => {
         setCallActive(true);
         setCallStarting(false);
+        callStartTimeRef.current = Date.now();
       });
 
       client.on("call_ended", () => {
         setCallActive(false);
         setTestCallCompleted(true);
+        if (callStartTimeRef.current) {
+          setCallDurationSeconds(
+            Math.round((Date.now() - callStartTimeRef.current) / 1000)
+          );
+        }
       });
 
       client.on("update", (update: { transcript?: TranscriptEntry[] }) => {
@@ -376,6 +396,11 @@ export default function OnboardingWizardPage() {
     retellClient.current?.stopCall();
     setCallActive(false);
     setTestCallCompleted(true);
+    if (callStartTimeRef.current) {
+      setCallDurationSeconds(
+        Math.round((Date.now() - callStartTimeRef.current) / 1000)
+      );
+    }
   }
 
   // Go live
@@ -485,7 +510,7 @@ export default function OnboardingWizardPage() {
               insurance: "Insurance",
               logistics: "Logistics",
               home_services: "Home Services",
-              retail_consumer: "Retail & Consumer",
+              retail: "Retail & Consumer",
               travel_hospitality: "Travel & Hospitality",
               debt_collection: "Debt Collection",
             };
@@ -612,6 +637,44 @@ export default function OnboardingWizardPage() {
                         </button>
                       ))}
                     </div>
+
+                    {/* What You'll Get preview card */}
+                    {selectedTemplate && (() => {
+                      const tmpl = useCaseTemplates.find((t) => t.id === selectedTemplate);
+                      if (!tmpl) return null;
+                      const serviceCount = tmpl.default_services?.length ?? 0;
+                      const faqCount = tmpl.default_faqs?.length ?? 0;
+                      const policyCount = tmpl.default_policies?.length ?? 0;
+                      return (
+                        <Card className="glass-card border-primary/20 bg-gradient-to-r from-primary/[0.03] to-transparent animate-fade-in-up mt-4">
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Zap className="w-4 h-4 text-primary" />
+                              <h4 className="text-sm font-semibold">What You&apos;ll Get</h4>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 text-center">
+                              <div className="rounded-lg bg-white/60 p-2">
+                                <p className="text-lg font-bold text-primary">{serviceCount}</p>
+                                <p className="text-[11px] text-muted-foreground">Services</p>
+                              </div>
+                              <div className="rounded-lg bg-white/60 p-2">
+                                <p className="text-lg font-bold text-primary">{faqCount}</p>
+                                <p className="text-[11px] text-muted-foreground">FAQs</p>
+                              </div>
+                              <div className="rounded-lg bg-white/60 p-2">
+                                <p className="text-lg font-bold text-primary">{policyCount}</p>
+                                <p className="text-[11px] text-muted-foreground">Policies</p>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2 text-center">
+                              Pre-configured for{" "}
+                              {INDUSTRY_NAMES[selectedIndustry] || selectedIndustry}.
+                              Estimated setup: 5-10 minutes.
+                            </p>
+                          </CardContent>
+                        </Card>
+                      );
+                    })()}
 
                     <div className="flex items-center justify-between pt-4">
                       <Button
@@ -817,22 +880,37 @@ export default function OnboardingWizardPage() {
                   <ArrowLeft className="w-4 h-4" />
                   Back
                 </Button>
-                <Button
-                  size="lg"
-                  onClick={handleStep3Continue}
-                  disabled={saving}
-                  className="min-w-[160px] gap-2"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Continue
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </Button>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    onClick={handleStep3Continue}
+                    disabled={saving}
+                    className="text-muted-foreground gap-1"
+                  >
+                    <span className="text-xs">Skip for now</span>
+                  </Button>
+                  <Button
+                    size="lg"
+                    onClick={handleStep3Continue}
+                    disabled={saving}
+                    className="min-w-[160px] gap-2"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Continue
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
+
+              <p className="text-xs text-muted-foreground/60 text-center">
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                Your template comes with pre-filled defaults. You can always edit these later.
+              </p>
             </div>
           )}
 
@@ -1174,216 +1252,18 @@ export default function OnboardingWizardPage() {
                   <ArrowLeft className="w-4 h-4" />
                   Back
                 </Button>
-                <Button
-                  size="lg"
-                  onClick={handleStep4Continue}
-                  disabled={saving}
-                  className="min-w-[160px] gap-2"
-                >
-                  {saving ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      Continue
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* ================================================================= */}
-          {/* STEP 5: Test Call                                                  */}
-          {/* ================================================================= */}
-          {step === 5 && (
-            <div className="space-y-6">
-              <div className="text-center">
-                <h1 className="text-2xl font-bold tracking-tight">
-                  Let&apos;s make sure everything sounds right!
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                  Have a quick conversation with your AI agent to test how it
-                  handles calls.
-                </p>
-              </div>
-
-              {/* Agent preview card */}
-              <Card className="glass-card overflow-hidden">
-                <CardContent className="p-0">
-                  {/* Agent header */}
-                  <div className="bg-gradient-to-r from-primary/5 via-primary/[0.03] to-transparent p-6 border-b">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={cn(
-                          "w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20",
-                          callActive && "animate-pulse"
-                        )}
-                      >
-                        <Phone className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg">
-                          {businessName || "Your AI Agent"}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <div
-                            className={cn(
-                              "w-2 h-2 rounded-full",
-                              callActive
-                                ? "bg-green-500 animate-pulse"
-                                : "bg-gray-300"
-                            )}
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {callActive
-                              ? "On call"
-                              : callStarting
-                                ? "Connecting..."
-                                : "Ready to test"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Call visualization / Transcript area */}
-                  <div className="p-6 min-h-[280px] flex flex-col">
-                    {!callActive && !testCallCompleted && transcript.length === 0 && (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
-                        {/* Pulsing orb idle */}
-                        <div className="relative mb-6">
-                          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                            <Mic className="w-10 h-10 text-primary/60" />
-                          </div>
-                          <div className="absolute inset-0 rounded-full border-2 border-primary/10 animate-ping" style={{ animationDuration: "2s" }} />
-                        </div>
-                        <p className="text-sm text-muted-foreground max-w-sm">
-                          Click the button below to start a test call. Speak
-                          naturally -- your AI agent will respond just like it
-                          would on a real call.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Active call: pulsing orb + transcript */}
-                    {(callActive || transcript.length > 0) && (
-                      <div className="flex-1 flex flex-col">
-                        {callActive && (
-                          <div className="flex justify-center mb-4">
-                            <div className="relative">
-                              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-primary flex items-center justify-center shadow-lg shadow-blue-500/30">
-                                <Mic className="w-7 h-7 text-white" />
-                              </div>
-                              <div className="absolute -inset-2 rounded-full border-2 border-blue-400/40 animate-ping" style={{ animationDuration: "1.5s" }} />
-                              <div className="absolute -inset-4 rounded-full border border-blue-300/20 animate-ping" style={{ animationDuration: "2s" }} />
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Transcript */}
-                        <div className="flex-1 max-h-[300px] overflow-y-auto space-y-3 pr-1">
-                          {transcript.map((entry, i) => (
-                            <div
-                              key={i}
-                              className={cn(
-                                "flex",
-                                entry.role === "agent"
-                                  ? "justify-start"
-                                  : "justify-end"
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
-                                  entry.role === "agent"
-                                    ? "bg-gray-100 text-foreground rounded-bl-md"
-                                    : "bg-primary text-primary-foreground rounded-br-md"
-                                )}
-                              >
-                                <p className="text-[11px] font-medium opacity-70 mb-0.5">
-                                  {entry.role === "agent" ? "AI Agent" : "You"}
-                                </p>
-                                {entry.content}
-                              </div>
-                            </div>
-                          ))}
-                          <div ref={transcriptEndRef} />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Test complete state */}
-                    {testCallCompleted && !callActive && transcript.length === 0 && (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
-                        <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mb-4">
-                          <Check className="w-8 h-8 text-green-600" />
-                        </div>
-                        <h3 className="font-semibold text-lg">
-                          Test Complete!
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Your AI agent is sounding great. You can try again or
-                          continue to the next step.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Call actions */}
-                  <div className="px-6 pb-6 flex items-center justify-center gap-3">
-                    {!callActive ? (
-                      <Button
-                        size="lg"
-                        onClick={startTestCall}
-                        disabled={callStarting}
-                        className="gap-2 min-w-[180px] bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 shadow-lg shadow-primary/20"
-                      >
-                        {callStarting ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Mic className="w-4 h-4" />
-                        )}
-                        {testCallCompleted ? "Try Again" : "Start Test Call"}
-                      </Button>
-                    ) : (
-                      <Button
-                        size="lg"
-                        variant="destructive"
-                        onClick={stopTestCall}
-                        className="gap-2 min-w-[180px] shadow-lg"
-                      >
-                        <MicOff className="w-4 h-4" />
-                        End Call
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="flex items-center justify-between pt-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => setStep(4)}
-                  className="gap-2"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Back
-                </Button>
                 <div className="flex items-center gap-3">
-                  {!testCallCompleted && (
-                    <Button
-                      variant="ghost"
-                      onClick={handleStep5Continue}
-                      disabled={saving}
-                      className="text-muted-foreground"
-                    >
-                      Skip for now
-                    </Button>
-                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={handleStep4Continue}
+                    disabled={saving}
+                    className="text-muted-foreground gap-1"
+                  >
+                    <span className="text-xs">Skip for now</span>
+                  </Button>
                   <Button
                     size="lg"
-                    onClick={handleStep5Continue}
+                    onClick={handleStep4Continue}
                     disabled={saving}
                     className="min-w-[160px] gap-2"
                   >
@@ -1398,8 +1278,225 @@ export default function OnboardingWizardPage() {
                   </Button>
                 </div>
               </div>
+
+              <p className="text-xs text-muted-foreground/60 text-center">
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                Defaults are already configured. You can fine-tune these later from your dashboard.
+              </p>
             </div>
           )}
+
+          {/* ================================================================= */}
+          {/* STEP 5: Test Call (enhanced with coaching, transcript, report)    */}
+          {/* ================================================================= */}
+          {step === 5 && (() => {
+            const currentTemplate = templates.find((t) => t.id === selectedTemplate);
+            const testScenarios: TestScenario[] = currentTemplate?.test_scenarios ?? [];
+
+            return (
+              <div className="space-y-6">
+                <div className="text-center">
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Let&apos;s make sure everything sounds right!
+                  </h1>
+                  <p className="text-muted-foreground mt-1">
+                    Have a quick conversation with your AI agent to test how it
+                    handles calls.
+                  </p>
+                </div>
+
+                {/* PRE-CALL: Coaching card with scenarios */}
+                {!callActive && !testCallCompleted && transcript.length === 0 && (
+                  <>
+                    {testScenarios.length > 0 && (
+                      <TestCallCoaching
+                        scenarios={testScenarios}
+                        selectedScenario={selectedScenario}
+                        onSelect={setSelectedScenario}
+                      />
+                    )}
+
+                    <Card className="glass-card overflow-hidden">
+                      <CardContent className="p-0">
+                        <div className="bg-gradient-to-r from-primary/5 via-primary/[0.03] to-transparent p-6 border-b">
+                          <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+                              <Phone className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-lg">
+                                {businessName || "Your AI Agent"}
+                              </h3>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <div className="w-2 h-2 rounded-full bg-gray-300" />
+                                <span className="text-xs text-muted-foreground">
+                                  {callStarting ? "Connecting..." : "Ready to test"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-6 flex flex-col items-center justify-center text-center py-8">
+                          <div className="relative mb-6">
+                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                              <Mic className="w-10 h-10 text-primary/60" />
+                            </div>
+                            <div className="absolute inset-0 rounded-full border-2 border-primary/10 animate-ping" style={{ animationDuration: "2s" }} />
+                          </div>
+                          <p className="text-sm text-muted-foreground max-w-sm">
+                            {selectedScenario !== null
+                              ? "Great choice! Click below to start your test call and use the suggested opening line."
+                              : "Click the button below to start a test call. Speak naturally -- your AI agent will respond just like it would on a real call."}
+                          </p>
+                        </div>
+
+                        <div className="px-6 pb-6 flex items-center justify-center">
+                          <Button
+                            size="lg"
+                            onClick={startTestCall}
+                            disabled={callStarting}
+                            className="gap-2 min-w-[180px] bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 shadow-lg shadow-primary/20"
+                          >
+                            {callStarting ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Mic className="w-4 h-4" />
+                            )}
+                            Start Test Call
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </>
+                )}
+
+                {/* DURING CALL: Live transcript */}
+                {callActive && (
+                  <Card className="glass-card overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="bg-gradient-to-r from-primary/5 via-primary/[0.03] to-transparent p-6 border-b">
+                        <div className="flex items-center gap-4">
+                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20 animate-pulse">
+                            <Phone className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-lg">
+                              {businessName || "Your AI Agent"}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                              <span className="text-xs text-muted-foreground">On call</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-6 min-h-[280px] flex flex-col">
+                        <TestCallTranscript
+                          transcript={transcript}
+                          callActive={callActive}
+                          agentName={businessName || "AI Agent"}
+                        />
+                      </div>
+
+                      <div className="px-6 pb-6 flex items-center justify-center">
+                        <Button
+                          size="lg"
+                          variant="destructive"
+                          onClick={stopTestCall}
+                          className="gap-2 min-w-[180px] shadow-lg"
+                        >
+                          <MicOff className="w-4 h-4" />
+                          End Call
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* AFTER CALL: Report card */}
+                {testCallCompleted && !callActive && (
+                  <>
+                    <div className="flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center">
+                        <Check className="w-8 h-8 text-green-600" />
+                      </div>
+                    </div>
+                    <h3 className="font-semibold text-lg text-center">
+                      Test Complete!
+                    </h3>
+
+                    <TestCallReport
+                      durationSeconds={callDurationSeconds}
+                      transcript={transcript}
+                      scenarios={testScenarios}
+                      onTryAgain={() => {
+                        setTestCallCompleted(false);
+                        setTranscript([]);
+                        setCallDurationSeconds(0);
+                      }}
+                      onMakeChanges={() => setShowQuickFix(true)}
+                      onContinue={handleStep5Continue}
+                    />
+
+                    <QuickFixModal
+                      open={showQuickFix}
+                      onClose={() => setShowQuickFix(false)}
+                      onNavigate={(navStep) => setStep(navStep)}
+                    />
+                  </>
+                )}
+
+                <div className="flex items-center justify-between pt-4">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setStep(4)}
+                    className="gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </Button>
+                  <div className="flex items-center gap-3">
+                    {!testCallCompleted && (
+                      <Button
+                        variant="ghost"
+                        onClick={handleStep5Continue}
+                        disabled={saving}
+                        className="text-muted-foreground"
+                      >
+                        Skip for now
+                      </Button>
+                    )}
+                    {!testCallCompleted && (
+                      <Button
+                        size="lg"
+                        onClick={handleStep5Continue}
+                        disabled={saving}
+                        className="min-w-[160px] gap-2"
+                      >
+                        {saving ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            Continue
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {!testCallCompleted && (
+                  <p className="text-xs text-muted-foreground/60 text-center">
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />
+                    Testing helps catch issues before your agent handles real calls. We recommend at least one test.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ================================================================= */}
           {/* STEP 6: Go Live                                                   */}

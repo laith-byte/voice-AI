@@ -109,6 +109,7 @@ export default function PortalAgentsPage() {
   // Onboarding status
   const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
   const [onboardingStep, setOnboardingStep] = useState(1);
+  const [totalCallsSinceLive, setTotalCallsSinceLive] = useState(0);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -138,6 +139,7 @@ export default function PortalAgentsPage() {
         const onboardingData = await onboardingRes.json();
         setOnboardingStatus(onboardingData.status ?? "not_started");
         setOnboardingStep(onboardingData.current_step ?? 1);
+        setTotalCallsSinceLive(onboardingData.total_calls_since_live ?? 0);
       }
     } catch {
       // Onboarding check is non-critical
@@ -325,6 +327,37 @@ export default function PortalAgentsPage() {
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 10+ Calls Analytics Banner */}
+      {onboardingStatus === "completed" && totalCallsSinceLive >= 10 && (
+        <Card className="animate-fade-in-up glass-card border-green-500/20 bg-gradient-to-r from-green-500/[0.04] via-green-500/[0.02] to-transparent overflow-hidden">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/20 shrink-0">
+                  <TrendingUp className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-[15px]">
+                    Your agent has handled {totalCallsSinceLive}+ calls!
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Check out your analytics dashboard for call insights, trends, and performance metrics.
+                  </p>
+                </div>
+              </div>
+              {agents.length > 0 && (
+                <Link href={`/${clientSlug}/portal/agents/${agents[0].id}/analytics`}>
+                  <Button className="gap-2 shadow-sm bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400">
+                    View Analytics
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              )}
             </div>
           </CardContent>
         </Card>

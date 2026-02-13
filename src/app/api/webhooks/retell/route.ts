@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executePostCallActions } from "@/lib/post-call-actions";
 import { executeRecipes } from "@/lib/automation-recipes";
+import { sendEmail } from "@/lib/resend";
 import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
@@ -139,6 +140,54 @@ export async function POST(request: NextRequest) {
             console.error("Automation recipes error:", err)
           ),
         ]);
+      }
+    }
+
+    // Post-go-live features: first-call notification + call counter
+    if (clientId && event === "call_ended") {
+      const isTestCall = call.call_type === "web_call" && call.metadata?.is_test_call;
+
+      if (!isTestCall) {
+        // Increment total calls since live
+        supabase.rpc("increment_total_calls", { p_client_id: clientId }).then(({ error }) => {
+          if (error) console.error("increment_total_calls error:", error);
+        });
+
+        // Check for first real call after go-live
+        const { data: onboarding } = await supabase
+          .from("client_onboarding")
+          .select("go_live_at, first_call_notified_at, contact_email, business_name")
+          .eq("client_id", clientId)
+          .single();
+
+        if (
+          onboarding?.go_live_at &&
+          !onboarding.first_call_notified_at &&
+          onboarding.contact_email
+        ) {
+          const bizName = onboarding.business_name || "Your Business";
+          sendEmail({
+            to: onboarding.contact_email,
+            subject: `Your first call just happened! - ${bizName}`,
+            html: `<div style="font-family: sans-serif; max-width: 600px;">
+              <h2 style="color: #1a1a2e;">Your AI agent just handled its first real call!</h2>
+              <p>Congratulations! Your AI agent for <strong>${bizName}</strong> just completed its first real phone call since going live.</p>
+              <p>You can view the call details, listen to the recording, and read the transcript in your dashboard.</p>
+              <p style="margin-top: 24px;">
+                <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://app.invarialabs.com"}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Dashboard</a>
+              </p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+              <p style="color: #999; font-size: 12px;">Sent by ${bizName} via Invaria Labs</p>
+            </div>`,
+            from: `${bizName} <notifications@invarialabs.com>`,
+          }).catch((err) => console.error("First-call email error:", err));
+
+          supabase
+            .from("client_onboarding")
+            .update({ first_call_notified_at: new Date().toISOString() })
+            .eq("client_id", clientId)
+            .then();
+        }
       }
     }
 
