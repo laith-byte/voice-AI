@@ -164,23 +164,9 @@ export async function updateSession(request: NextRequest) {
           return NextResponse.redirect(url);
         }
 
-        // Auto-redirect to onboarding wizard if onboarding is incomplete
-        // Only redirect when landing on the portal root, not when already navigating
-        if (
-          clientInfo.slug &&
-          clientInfo.onboardingStatus &&
-          clientInfo.onboardingStatus !== "completed" &&
-          clientInfo.onboardingStatus !== "skipped"
-        ) {
-          const portalRoot = `/${clientInfo.slug}/portal`;
-          const onboardingPath = `/${clientInfo.slug}/portal/onboarding`;
-          // Only redirect from portal root to onboarding (not from sub-pages)
-          if (pathname === portalRoot || pathname === `${portalRoot}/`) {
-            const url = request.nextUrl.clone();
-            url.pathname = onboardingPath;
-            return NextResponse.redirect(url);
-          }
-        }
+        // NOTE: We no longer force-redirect portal root → onboarding.
+        // The portal dashboard page shows an onboarding banner instead,
+        // letting users freely navigate the sidebar during onboarding.
       }
     }
   }
