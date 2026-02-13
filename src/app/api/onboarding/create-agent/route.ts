@@ -259,9 +259,23 @@ export async function POST(request: NextRequest) {
       seedPromises.push(supabase.from("business_hours").insert(defaultHours));
     }
 
+    // 15. Seed primary location from onboarding business address
+    if (onboarding.business_address) {
+      seedPromises.push(
+        supabase.from("business_locations").insert({
+          client_id: clientId,
+          name: onboarding.business_name || "Main Location",
+          address: onboarding.business_address,
+          phone: onboarding.business_phone || null,
+          sort_order: 0,
+          is_active: true,
+        })
+      );
+    }
+
     await Promise.all(seedPromises);
 
-    // 15. Generate the initial prompt and push to Retell
+    // 16. Generate the initial prompt and push to Retell
     try {
       await regeneratePrompt(clientId!);
     } catch (promptErr) {
