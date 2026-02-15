@@ -16,6 +16,8 @@ import {
 import { Save, Info, Zap, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { usePlanAccess } from "@/hooks/use-plan-access";
+import { UpgradeBanner } from "@/components/portal/upgrade-banner";
 
 interface AiAnalysisConfig {
   id: string;
@@ -33,6 +35,7 @@ interface AiAnalysisConfig {
 export default function AiAnalysisPage() {
   const params = useParams();
   const agentId = params.id as string;
+  const { planAccess } = usePlanAccess();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,6 +113,10 @@ export default function AiAnalysisPage() {
   }, [loadConfig]);
 
   const handleSave = async () => {
+    if (!configId) {
+      toast.error("Config not loaded yet. Please refresh and try again.");
+      return;
+    }
     setSaving(true);
     const supabase = createClient();
     const { error } = await supabase
@@ -124,7 +131,7 @@ export default function AiAnalysisPage() {
         auto_tagging_custom_prompt: autoTaggingPrompt,
         misunderstood_queries_enabled: misunderstoodEnabled,
       })
-      .eq("id", configId!);
+      .eq("id", configId);
 
     if (error) {
       toast.error("Failed to save AI analysis config");
@@ -218,6 +225,13 @@ export default function AiAnalysisPage() {
         </Card>
 
         {/* Evaluation */}
+        {planAccess && !planAccess.ai_evaluation ? (
+          <UpgradeBanner
+            feature="AI Evaluation"
+            plan="Professional"
+            description="Automatically evaluate whether each conversation was successful."
+          />
+        ) : (
         <Card className="animate-fade-in-up stagger-2 glass-card rounded-xl">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -252,8 +266,16 @@ export default function AiAnalysisPage() {
             </CardContent>
           )}
         </Card>
+        )}
 
         {/* Auto-Tagging */}
+        {planAccess && !planAccess.ai_auto_tagging ? (
+          <UpgradeBanner
+            feature="Auto-Tagging"
+            plan="Professional"
+            description="Automatically tag conversations with relevant topics using AI."
+          />
+        ) : (
         <Card className="animate-fade-in-up stagger-3 glass-card rounded-xl">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -296,8 +318,16 @@ export default function AiAnalysisPage() {
             </CardContent>
           )}
         </Card>
+        )}
 
         {/* Misunderstood Queries */}
+        {planAccess && !planAccess.ai_misunderstood ? (
+          <UpgradeBanner
+            feature="Misunderstood Query Detection"
+            plan="Professional"
+            description="Automatically detect when your agent misunderstands caller intent."
+          />
+        ) : (
         <Card className="animate-fade-in-up stagger-4 glass-card rounded-xl">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -331,6 +361,7 @@ export default function AiAnalysisPage() {
             </CardContent>
           )}
         </Card>
+        )}
       </div>
     </div>
   );

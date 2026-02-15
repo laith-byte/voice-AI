@@ -25,5 +25,26 @@ export async function getClientId(
   if (!clientId) {
     return { clientId: null, error: NextResponse.json({ error: "client_id required" }, { status: 400 }) };
   }
+
+  // Verify the client belongs to the same organization as the admin
+  const { data: userOrg } = await supabase
+    .from("users")
+    .select("organization_id")
+    .eq("id", user.id)
+    .single();
+
+  if (userOrg?.organization_id) {
+    const { data: client } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", clientId)
+      .eq("organization_id", userOrg.organization_id)
+      .single();
+
+    if (!client) {
+      return { clientId: null, error: NextResponse.json({ error: "Client not found" }, { status: 404 }) };
+    }
+  }
+
   return { clientId };
 }

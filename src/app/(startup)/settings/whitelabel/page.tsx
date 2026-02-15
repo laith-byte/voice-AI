@@ -692,7 +692,7 @@ export default function SettingsWhitelabelPage() {
                     {/* Footer */}
                     <div className="mt-6 pt-4 border-t border-[#e5e7eb]">
                       <p className="text-xs text-[#6b7280]">
-                        &copy; 2025 {websiteTitle || "Invaria Labs"}. All rights reserved.
+                        &copy; {new Date().getFullYear()} {websiteTitle || "Invaria Labs"}. All rights reserved.
                       </p>
                     </div>
                   </div>

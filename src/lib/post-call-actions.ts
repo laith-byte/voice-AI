@@ -254,12 +254,9 @@ async function sendCallerFollowup(
     });
   };
 
-  if (delayMinutes > 0) {
-    // For MVP, use setTimeout. In production, use a job queue.
-    setTimeout(sendFn, delayMinutes * 60 * 1000);
-  } else {
-    await sendFn();
-  }
+  // Note: delay_minutes is ignored on serverless — setTimeout callbacks are lost
+  // when the function terminates. Send immediately.
+  await sendFn();
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import {
   Building2,
   CreditCard,
   Sparkles,
+  BookOpen,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +66,7 @@ const agentNavItems = [
   { label: "Analytics", href: "analytics", icon: BarChart3, featureKey: "analytics" },
   { label: "Conversations", href: "conversations", icon: MessageSquare, featureKey: "conversations" },
   { label: "Topics", href: "topics", icon: Tags, featureKey: "topics" },
+  { label: "Knowledge Base", href: "knowledge-base", icon: BookOpen, featureKey: "knowledge_base" },
   { label: "Leads", href: "leads", icon: UserPlus, featureKey: "leads" },
   { label: "Campaigns", href: "campaigns", icon: Megaphone, featureKey: "campaigns" },
   { label: "Agent Settings", href: "agent-settings", icon: Settings, featureKey: "agent_settings" },
@@ -135,19 +137,52 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
         setClientName(clientData.name);
       }
 
+      // 1. Check client_access first (admin overrides)
       const { data: accessData } = await supabase
         .from("client_access")
         .select("feature, enabled")
         .eq("client_id", userData.client_id);
 
+      const featureMap: Record<string, boolean> = {};
       if (accessData && accessData.length > 0) {
-        const featureMap: Record<string, boolean> = {};
         accessData.forEach((row: { feature: string; enabled: boolean }) => {
           featureMap[row.feature] = row.enabled;
         });
+      }
+
+      // 2. Fall back to plan columns for features without client_access records
+      try {
+        const res = await fetch("/api/client/plan-access");
+        if (res.ok) {
+          const planAccess = await res.json();
+          // Map plan columns to feature keys (only if no client_access override)
+          const planFeatureMap: Record<string, boolean> = {
+            // Base features — always enabled
+            analytics: true,
+            conversations: true,
+            leads: true,
+            phone_numbers: true,
+            workflows: true,
+            knowledge_base: true,
+            // Plan-gated features
+            topics: planAccess.topic_management ?? true,
+            campaigns: planAccess.campaign_outbound ?? true,
+            agent_settings: (planAccess.raw_prompt_editor || planAccess.speech_settings_full) ?? true,
+          };
+
+          for (const [feature, enabled] of Object.entries(planFeatureMap)) {
+            if (!(feature in featureMap)) {
+              featureMap[feature] = enabled;
+            }
+          }
+        }
+      } catch {
+        // Fall through — use client_access only
+      }
+
+      if (Object.keys(featureMap).length > 0) {
         setAllowedFeatures(featureMap);
       } else {
-        // No access records found -- allow everything by default
         setAllowedFeatures(null);
       }
     }

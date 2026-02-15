@@ -42,6 +42,7 @@ export default function WidgetPage() {
   const [saving, setSaving] = useState(false);
   const [agentName, setAgentName] = useState("");
   const [configId, setConfigId] = useState<string | null>(null);
+  const [agentPlatform, setAgentPlatform] = useState<string>("retell");
 
   // Simplified config state
   const [description, setDescription] = useState("Our assistant is here to help.");
@@ -110,12 +111,13 @@ export default function WidgetPage() {
     const supabase = createClient();
 
     const [agentRes, configRes] = await Promise.all([
-      supabase.from("agents").select("name").eq("id", agentId).single(),
+      supabase.from("agents").select("name, platform").eq("id", agentId).single(),
       supabase.from("widget_config").select("*").eq("agent_id", agentId).single(),
     ]);
 
     if (agentRes.data) {
       setAgentName(agentRes.data.name ?? "");
+      setAgentPlatform(agentRes.data.platform ?? "retell");
     }
 
     let config = configRes.data;
@@ -236,7 +238,9 @@ export default function WidgetPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Voice Widget</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {agentPlatform === "retell-chat" || agentPlatform === "retell-sms" ? "Chat Widget" : "Voice Widget"}
+          </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Test your agent live and customize the widget appearance
           </p>
@@ -416,31 +420,55 @@ export default function WidgetPage() {
                     {description}
                   </p>
 
-                  {/* Call button */}
-                  <div className="relative">
-                    <button
-                      onClick={handleStartCall}
-                      disabled={isConnecting}
-                      className="relative z-10 w-20 h-20 rounded-full flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50"
-                      style={{ backgroundColor: accentColor }}
-                    >
-                      {isConnecting ? (
-                        <Loader2 className="w-8 h-8 animate-spin" />
-                      ) : (
-                        <Phone className="w-8 h-8" />
-                      )}
-                    </button>
-                    {!isConnecting && (
+                  {agentPlatform === "retell-chat" || agentPlatform === "retell-sms" ? (
+                    /* Chat/SMS agent — no voice call, show info */
+                    <div className="flex flex-col items-center gap-4 text-center">
                       <div
-                        className="absolute inset-0 rounded-full animate-ping opacity-20"
-                        style={{ backgroundColor: accentColor }}
-                      />
-                    )}
-                  </div>
+                        className="w-20 h-20 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: `${accentColor}15` }}
+                      >
+                        <MessageSquareText className="w-8 h-8" style={{ color: accentColor }} />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {agentPlatform === "retell-sms" ? "SMS Agent" : "Chat Agent"}
+                        </p>
+                        <p className="text-xs text-muted-foreground max-w-sm">
+                          {agentPlatform === "retell-sms"
+                            ? "This agent handles SMS conversations. Test it by sending a message to the assigned phone number."
+                            : "This agent handles chat conversations. Use the embed code to add the chat widget to your website."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Voice agent — show call button */
+                    <>
+                      <div className="relative">
+                        <button
+                          onClick={handleStartCall}
+                          disabled={isConnecting}
+                          className="relative z-10 w-20 h-20 rounded-full flex items-center justify-center text-white transition-all hover:scale-105 active:scale-95 shadow-xl disabled:opacity-50"
+                          style={{ backgroundColor: accentColor }}
+                        >
+                          {isConnecting ? (
+                            <Loader2 className="w-8 h-8 animate-spin" />
+                          ) : (
+                            <Phone className="w-8 h-8" />
+                          )}
+                        </button>
+                        {!isConnecting && (
+                          <div
+                            className="absolute inset-0 rounded-full animate-ping opacity-20"
+                            style={{ backgroundColor: accentColor }}
+                          />
+                        )}
+                      </div>
 
-                  <p className="text-xs text-muted-foreground">
-                    {isConnecting ? "Connecting to agent..." : "Click to start a live call"}
-                  </p>
+                      <p className="text-xs text-muted-foreground">
+                        {isConnecting ? "Connecting to agent..." : "Click to start a live call"}
+                      </p>
+                    </>
+                  )}
                 </div>
               ) : (
                 /* Active / Post-call State */

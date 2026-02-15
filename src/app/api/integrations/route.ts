@@ -40,7 +40,10 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "id query parameter is required" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("integrations").delete().eq("id", id);
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user!.id).single();
+  if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const { error } = await supabase.from("integrations").delete().eq("id", id).eq("organization_id", userData.organization_id);
   if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json({ success: true });
 }

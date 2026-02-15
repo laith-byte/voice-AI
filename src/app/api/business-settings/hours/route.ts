@@ -38,18 +38,7 @@ export async function PUT(request: NextRequest) {
     close_time: string | null;
   }> = await request.json();
 
-  // Delete existing hours for this client
-  const { error: deleteError } = await supabase
-    .from("business_hours")
-    .delete()
-    .eq("client_id", clientId);
-
-  if (deleteError) {
-    console.error("DB error:", deleteError.message);
-    return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
-  }
-
-  // Insert all 7 rows
+  // Upsert all 7 rows atomically (avoids delete+insert race condition)
   const rows = body.map((h) => ({
     client_id: clientId,
     day_of_week: h.day_of_week,
@@ -58,13 +47,13 @@ export async function PUT(request: NextRequest) {
     close_time: h.close_time,
   }));
 
-  const { data, error: insertError } = await supabase
+  const { data, error: upsertError } = await supabase
     .from("business_hours")
-    .insert(rows)
+    .upsert(rows, { onConflict: "client_id,day_of_week" })
     .select();
 
-  if (insertError) {
-    console.error("DB error:", insertError.message);
+  if (upsertError) {
+    console.error("DB error:", upsertError.message);
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 

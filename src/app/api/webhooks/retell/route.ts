@@ -54,7 +54,11 @@ export async function POST(request: NextRequest) {
 
     switch (event) {
       case "call_started": {
-        await supabase.from("call_logs").insert({
+        if (!internalAgentId) {
+          console.warn("call_started: no matching agent for retell agent_id:", call.agent_id);
+          break;
+        }
+        const { error: insertError } = await supabase.from("call_logs").insert({
           organization_id: organizationId,
           client_id: clientId,
           agent_id: internalAgentId,
@@ -69,6 +73,7 @@ export async function POST(request: NextRequest) {
             : new Date().toISOString(),
           metadata: call.metadata || null,
         });
+        if (insertError) console.error("Failed to insert call_log:", insertError);
         break;
       }
 
@@ -121,7 +126,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Execute post-call actions (email summary, SMS, webhook, etc.)
-    if (clientId && (event === "call_ended" || event === "call_analyzed")) {
+    // Only trigger on call_analyzed to avoid double execution (call_ended + call_analyzed)
+    // and to ensure summary/analysis data is available for actions
+    if (clientId && event === "call_analyzed") {
       // Fetch the stored call log to pass to actions
       const { data: callLogRow } = await supabase
         .from("call_logs")
@@ -131,8 +138,7 @@ export async function POST(request: NextRequest) {
 
       if (callLogRow) {
         // Run both post-call actions and automation recipes in parallel
-        // Don't block the webhook response
-        Promise.all([
+        await Promise.all([
           executePostCallActions(callLogRow, clientId).catch((err) =>
             console.error("Post-call actions error:", err)
           ),
@@ -149,9 +155,8 @@ export async function POST(request: NextRequest) {
 
       if (!isTestCall) {
         // Increment total calls since live
-        supabase.rpc("increment_total_calls", { p_client_id: clientId }).then(({ error }) => {
-          if (error) console.error("increment_total_calls error:", error);
-        });
+        const { error: rpcError } = await supabase.rpc("increment_total_calls", { p_client_id: clientId });
+        if (rpcError) console.error("increment_total_calls error:", rpcError);
 
         // Check for first real call after go-live
         const { data: onboarding } = await supabase
@@ -166,27 +171,28 @@ export async function POST(request: NextRequest) {
           onboarding.contact_email
         ) {
           const bizName = onboarding.business_name || "Your Business";
-          sendEmail({
+          const safeBizName = bizName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+          const safeFromName = bizName.replace(/[<>"'\r\n]/g, "");
+          await sendEmail({
             to: onboarding.contact_email,
             subject: `Your first call just happened! - ${bizName}`,
             html: `<div style="font-family: sans-serif; max-width: 600px;">
               <h2 style="color: #1a1a2e;">Your AI agent just handled its first real call!</h2>
-              <p>Congratulations! Your AI agent for <strong>${bizName}</strong> just completed its first real phone call since going live.</p>
+              <p>Congratulations! Your AI agent for <strong>${safeBizName}</strong> just completed its first real phone call since going live.</p>
               <p>You can view the call details, listen to the recording, and read the transcript in your dashboard.</p>
               <p style="margin-top: 24px;">
                 <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://app.invarialabs.com"}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Dashboard</a>
               </p>
               <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-              <p style="color: #999; font-size: 12px;">Sent by ${bizName} via Invaria Labs</p>
+              <p style="color: #999; font-size: 12px;">Sent by ${safeBizName} via Invaria Labs</p>
             </div>`,
-            from: `${bizName} <notifications@invarialabs.com>`,
-          }).catch((err) => console.error("First-call email error:", err));
+            from: `${safeFromName} <notifications@invarialabs.com>`,
+          }).catch((err: unknown) => console.error("First-call email error:", err));
 
-          supabase
+          await supabase
             .from("client_onboarding")
             .update({ first_call_notified_at: new Date().toISOString() })
-            .eq("client_id", clientId)
-            .then();
+            .eq("client_id", clientId);
         }
       }
     }

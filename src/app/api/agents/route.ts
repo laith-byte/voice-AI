@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
-  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user!.id).single();
   if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const { data, error } = await supabase.from("agents").insert({
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     description: body.description || null,
     platform: body.platform || "retell",
     retell_agent_id: body.retell_agent_id,
-    retell_api_key_encrypted: body.retell_api_key_encrypted ? encrypt(body.retell_api_key_encrypted) : null,
+    retell_api_key_encrypted: (body.retell_api_key || body.retell_api_key_encrypted) ? encrypt(body.retell_api_key || body.retell_api_key_encrypted) : null,
     knowledge_base_id: body.knowledge_base_id || null,
     knowledge_base_name: body.knowledge_base_name || null,
     client_id: body.client_id || null,

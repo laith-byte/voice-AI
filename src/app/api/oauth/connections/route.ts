@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
-import { createServiceClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -13,9 +12,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Client not found" }, { status: 400 });
   }
 
-  const serviceClient = await createServiceClient();
-
-  const { data: connections, error: fetchError } = await serviceClient
+  // Use the user-scoped supabase client (relies on RLS) instead of service client
+  const { data: connections, error: fetchError } = await supabase
     .from("oauth_connections")
     .select("id, provider, provider_email, scopes, provider_metadata, created_at, updated_at")
     .eq("client_id", clientId);

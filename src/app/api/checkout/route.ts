@@ -8,7 +8,8 @@ import { createServiceClient } from "@/lib/supabase/server";
  */
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { plan_id } = body;
+  const { plan_id, billing_period, return_url } = body;
+  const isYearly = billing_period === "yearly";
 
   if (!plan_id) {
     return NextResponse.json({ error: "plan_id is required" }, { status: 400 });
@@ -28,8 +29,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Plan not found" }, { status: 404 });
   }
 
-  if (!plan.stripe_monthly_price_id) {
-    return NextResponse.json({ error: "Plan has no Stripe price configured" }, { status: 400 });
+  const recurringPriceId = isYearly ? plan.stripe_yearly_price_id : plan.stripe_monthly_price_id;
+  if (!recurringPriceId) {
+    return NextResponse.json({ error: "Plan has no Stripe price configured for this billing period" }, { status: 400 });
   }
 
   // 2. Look up the organization for slug
@@ -51,39 +53,64 @@ export async function POST(request: NextRequest) {
     .eq("is_connected", true)
     .single();
 
-  // 4. Build line items
-  const lineItems: { price: string; quantity: number }[] = [
-    { price: plan.stripe_monthly_price_id, quantity: 1 },
-  ];
-  if (plan.stripe_setup_price_id) {
-    lineItems.push({ price: plan.stripe_setup_price_id, quantity: 1 });
+  if (!stripeConn) {
+    console.warn(`No Stripe connected account for org ${org.id} — checkout will use platform account`);
   }
 
-  // 5. Create checkout session with metadata
-  const stripeLib = await import("@/lib/stripe");
-  const stripeAccountId = stripeConn?.stripe_account_id || undefined;
+  // 4. Validate return_url if provided (must be same origin)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  let safeReturnUrl: string | null = null;
+  if (return_url) {
+    try {
+      const parsed = new URL(return_url);
+      const appParsed = new URL(appUrl);
+      if (parsed.origin === appParsed.origin) {
+        safeReturnUrl = return_url;
+      }
+    } catch {
+      // Invalid URL, ignore
+    }
+  }
 
-  const session = await stripeLib.createCheckoutSession(
-    {
-      mode: "subscription",
-      line_items: lineItems,
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing/${org.slug}?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing/${org.slug}?canceled=true`,
-      metadata: {
-        plan_id: plan.id,
-        organization_id: org.id,
-        org_slug: org.slug,
-        plan_name: plan.name || "",
-      },
-      subscription_data: {
+  // 5. Build line items
+  const lineItems: { price: string; quantity: number }[] = [
+    { price: recurringPriceId, quantity: 1 },
+  ];
+
+  // 6. Create checkout session with metadata
+  try {
+    const stripeLib = await import("@/lib/stripe");
+    const stripeAccountId = stripeConn?.stripe_account_id || undefined;
+
+    const session = await stripeLib.createCheckoutSession(
+      {
+        mode: "subscription",
+        line_items: lineItems,
+        success_url: safeReturnUrl
+          ? `${safeReturnUrl}?success=true`
+          : `${appUrl}/pricing/${org.slug}?success=true`,
+        cancel_url: safeReturnUrl
+          ? safeReturnUrl
+          : `${appUrl}/pricing/${org.slug}?canceled=true`,
         metadata: {
           plan_id: plan.id,
           organization_id: org.id,
+          org_slug: org.slug,
+          plan_name: plan.name || "",
+        },
+        subscription_data: {
+          metadata: {
+            plan_id: plan.id,
+            organization_id: org.id,
+          },
         },
       },
-    },
-    stripeAccountId
-  );
+      stripeAccountId
+    );
 
-  return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    console.error("Stripe checkout error:", err);
+    return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
+  }
 }

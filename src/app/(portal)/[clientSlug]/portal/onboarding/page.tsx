@@ -35,7 +35,12 @@ import {
   Sparkles,
   AlertTriangle,
   Zap,
+  MessageSquare,
+  Smartphone,
+  Code,
+  Copy,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import confetti from "canvas-confetti";
 import { RetellWebClient } from "retell-client-js-sdk";
 import { createClient } from "@/lib/supabase/client";
@@ -45,6 +50,7 @@ import { TestCallCoaching } from "@/components/onboarding/test-call-coaching";
 import { TestCallTranscript } from "@/components/onboarding/test-call-transcript";
 import { TestCallReport } from "@/components/onboarding/test-call-report";
 import { QuickFixModal } from "@/components/onboarding/quick-fix-modal";
+import { TestChatInline } from "@/components/onboarding/test-chat-inline";
 
 import { HoursEditor } from "@/components/business-settings/hours-editor";
 import { ServicesList } from "@/components/business-settings/services-list";
@@ -107,6 +113,7 @@ export default function OnboardingWizardPage() {
   // ---------------------------------------------------------------------------
   // Core state
   // ---------------------------------------------------------------------------
+  const [agentType, setAgentType] = useState<"voice" | "chat" | "sms" | null>(null);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,6 +131,7 @@ export default function OnboardingWizardPage() {
   const [businessAddress, setBusinessAddress] = useState("");
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState("en-US");
 
   // Step 4 state
   const [afterHoursBehavior, setAfterHoursBehavior] = useState("callback");
@@ -133,6 +141,21 @@ export default function OnboardingWizardPage() {
   const [emailSummary, setEmailSummary] = useState(true);
   const [logToDashboard, setLogToDashboard] = useState(true);
   const [followUpText, setFollowUpText] = useState(false);
+
+  // Step 4 chat state
+  const [chatWelcomeMessage, setChatWelcomeMessage] = useState("Hi! How can I help you today?");
+  const [chatOfflineBehavior, setChatOfflineBehavior] = useState("message");
+
+  // Step 5 chat state
+  const [testChatCompleted, setTestChatCompleted] = useState(false);
+  const [chatAgentId, setChatAgentId] = useState<string | null>(null);
+
+  // SMS state
+  const [smsPhoneNumber, setSmsPhoneNumber] = useState("");
+  const [testSmsMessage, setTestSmsMessage] = useState("");
+  const [testSmsResponse, setTestSmsResponse] = useState("");
+  const [testSmsSending, setTestSmsSending] = useState(false);
+  const [testSmsCompleted, setTestSmsCompleted] = useState(false);
 
   // Step 5 state
   const retellClient = useRef<RetellWebClient | null>(null);
@@ -180,6 +203,7 @@ export default function OnboardingWizardPage() {
         if (statusData.business_address) setBusinessAddress(statusData.business_address);
         if (statusData.contact_name) setContactName(statusData.contact_name);
         if (statusData.contact_email) setContactEmail(statusData.contact_email);
+        if (statusData.language) setSelectedLanguage(statusData.language);
         if (statusData.after_hours_behavior) setAfterHoursBehavior(statusData.after_hours_behavior);
         if (statusData.unanswerable_behavior) setUnanswerableBehavior(statusData.unanswerable_behavior);
         if (statusData.escalation_phone) setEscalationPhone(statusData.escalation_phone);
@@ -188,6 +212,25 @@ export default function OnboardingWizardPage() {
         if (statusData.post_call_log !== undefined) setLogToDashboard(statusData.post_call_log);
         if (statusData.post_call_followup_text !== undefined) setFollowUpText(statusData.post_call_followup_text);
         if (statusData.test_call_completed) setTestCallCompleted(true);
+        if (statusData.agent_type) setAgentType(statusData.agent_type);
+        if (statusData.chat_welcome_message) setChatWelcomeMessage(statusData.chat_welcome_message);
+        if (statusData.chat_offline_behavior) setChatOfflineBehavior(statusData.chat_offline_behavior);
+        if (statusData.sms_phone_number) setSmsPhoneNumber(statusData.sms_phone_number);
+
+        // Restore chatAgentId by looking up the chat/sms agent for this client
+        if (statusData.client_id && (statusData.agent_type === "chat" || statusData.agent_type === "sms")) {
+          const supabaseInner = createClient();
+          const { data: agentRow } = await supabaseInner
+            .from("agents")
+            .select("id")
+            .eq("client_id", statusData.client_id)
+            .in("platform", ["retell-chat", "retell-sms"])
+            .limit(1)
+            .maybeSingle();
+          if (agentRow?.id) {
+            setChatAgentId(agentRow.id);
+          }
+        }
       }
 
       // Fetch wizard-enabled templates from supabase
@@ -249,7 +292,7 @@ export default function OnboardingWizardPage() {
       await fetch("/api/onboarding/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vertical_template_id: selectedTemplate }),
+        body: JSON.stringify({ vertical_template_id: selectedTemplate, agent_type: agentType }),
       });
       // Save step 1
       await saveStep(1, { vertical_template_id: selectedTemplate });
@@ -273,6 +316,7 @@ export default function OnboardingWizardPage() {
         business_address: businessAddress.trim(),
         contact_name: contactName.trim(),
         contact_email: contactEmail.trim(),
+        language: selectedLanguage,
       });
 
       // Create the agent
@@ -285,6 +329,8 @@ export default function OnboardingWizardPage() {
         const err = await agentRes.json().catch(() => null);
         throw new Error(err?.error ?? "Failed to create agent");
       }
+      const agentData = await agentRes.json();
+      if (agentData.agent_id) setChatAgentId(agentData.agent_id);
       setCreatingAgent(false);
 
       toast.success("Your AI agent has been created!");
@@ -314,19 +360,28 @@ export default function OnboardingWizardPage() {
   async function handleStep4Continue() {
     setSaving(true);
     try {
-      await saveStep(4, {
-        after_hours_behavior: afterHoursBehavior,
-        unanswerable_behavior: unanswerableBehavior,
-        escalation_phone:
-          unanswerableBehavior === "transfer" ? escalationPhone.trim() : null,
-        max_call_duration_minutes: maxCallDuration,
-        post_call_email_summary: emailSummary,
-        post_call_log: logToDashboard,
-        post_call_followup_text: followUpText,
-      });
+      if (agentType === "chat" || agentType === "sms") {
+        await saveStep(4, {
+          chat_welcome_message: chatWelcomeMessage.trim(),
+          chat_offline_behavior: chatOfflineBehavior,
+          unanswerable_behavior: unanswerableBehavior,
+          ...(agentType === "sms" && { sms_phone_number: smsPhoneNumber.trim() }),
+        });
+      } else {
+        await saveStep(4, {
+          after_hours_behavior: afterHoursBehavior,
+          unanswerable_behavior: unanswerableBehavior,
+          escalation_phone:
+            unanswerableBehavior === "transfer" ? escalationPhone.trim() : null,
+          max_call_duration_minutes: maxCallDuration,
+          post_call_email_summary: emailSummary,
+          post_call_log: logToDashboard,
+          post_call_followup_text: followUpText,
+        });
+      }
       setStep(5);
     } catch {
-      toast.error("Failed to save call handling rules.");
+      toast.error(agentType === "chat" || agentType === "sms" ? "Failed to save chat settings." : "Failed to save call handling rules.");
     } finally {
       setSaving(false);
     }
@@ -335,7 +390,9 @@ export default function OnboardingWizardPage() {
   async function handleStep5Continue() {
     setSaving(true);
     try {
-      await saveStep(5, { test_call_completed: testCallCompleted });
+      await saveStep(5, {
+        test_call_completed: agentType === "chat" ? testChatCompleted : agentType === "sms" ? testSmsCompleted : testCallCompleted,
+      });
       setStep(6);
     } catch {
       toast.error("Failed to save progress.");
@@ -407,10 +464,15 @@ export default function OnboardingWizardPage() {
   async function handleGoLive() {
     setGoingLive(true);
     try {
+      const goLiveBody = agentType === "chat"
+        ? { chat_widget_deployed: true }
+        : agentType === "sms"
+        ? { sms_phone_configured: true, phone_number: smsPhoneNumber }
+        : { phone_option: phoneOption };
       const res = await fetch("/api/onboarding/go-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone_option: phoneOption }),
+        body: JSON.stringify(goLiveBody),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -479,10 +541,78 @@ export default function OnboardingWizardPage() {
   // Render
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Agent Type Selector (pre-step gating screen)
+  // ---------------------------------------------------------------------------
+
+  if (!agentType) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 mb-4">
+              <Sparkles className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+              What type of AI agent would you like?
+            </h1>
+            <p className="text-muted-foreground mt-2 max-w-lg mx-auto">
+              Choose how your AI agent will interact with your customers.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <button
+              type="button"
+              onClick={() => setAgentType("voice")}
+              className="animate-fade-in-up relative w-full text-left rounded-xl border-2 border-gray-200 bg-white p-6 transition-all duration-200 outline-none group hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+            >
+              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4 transition-transform duration-200 group-hover:scale-110">
+                <Phone className="w-7 h-7 text-primary" />
+              </div>
+              <h3 className="font-semibold text-lg mb-1">Voice Agent</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                AI-powered phone agent that handles calls 24/7
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAgentType("chat")}
+              className="animate-fade-in-up relative w-full text-left rounded-xl border-2 border-gray-200 bg-white p-6 transition-all duration-200 outline-none group hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+              style={{ animationDelay: "60ms" }}
+            >
+              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4 transition-transform duration-200 group-hover:scale-110">
+                <MessageSquare className="w-7 h-7 text-primary" />
+              </div>
+              <h3 className="font-semibold text-lg mb-1">Chat Agent</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                AI chat assistant for your website that answers questions instantly
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAgentType("sms")}
+              className="animate-fade-in-up relative w-full text-left rounded-xl border-2 border-gray-200 bg-white p-6 transition-all duration-200 outline-none group hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+              style={{ animationDelay: "120ms" }}
+            >
+              <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mb-4 transition-transform duration-200 group-hover:scale-110">
+                <Smartphone className="w-7 h-7 text-primary" />
+              </div>
+              <h3 className="font-semibold text-lg mb-1">SMS Agent</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                AI text messaging agent that responds to SMS automatically
+              </p>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6">
       <div className="max-w-3xl mx-auto">
-        <WizardProgress currentStep={step} />
+        <WizardProgress currentStep={step} agentType={agentType} />
 
         {/* Step content wrapper with fade animation */}
         <div className="animate-fade-in-up" key={step}>
@@ -533,7 +663,7 @@ export default function OnboardingWizardPage() {
                         <Sparkles className="w-8 h-8 text-primary" />
                       </div>
                       <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                        Welcome! Let&apos;s set up your AI voice agent.
+                        Welcome! Let&apos;s set up your AI {agentType === "chat" ? "chat" : agentType === "sms" ? "SMS" : "voice"} agent.
                       </h1>
                       <p className="text-muted-foreground mt-2 max-w-lg mx-auto">
                         Choose your industry to get started with a pre-configured
@@ -721,7 +851,7 @@ export default function OnboardingWizardPage() {
                 </h1>
                 <p className="text-muted-foreground mt-1">
                   This information helps your AI agent represent your business
-                  accurately on calls.
+                  accurately {agentType === "chat" ? "in chat conversations" : agentType === "sms" ? "via text messages" : "on calls"}.
                 </p>
               </div>
 
@@ -818,6 +948,62 @@ export default function OnboardingWizardPage() {
                       className="max-w-md"
                     />
                   </div>
+
+                  <div className="border-t pt-5" />
+
+                  {/* Language */}
+                  <div className="space-y-2">
+                    <Label htmlFor="language" className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-muted-foreground" />
+                      Agent Language
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      The primary language your AI agent will speak or write in.
+                    </p>
+                    <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                      <SelectTrigger className="max-w-xs">
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en-US">English (US)</SelectItem>
+                        <SelectItem value="en-GB">English (UK)</SelectItem>
+                        <SelectItem value="en-AU">English (AU)</SelectItem>
+                        <SelectItem value="en-IN">English (India)</SelectItem>
+                        <SelectItem value="es-ES">Spanish (Spain)</SelectItem>
+                        <SelectItem value="es-419">Spanish (Latin America)</SelectItem>
+                        <SelectItem value="fr-FR">French (France)</SelectItem>
+                        <SelectItem value="fr-CA">French (Canada)</SelectItem>
+                        <SelectItem value="de-DE">German</SelectItem>
+                        <SelectItem value="it-IT">Italian</SelectItem>
+                        <SelectItem value="pt-BR">Portuguese (Brazil)</SelectItem>
+                        <SelectItem value="pt-PT">Portuguese (Portugal)</SelectItem>
+                        <SelectItem value="nl-NL">Dutch</SelectItem>
+                        <SelectItem value="zh-CN">Chinese (Mandarin)</SelectItem>
+                        <SelectItem value="ja-JP">Japanese</SelectItem>
+                        <SelectItem value="ko-KR">Korean</SelectItem>
+                        <SelectItem value="hi-IN">Hindi</SelectItem>
+                        <SelectItem value="ar-SA">Arabic</SelectItem>
+                        <SelectItem value="ru-RU">Russian</SelectItem>
+                        <SelectItem value="pl-PL">Polish</SelectItem>
+                        <SelectItem value="tr-TR">Turkish</SelectItem>
+                        <SelectItem value="vi-VN">Vietnamese</SelectItem>
+                        <SelectItem value="th-TH">Thai</SelectItem>
+                        <SelectItem value="sv-SE">Swedish</SelectItem>
+                        <SelectItem value="da-DK">Danish</SelectItem>
+                        <SelectItem value="no-NO">Norwegian</SelectItem>
+                        <SelectItem value="fi-FI">Finnish</SelectItem>
+                        <SelectItem value="uk-UA">Ukrainian</SelectItem>
+                        <SelectItem value="el-GR">Greek</SelectItem>
+                        <SelectItem value="cs-CZ">Czech</SelectItem>
+                        <SelectItem value="ro-RO">Romanian</SelectItem>
+                        <SelectItem value="hu-HU">Hungarian</SelectItem>
+                        <SelectItem value="bg-BG">Bulgarian</SelectItem>
+                        <SelectItem value="id-ID">Indonesian</SelectItem>
+                        <SelectItem value="sk-SK">Slovak</SelectItem>
+                        <SelectItem value="multi">Multilingual (auto-detect)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -860,7 +1046,7 @@ export default function OnboardingWizardPage() {
                 </h1>
                 <p className="text-muted-foreground mt-1">
                   Set your hours, services, FAQs, and policies. These help your
-                  AI agent answer caller questions accurately.
+                  AI agent answer {agentType === "chat" ? "visitor" : agentType === "sms" ? "customer" : "caller"} questions accurately.
                 </p>
               </div>
 
@@ -917,7 +1103,227 @@ export default function OnboardingWizardPage() {
           {/* ================================================================= */}
           {/* STEP 4: Call Handling Rules                                        */}
           {/* ================================================================= */}
-          {step === 4 && (
+          {step === 4 && (agentType === "chat" || agentType === "sms") && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  {agentType === "sms" ? "Configure your SMS settings" : "Configure your chat settings"}
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  {agentType === "sms"
+                    ? "Set up how your SMS agent responds to incoming text messages."
+                    : "Set up how your chat widget greets visitors and handles conversations."}
+                </p>
+              </div>
+
+              <Card className="glass-card">
+                <CardContent className="p-6 space-y-6">
+                  {/* Welcome Message */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">
+                      {agentType === "sms" ? "Auto-Reply Greeting" : "Welcome Message"}
+                    </Label>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      {agentType === "sms"
+                        ? "The first message sent when someone texts your number."
+                        : "The first message visitors see when they open the chat widget."}
+                    </p>
+                    <Textarea
+                      value={chatWelcomeMessage}
+                      onChange={(e) => setChatWelcomeMessage(e.target.value)}
+                      placeholder="Hi! How can I help you today?"
+                      className="max-w-md resize-none"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="border-t" />
+
+                  {/* Offline Behavior */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">
+                      Offline Behavior
+                    </Label>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      {agentType === "sms" ? "What happens when someone texts outside business hours?" : "What happens when your chat is outside business hours?"}
+                    </p>
+                    <RadioGroup
+                      value={chatOfflineBehavior}
+                      onValueChange={setChatOfflineBehavior}
+                      className="space-y-3"
+                    >
+                      <label
+                        htmlFor="co-message"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          chatOfflineBehavior === "message"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="message"
+                          id="co-message"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              Show a message asking to leave contact info
+                            </span>
+                            <Badge className="bg-primary/10 text-primary border-0 text-[10px]">
+                              Recommended
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Visitors can still leave their name and email for follow-up.
+                          </p>
+                        </div>
+                      </label>
+                      <label
+                        htmlFor="co-hide"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          chatOfflineBehavior === "hide"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="hide"
+                          id="co-hide"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            {agentType === "sms" ? "Stop responding when offline" : "Hide the widget when offline"}
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {agentType === "sms"
+                              ? "Your SMS agent won\u0027t respond to messages outside business hours."
+                              : "The chat widget won\u0027t appear on your website outside business hours."}
+                          </p>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </div>
+
+                  <div className="border-t" />
+
+                  {/* Unanswerable Question Behavior (chat version - no transfer) */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">
+                      Unanswerable Question Behavior
+                    </Label>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      What should the AI do when it can&apos;t answer a
+                      visitor&apos;s question?
+                    </p>
+                    <RadioGroup
+                      value={unanswerableBehavior}
+                      onValueChange={setUnanswerableBehavior}
+                      className="space-y-3"
+                    >
+                      <label
+                        htmlFor="chat-ua-message"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          unanswerableBehavior === "message"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="message"
+                          id="chat-ua-message"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              Take a message and email it to me
+                            </span>
+                            <Badge className="bg-primary/10 text-primary border-0 text-[10px]">
+                              Recommended
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            The AI captures the question and sends you a detailed email.
+                          </p>
+                        </div>
+                      </label>
+                      <label
+                        htmlFor="chat-ua-website"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          unanswerableBehavior === "website"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="website"
+                          id="chat-ua-website"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            Suggest the website
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            The AI directs the visitor to your website for more information.
+                          </p>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex items-center justify-between pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setStep(3)}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    onClick={handleStep4Continue}
+                    disabled={saving}
+                    className="text-muted-foreground gap-1"
+                  >
+                    <span className="text-xs">Skip for now</span>
+                  </Button>
+                  <Button
+                    size="lg"
+                    onClick={handleStep4Continue}
+                    disabled={saving}
+                    className="min-w-[160px] gap-2"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Continue
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-xs text-muted-foreground/60 text-center">
+                <AlertTriangle className="w-3 h-3 inline mr-1" />
+                Defaults are already configured. You can fine-tune these later from your dashboard.
+              </p>
+            </div>
+          )}
+
+          {step === 4 && agentType === "voice" && (
             <div className="space-y-6">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -1289,7 +1695,205 @@ export default function OnboardingWizardPage() {
           {/* ================================================================= */}
           {/* STEP 5: Test Call (enhanced with coaching, transcript, report)    */}
           {/* ================================================================= */}
-          {step === 5 && (() => {
+          {step === 5 && agentType === "sms" && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h1 className="text-2xl font-bold tracking-tight">
+                  Let&apos;s test your SMS agent!
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  Send a test message to see how your AI agent responds via text.
+                </p>
+              </div>
+
+              <Card className="glass-card">
+                <CardContent className="p-6 space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">Test Message</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Type a message as if you were a customer texting your business.
+                    </p>
+                    <Textarea
+                      value={testSmsMessage}
+                      onChange={(e) => setTestSmsMessage(e.target.value)}
+                      placeholder="e.g. Hi, what are your business hours?"
+                      className="resize-none"
+                      rows={3}
+                    />
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!testSmsMessage.trim()) return;
+                      setTestSmsSending(true);
+                      setTestSmsResponse("");
+                      try {
+                        const res = await fetch("/api/onboarding/test-sms", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ message: testSmsMessage.trim() }),
+                        });
+                        if (!res.ok) throw new Error("Failed to send test message");
+                        const data = await res.json();
+                        setTestSmsResponse(data.response || "No response received.");
+                        setTestSmsCompleted(true);
+                      } catch {
+                        toast.error("Failed to send test message. Please try again.");
+                      } finally {
+                        setTestSmsSending(false);
+                      }
+                    }}
+                    disabled={testSmsSending || !testSmsMessage.trim()}
+                    className="gap-2"
+                  >
+                    {testSmsSending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <MessageSquare className="w-4 h-4" />
+                    )}
+                    Send Test Message
+                  </Button>
+
+                  {testSmsResponse && (
+                    <div className="mt-4 space-y-3">
+                      <div className="border-t pt-4" />
+                      <Label className="text-sm font-semibold">AI Response</Label>
+                      <div className="rounded-lg bg-muted/50 p-4">
+                        <p className="text-sm">{testSmsResponse}</p>
+                      </div>
+                      {testSmsCompleted && (
+                        <div className="flex items-center gap-2 text-green-600 text-sm">
+                          <Check className="w-4 h-4" />
+                          Test completed successfully!
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="flex items-center justify-between pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setStep(4)}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
+                <div className="flex items-center gap-3">
+                  {!testSmsCompleted && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleStep5Continue}
+                      disabled={saving}
+                      className="text-muted-foreground"
+                    >
+                      Skip for now
+                    </Button>
+                  )}
+                  <Button
+                    size="lg"
+                    onClick={handleStep5Continue}
+                    disabled={saving}
+                    className="min-w-[160px] gap-2"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Continue
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {!testSmsCompleted && (
+                <p className="text-xs text-muted-foreground/60 text-center">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />
+                  Testing helps catch issues before your agent handles real conversations. We recommend at least one test.
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === 5 && agentType === "chat" && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h1 className="text-2xl font-bold tracking-tight">
+                  Let&apos;s test your chat agent!
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  Have a quick conversation with your AI agent to see how it
+                  responds to visitors.
+                </p>
+              </div>
+
+              {chatAgentId ? (
+                <TestChatInline
+                  agentId={chatAgentId}
+                  agentName={businessName || "AI Agent"}
+                  onTestCompleted={() => setTestChatCompleted(true)}
+                />
+              ) : (
+                <Card className="glass-card">
+                  <CardContent className="p-8 text-center">
+                    <p className="text-muted-foreground">
+                      No chat agent found. Please go back and complete step 2.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="flex items-center justify-between pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setStep(4)}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
+                <div className="flex items-center gap-3">
+                  {!testChatCompleted && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleStep5Continue}
+                      disabled={saving}
+                      className="text-muted-foreground"
+                    >
+                      Skip for now
+                    </Button>
+                  )}
+                  <Button
+                    size="lg"
+                    onClick={handleStep5Continue}
+                    disabled={saving}
+                    className="min-w-[160px] gap-2"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Continue
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {!testChatCompleted && (
+                <p className="text-xs text-muted-foreground/60 text-center">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />
+                  Testing helps catch issues before your agent handles real conversations. We recommend at least one test.
+                </p>
+              )}
+            </div>
+          )}
+
+          {step === 5 && agentType === "voice" && (() => {
             const currentTemplate = templates.find((t) => t.id === selectedTemplate);
             const testScenarios: TestScenario[] = currentTemplate?.test_scenarios ?? [];
 
@@ -1508,7 +2112,11 @@ export default function OnboardingWizardPage() {
                   You&apos;re almost ready!
                 </h1>
                 <p className="text-muted-foreground mt-1">
-                  Review your setup and choose a phone number to go live.
+                  {agentType === "chat"
+                    ? "Review your setup and get the embed code for your website."
+                    : agentType === "sms"
+                    ? "Review your setup and configure your SMS phone number."
+                    : "Review your setup and choose a phone number to go live."}
                 </p>
               </div>
 
@@ -1519,28 +2127,75 @@ export default function OnboardingWizardPage() {
                     Setup Checklist
                   </h3>
                   <div className="space-y-3">
-                    {[
-                      {
-                        label: "Business information complete",
-                        done: !!businessName.trim(),
-                      },
-                      {
-                        label: "Business hours set",
-                        done: true, // Managed via settings components
-                      },
-                      {
-                        label: "Services & FAQs configured",
-                        done: true, // Managed via settings components
-                      },
-                      {
-                        label: "Call handling rules set",
-                        done: true, // They completed step 4
-                      },
-                      {
-                        label: "Test call completed",
-                        done: testCallCompleted,
-                      },
-                    ].map((item, i) => (
+                    {(agentType === "chat"
+                      ? [
+                          {
+                            label: "Business information complete",
+                            done: !!businessName.trim(),
+                          },
+                          {
+                            label: "Business hours set",
+                            done: true,
+                          },
+                          {
+                            label: "Services & FAQs configured",
+                            done: true,
+                          },
+                          {
+                            label: "Chat settings configured",
+                            done: true,
+                          },
+                          {
+                            label: "Test chat completed",
+                            done: testChatCompleted,
+                          },
+                        ]
+                      : agentType === "sms"
+                      ? [
+                          {
+                            label: "Business information complete",
+                            done: !!businessName.trim(),
+                          },
+                          {
+                            label: "Business hours set",
+                            done: true,
+                          },
+                          {
+                            label: "Services & FAQs configured",
+                            done: true,
+                          },
+                          {
+                            label: "SMS settings configured",
+                            done: true,
+                          },
+                          {
+                            label: "Test SMS completed",
+                            done: testSmsCompleted,
+                          },
+                        ]
+                      : [
+                          {
+                            label: "Business information complete",
+                            done: !!businessName.trim(),
+                          },
+                          {
+                            label: "Business hours set",
+                            done: true,
+                          },
+                          {
+                            label: "Services & FAQs configured",
+                            done: true,
+                          },
+                          {
+                            label: "Call handling rules set",
+                            done: true,
+                          },
+                          {
+                            label: "Test call completed",
+                            done: testCallCompleted,
+                          },
+                        ]
+                    ).map((item, i) => (
                       <div
                         key={i}
                         className="flex items-center gap-3 py-2"
@@ -1575,102 +2230,168 @@ export default function OnboardingWizardPage() {
                 </CardContent>
               </Card>
 
-              {/* Phone number selection */}
-              <Card className="glass-card">
-                <CardContent className="p-6">
-                  <h3 className="font-semibold text-sm mb-1">
-                    Choose a phone number
-                  </h3>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    Select how you&apos;d like callers to reach your AI agent.
-                  </p>
-                  <RadioGroup
-                    value={phoneOption}
-                    onValueChange={setPhoneOption}
-                    className="space-y-3"
-                  >
-                    <label
-                      htmlFor="phone-temp"
-                      className={cn(
-                        "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                        phoneOption === "temporary"
-                          ? "border-primary bg-primary/[0.03]"
-                          : "border-gray-200 hover:border-gray-300"
-                      )}
+              {/* Phone number selection (voice only), Widget embed (chat), or SMS phone config */}
+              {agentType === "sms" ? (
+                <Card className="glass-card">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Smartphone className="w-4 h-4 text-primary" />
+                      <h3 className="font-semibold text-sm">
+                        SMS Phone Number
+                      </h3>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Enter the phone number that will receive and respond to SMS messages.
+                      This number will be linked to your AI agent.
+                    </p>
+                    <Input
+                      placeholder="e.g. +1 (555) 123-4567"
+                      value={smsPhoneNumber}
+                      onChange={(e) => setSmsPhoneNumber(e.target.value)}
+                      className="max-w-xs"
+                    />
+                    <p className="text-xs text-muted-foreground mt-3">
+                      You can configure or change this number later from your dashboard.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : agentType === "chat" ? (
+                <Card className="glass-card">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Code className="w-4 h-4 text-primary" />
+                      <h3 className="font-semibold text-sm">
+                        Embed on Your Website
+                      </h3>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Paste this code before the closing{" "}
+                      <code className="bg-muted px-1 py-0.5 rounded text-[11px]">&lt;/body&gt;</code>{" "}
+                      tag on your website.
+                    </p>
+                    <div className="relative">
+                      <pre className="bg-gray-950 text-gray-100 text-xs p-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
+{`<script src="https://cdn.invaria.ai/chat-widget.js"
+  data-agent-id="${chatAgentId || "YOUR_AGENT_ID"}"
+  data-client="${clientSlug}">
+</script>`}
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute top-2 right-2 h-7 w-7 p-0 text-gray-400 hover:text-white hover:bg-white/10"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            `<script src="https://cdn.invaria.ai/chat-widget.js"\n  data-agent-id="${chatAgentId || "YOUR_AGENT_ID"}"\n  data-client="${clientSlug}">\n</script>`
+                          );
+                          toast.success("Embed code copied to clipboard!");
+                        }}
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      The chat widget will automatically appear in the bottom-right corner of your website.
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="glass-card">
+                  <CardContent className="p-6">
+                    <h3 className="font-semibold text-sm mb-1">
+                      Choose a phone number
+                    </h3>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Select how you&apos;d like callers to reach your AI agent.
+                    </p>
+                    <RadioGroup
+                      value={phoneOption}
+                      onValueChange={setPhoneOption}
+                      className="space-y-3"
                     >
-                      <RadioGroupItem
-                        value="temporary"
-                        id="phone-temp"
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">
-                            Use our temporary number
-                          </span>
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] bg-green-50 text-green-700 border-0"
-                          >
-                            Free for 7 days
-                          </Badge>
+                      <label
+                        htmlFor="phone-temp"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          phoneOption === "temporary"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="temporary"
+                          id="phone-temp"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              Use our temporary number
+                            </span>
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-green-50 text-green-700 border-0"
+                            >
+                              Free for 7 days
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Get started right away with a temporary number. Upgrade
+                            anytime.
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Get started right away with a temporary number. Upgrade
-                          anytime.
-                        </p>
-                      </div>
-                    </label>
-                    <label
-                      htmlFor="phone-new"
-                      className={cn(
-                        "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                        phoneOption === "purchase"
-                          ? "border-primary bg-primary/[0.03]"
-                          : "border-gray-200 hover:border-gray-300"
-                      )}
-                    >
-                      <RadioGroupItem
-                        value="purchase"
-                        id="phone-new"
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">
-                          Purchase a new number
-                        </span>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Get a dedicated phone number for $2/mo.
-                        </p>
-                      </div>
-                    </label>
-                    <label
-                      htmlFor="phone-port"
-                      className={cn(
-                        "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                        phoneOption === "port"
-                          ? "border-primary bg-primary/[0.03]"
-                          : "border-gray-200 hover:border-gray-300"
-                      )}
-                    >
-                      <RadioGroupItem
-                        value="port"
-                        id="phone-port"
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1">
-                        <span className="text-sm font-medium">
-                          Port an existing number
-                        </span>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Transfer your current business number. Takes 2-5
-                          business days.
-                        </p>
-                      </div>
-                    </label>
-                  </RadioGroup>
-                </CardContent>
-              </Card>
+                      </label>
+                      <label
+                        htmlFor="phone-new"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          phoneOption === "purchase"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="purchase"
+                          id="phone-new"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            Purchase a new number
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Get a dedicated phone number for $2/mo.
+                          </p>
+                        </div>
+                      </label>
+                      <label
+                        htmlFor="phone-port"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          phoneOption === "port"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="port"
+                          id="phone-port"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            Port an existing number
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Transfer your current business number. Takes 2-5
+                            business days.
+                          </p>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Navigation */}
               <div className="flex items-center justify-between pt-4">

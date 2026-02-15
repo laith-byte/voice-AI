@@ -42,7 +42,7 @@ export async function GET(
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
 
-  const isChat = agent.platform === "retell-chat";
+  const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
 
   try {
     // Fetch agent from Retell (different endpoint for chat agents)
@@ -136,6 +136,7 @@ export async function GET(
       default_dynamic_vars: retellAgent.default_dynamic_variables,
     };
     config.mcps = retellAgent.mcp_servers || [];
+    config.language = retellAgent.language || "en-US";
 
     return NextResponse.json(config);
   } catch {
@@ -171,7 +172,7 @@ export async function PATCH(
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
 
-  const isChat = agent.platform === "retell-chat";
+  const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
 
   try {
     // If the agent uses a separate LLM (llm_id), update the LLM object
@@ -198,7 +199,8 @@ export async function PATCH(
     // Update the agent-level fields
     const retellUpdate: Record<string, unknown> = {};
 
-    if (body.voice) retellUpdate.voice_id = body.voice;
+    if (body.voice && !isChat) retellUpdate.voice_id = body.voice;
+    if (body.language !== undefined) retellUpdate.language = body.language;
 
     // Only set response_engine for inline LLM (no llm_id)
     if (!body.llm_id && (body.system_prompt !== undefined || body.llm_model || body.first_message || body.functions)) {
@@ -213,8 +215,8 @@ export async function PATCH(
       };
     }
 
-    // Speech settings
-    if (body.speech_settings) {
+    // Speech settings (voice agents only)
+    if (body.speech_settings && !isChat) {
       const s = body.speech_settings;
       if (s.background_sound !== undefined) retellUpdate.ambient_sound = s.background_sound;
       if (s.background_sound_volume !== undefined) retellUpdate.ambient_sound_volume = s.background_sound_volume;
@@ -238,8 +240,8 @@ export async function PATCH(
       if (r.boosted_keywords !== undefined) retellUpdate.boosted_keywords = r.boosted_keywords;
     }
 
-    // Call settings
-    if (body.call_settings) {
+    // Call settings (voice agents only)
+    if (body.call_settings && !isChat) {
       const c = body.call_settings;
       if (c.voicemail_detection !== undefined) retellUpdate.voicemail_detection = c.voicemail_detection;
       if (c.keypad_input_detection !== undefined) retellUpdate.enable_keypad_input = c.keypad_input_detection;

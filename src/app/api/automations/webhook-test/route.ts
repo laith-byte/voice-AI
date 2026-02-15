@@ -42,6 +42,37 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // SSRF protection: block private/internal URLs
+  try {
+    const parsed = new URL(webhook_url);
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      parsed.protocol !== "https:" && parsed.protocol !== "http:" ||
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+      hostname === "metadata.google.internal" ||
+      hostname === "169.254.169.254"
+    ) {
+      return NextResponse.json(
+        { error: "URL targets a private or internal address" },
+        { status: 400 }
+      );
+    }
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid URL" },
+      { status: 400 }
+    );
+  }
+
   try {
     const res = await fetch(webhook_url, {
       method: "POST",

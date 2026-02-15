@@ -4,6 +4,9 @@ import { getProviderConfig } from "@/lib/oauth/providers";
 
 const REFRESH_BUFFER_MS = 5 * 60 * 1000; // refresh if < 5 min remaining
 
+// In-memory lock to prevent concurrent token refreshes for the same client+provider
+const refreshLocks = new Map<string, Promise<string>>();
+
 export async function getValidToken(
   clientId: string,
   provider: string
@@ -31,7 +34,29 @@ export async function getValidToken(
     return decrypt(connection.access_token);
   }
 
-  // Token expired or about to expire — refresh it
+  // Token expired or about to expire — refresh it (with lock to prevent concurrent refreshes)
+  const lockKey = `${clientId}:${provider}`;
+  const existingRefresh = refreshLocks.get(lockKey);
+  if (existingRefresh) {
+    return existingRefresh;
+  }
+
+  const refreshPromise = (async () => {
+    try {
+      return await doRefresh(connection, clientId, provider);
+    } finally {
+      refreshLocks.delete(lockKey);
+    }
+  })();
+  refreshLocks.set(lockKey, refreshPromise);
+  return refreshPromise;
+}
+
+async function doRefresh(
+  connection: { refresh_token: string | null; id: string },
+  clientId: string,
+  provider: string,
+): Promise<string> {
   if (!connection.refresh_token) {
     throw new Error(
       `${provider} token expired and no refresh token available for client ${clientId}`
@@ -68,6 +93,7 @@ export async function getValidToken(
     : null;
 
   // Update stored tokens
+  const supabase = await createServiceClient();
   await supabase
     .from("oauth_connections")
     .update({

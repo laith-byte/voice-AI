@@ -39,8 +39,16 @@ import type { Agent } from "@/types/database";
 function PlatformBadge({ platform }: { platform: string }) {
   const colors: Record<string, string> = {
     retell: "bg-purple-50 text-purple-700 border-purple-200",
+    "retell-chat": "bg-blue-50 text-blue-700 border-blue-200",
+    "retell-sms": "bg-green-50 text-green-700 border-green-200",
     elevenlabs: "bg-orange-50 text-orange-700 border-orange-200",
     vapi: "bg-teal-50 text-teal-700 border-teal-200",
+  };
+
+  const labels: Record<string, string> = {
+    retell: "Voice AI",
+    "retell-chat": "Chat AI",
+    "retell-sms": "SMS AI",
   };
 
   return (
@@ -48,7 +56,7 @@ function PlatformBadge({ platform }: { platform: string }) {
       variant="outline"
       className={colors[platform] || "bg-gray-50 text-gray-700 border-gray-200"}
     >
-      {platform.charAt(0).toUpperCase() + platform.slice(1)}
+      {labels[platform] || platform.charAt(0).toUpperCase() + platform.slice(1)}
     </Badge>
   );
 }

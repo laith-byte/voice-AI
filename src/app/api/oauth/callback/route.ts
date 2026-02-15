@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { encrypt } from "@/lib/crypto";
 import { getProviderConfig } from "@/lib/oauth/providers";
 import { parseOAuthState } from "@/lib/oauth/state";
@@ -34,6 +34,47 @@ export async function GET(request: NextRequest) {
   }
 
   const { clientId, provider, redirectPath } = state;
+
+  // Verify the authenticated user is authorized for this clientId
+  try {
+    const userSupabase = await createClient();
+    const { data: { user } } = await userSupabase.auth.getUser();
+    if (user) {
+      const { data: userData } = await userSupabase
+        .from("users")
+        .select("client_id, organization_id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (userData) {
+        // Client users must match the clientId
+        if (userData.role?.startsWith("client_") && userData.client_id !== clientId) {
+          return NextResponse.redirect(
+            `${process.env.NEXT_PUBLIC_APP_URL}${redirectPath}?oauth_error=unauthorized`
+          );
+        }
+        // Startup admins must own the client via their organization
+        if (!userData.role?.startsWith("client_")) {
+          const serviceCheck = await createServiceClient();
+          const { data: clientRow } = await serviceCheck
+            .from("clients")
+            .select("id")
+            .eq("id", clientId)
+            .eq("organization_id", userData.organization_id)
+            .single();
+          if (!clientRow) {
+            return NextResponse.redirect(
+              `${process.env.NEXT_PUBLIC_APP_URL}${redirectPath}?oauth_error=unauthorized`
+            );
+          }
+        }
+      }
+    }
+  } catch {
+    // If session verification fails, continue with the encrypted state check
+    // The encrypted state with 10-min expiry is the primary protection
+  }
+
   const config = getProviderConfig(provider);
   const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/callback`;
 

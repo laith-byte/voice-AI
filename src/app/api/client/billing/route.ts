@@ -34,24 +34,39 @@ export async function GET(request: NextRequest) {
 
   const orgId = client.organization_id || userData.organization_id;
 
-  // Fetch available plans for this organization
+  // Fetch available plans for this organization (all columns)
   const { data: plans } = await serviceClient
     .from("client_plans")
-    .select("id, name, description, monthly_price, yearly_price, setup_fee, agents_included, call_minutes_included, features, stripe_monthly_price_id, sort_order")
+    .select("*")
     .eq("organization_id", orgId)
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
 
-  // Get current plan info if client has a plan_id
+  // Get current plan info if client has a plan_id (all columns)
   let currentPlan = null;
   if (client.plan_id) {
     const { data: plan } = await serviceClient
       .from("client_plans")
-      .select("id, name, description, monthly_price, agents_included, call_minutes_included")
+      .select("*")
       .eq("id", client.plan_id)
       .single();
     currentPlan = plan;
   }
+
+  // Fetch add-ons for this organization
+  const { data: addons } = await serviceClient
+    .from("plan_addons")
+    .select("*")
+    .eq("organization_id", orgId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
+  // Fetch client's active add-ons
+  const { data: clientAddons } = await serviceClient
+    .from("client_addons")
+    .select("*, plan_addons(name, description, monthly_price, one_time_price, addon_type, category)")
+    .eq("client_id", userData.client_id)
+    .eq("status", "active");
 
   // Get the Stripe connected account ID
   const { data: stripeConnection } = await serviceClient
@@ -110,6 +125,8 @@ export async function GET(request: NextRequest) {
     has_stripe: !!client.stripe_customer_id,
     current_plan: currentPlan,
     plans: plans || [],
+    addons: addons || [],
+    client_addons: clientAddons || [],
     subscription,
     invoices,
   });
@@ -152,11 +169,16 @@ export async function POST(request: NextRequest) {
 
   const returnUrl = `${process.env.NEXT_PUBLIC_APP_URL}/${client.slug}/portal/billing`;
 
-  const session = await createBillingPortalSession(
-    client.stripe_customer_id,
-    returnUrl,
-    stripeAccountId
-  );
+  try {
+    const session = await createBillingPortalSession(
+      client.stripe_customer_id,
+      returnUrl,
+      stripeAccountId
+    );
 
-  return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    console.error("Billing portal session error:", err);
+    return NextResponse.json({ error: "Failed to create billing portal session" }, { status: 500 });
+  }
 }

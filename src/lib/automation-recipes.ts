@@ -70,7 +70,7 @@ export async function executeRecipes(
     if (config.trigger) {
       const triggerStr = config.trigger as string;
       if (triggerStr === "Completed only" && callLog.status !== "completed") continue;
-      if (triggerStr === "Missed only" && callLog.status !== "completed") continue;
+      if (triggerStr === "Missed only" && callLog.status !== "missed") continue;
       if (triggerStr === "Missed calls only" && callLog.status !== "missed") continue;
       if (triggerStr === "Completed calls only" && callLog.status !== "completed") continue;
     }

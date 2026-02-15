@@ -30,6 +30,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Actions that require a connected account
+  const requiresAccount = ["list_products", "create_product", "list_subscriptions", "list_invoices", "list_charges", "create_coupon", "list_coupons", "create_checkout"];
+  if (requiresAccount.includes(action) && !stripeAccountId) {
+    return NextResponse.json({ error: "stripeAccountId is required for this action" }, { status: 400 });
+  }
+
   try {
     switch (action) {
       case "create_connect_account": {

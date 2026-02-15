@@ -60,7 +60,7 @@ export default function AgentDetailLayout({
   ];
 
   function handleCopyId() {
-    if (!agent) return;
+    if (!agent || !agent.retell_agent_id) return;
     navigator.clipboard.writeText(agent.retell_agent_id);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);

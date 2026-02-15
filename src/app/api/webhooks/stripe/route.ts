@@ -38,17 +38,35 @@ export async function POST(request: NextRequest) {
 
   // Log the event
   const supabase = await createServiceClient();
-  await supabase.from("webhook_logs").insert({
-    provider: "stripe",
-    event_type: event.type,
-    payload: event.data.object as unknown as Record<string, unknown>,
-    processed: false,
-  }).then(() => {});
+
+  // Extract organization_id from event metadata if available
+  const eventObj = event.data.object as unknown as Record<string, unknown>;
+  const eventOrgId = (eventObj?.metadata as Record<string, string>)?.organization_id || null;
+
+  const { data: logRow } = await supabase.from("webhook_logs").insert({
+    organization_id: eventOrgId,
+    event: event.type,
+    raw_payload: eventObj,
+    import_result: "processing",
+    timestamp: new Date().toISOString(),
+  }).select("id").single();
 
   // Handle events
   switch (event.type) {
     case "checkout.session.completed": {
       await handleCheckoutCompleted(event.data.object, supabase);
+      break;
+    }
+    case "customer.subscription.deleted": {
+      await handleSubscriptionDeleted(event.data.object, supabase);
+      break;
+    }
+    case "customer.subscription.updated": {
+      await handleSubscriptionUpdated(event.data.object, supabase);
+      break;
+    }
+    case "invoice.payment_failed": {
+      await handlePaymentFailed(event.data.object, supabase);
       break;
     }
     default:
@@ -57,13 +75,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Mark the webhook log as processed
-  await supabase
-    .from("webhook_logs")
-    .update({ processed: true })
-    .eq("event_type", event.type)
-    .eq("processed", false)
-    .order("created_at", { ascending: false })
-    .limit(1);
+  if (logRow?.id) {
+    await supabase
+      .from("webhook_logs")
+      .update({ import_result: "success" })
+      .eq("id", logRow.id);
+  }
 
   return NextResponse.json({ received: true });
 }
@@ -161,7 +178,7 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
   if (inviteError) {
     console.error("Failed to invite user:", inviteError.message);
     // Try to see if user already exists in auth
-    const { data: { users } } = await supabase.auth.admin.listUsers();
+    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     const existingAuthUser = users?.find((u: { email?: string }) => u.email === customerEmail);
     if (existingAuthUser) {
       // User exists in auth but not linked to a client — create the users row
@@ -188,6 +205,87 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleSubscriptionDeleted(subscription: any, supabase: any) {
+  const subscriptionId = subscription.id;
+  if (!subscriptionId) return;
+
+  // Find the client with this subscription and deactivate them
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("stripe_subscription_id", subscriptionId)
+    .maybeSingle();
+
+  if (!client) {
+    console.log("No client found for cancelled subscription:", subscriptionId);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ status: "cancelled", stripe_subscription_id: null })
+    .eq("id", client.id);
+
+  if (error) {
+    console.error("Failed to deactivate client:", error.message);
+  } else {
+    console.log("Client deactivated due to subscription cancellation:", client.name);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleSubscriptionUpdated(subscription: any, supabase: any) {
+  const subscriptionId = subscription.id;
+  if (!subscriptionId) return;
+
+  // Update the client's subscription status if it changed to past_due or unpaid
+  const status = subscription.status; // active, past_due, unpaid, canceled, etc.
+  if (status === "past_due" || status === "unpaid") {
+    const { error } = await supabase
+      .from("clients")
+      .update({ status: "past_due" })
+      .eq("stripe_subscription_id", subscriptionId);
+
+    if (error) {
+      console.error("Failed to update client status to past_due:", error.message);
+    }
+  } else if (status === "active") {
+    // Reactivate if payment is resolved
+    const { error } = await supabase
+      .from("clients")
+      .update({ status: "active" })
+      .eq("stripe_subscription_id", subscriptionId)
+      .in("status", ["past_due", "cancelled"]);
+
+    if (error) {
+      console.error("Failed to reactivate client:", error.message);
+    }
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handlePaymentFailed(invoice: any, supabase: any) {
+  const subscriptionId = invoice.subscription;
+  if (!subscriptionId) return;
+
+  // Flag the client's account
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, name")
+    .eq("stripe_subscription_id", subscriptionId)
+    .maybeSingle();
+
+  if (!client) return;
+
+  console.warn("Payment failed for client:", client.name, "invoice:", invoice.id);
+
+  await supabase
+    .from("clients")
+    .update({ status: "past_due" })
+    .eq("id", client.id);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createUserRow(supabase: any, userId: string, email: string, orgId: string, clientId: string) {
   const { error } = await supabase.from("users").upsert(
     {
@@ -207,23 +305,19 @@ async function createUserRow(supabase: any, userId: string, email: string, orgId
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function setClientPermissions(supabase: any, clientId: string, plan: any) {
-  // Map plan features to permissions
-  // Higher-tier plans get more features
-  const agentsIncluded = plan.agents_included || 1;
-  const minutesIncluded = plan.call_minutes_included || 0;
-
-  // Base permissions for all plans
+  // Use plan boolean columns directly instead of heuristics
   const permissions: { feature: string; enabled: boolean }[] = [
+    // Base features — always enabled for all plans
     { feature: "analytics", enabled: true },
     { feature: "conversations", enabled: true },
     { feature: "leads", enabled: true },
     { feature: "phone_numbers", enabled: true },
     { feature: "workflows", enabled: true },
-    // Premium features gated by plan tier
-    { feature: "topics", enabled: minutesIncluded >= 500 || agentsIncluded >= 3 },
-    { feature: "agent_settings", enabled: minutesIncluded >= 500 || agentsIncluded >= 3 },
-    { feature: "campaigns", enabled: minutesIncluded >= 1000 || agentsIncluded >= 5 },
-    { feature: "knowledge_base", enabled: minutesIncluded >= 1000 || agentsIncluded >= 5 },
+    // Plan-gated features — read directly from plan columns
+    { feature: "topics", enabled: plan.topic_management ?? false },
+    { feature: "agent_settings", enabled: (plan.raw_prompt_editor || plan.speech_settings_full) ?? false },
+    { feature: "campaigns", enabled: plan.campaign_outbound ?? false },
+    { feature: "knowledge_base", enabled: (plan.knowledge_bases ?? 1) > 1 },
   ];
 
   const rows = permissions.map((p) => ({

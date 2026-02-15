@@ -16,9 +16,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
+  // Strip unsafe keys to prevent column injection
+  const { id: _id, client_id: _cid, created_at: _ca, organization_id: _oid, ...safeBody } = body;
+
   const { data, error } = await supabase
     .from("business_services")
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update({ ...safeBody, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("client_id", clientId)
     .select()

@@ -53,7 +53,7 @@ interface RecentCall {
   status: string | null;
   metadata: Record<string, unknown> | null;
   transcript: string | null;
-  type: "voice" | "chat";
+  type: "voice" | "chat" | "sms";
 }
 
 function getGreeting(): string {
@@ -234,7 +234,7 @@ export default function PortalAgentsPage() {
                 status: c.status ?? null,
                 metadata: meta,
                 transcript: c.transcript ?? null,
-                type: (meta?.type === "chat" ? "chat" : "voice") as "voice" | "chat",
+                type: (meta?.type === "chat" ? "chat" : meta?.type === "sms" ? "sms" : "voice") as "voice" | "chat" | "sms",
               };
             })
           );

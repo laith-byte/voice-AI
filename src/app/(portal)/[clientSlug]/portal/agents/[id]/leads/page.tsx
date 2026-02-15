@@ -171,7 +171,8 @@ export default function LeadsPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
-  const [itemsPerPage] = useState(25);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadRow[]>([]);
 
@@ -209,14 +210,23 @@ export default function LeadsPage() {
     return Array.from(tagSet).sort();
   }, [leads]);
 
-  const filteredLeads = leads.filter((lead) => {
+  const filteredLeads = useMemo(() => leads.filter((lead) => {
     const matchesSearch =
       lead.phone.includes(searchQuery) ||
       (lead.name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
     const matchesTags =
       selectedTags.length === 0 || selectedTags.some((tag) => lead.tags?.includes(tag));
     return matchesSearch && matchesTags;
-  });
+  }), [leads, searchQuery, selectedTags]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / itemsPerPage));
+  const paginatedLeads = filteredLeads.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  // Reset page when filters change
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedTags, itemsPerPage]);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
@@ -662,7 +672,7 @@ export default function LeadsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLeads.map((lead) => (
+                {paginatedLeads.map((lead) => (
                   <TableRow key={lead.id} className="premium-row border-border/50">
                     <TableCell className="font-mono text-sm">{lead.phone}</TableCell>
                     <TableCell className="font-medium">{lead.name || "\u2014"}</TableCell>
@@ -695,18 +705,27 @@ export default function LeadsPage() {
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Showing {filteredLeads.length} of {leads.length} leads
+          Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredLeads.length)}-{Math.min(currentPage * itemsPerPage, filteredLeads.length)} of {filteredLeads.length} leads
         </p>
-        <Select defaultValue="25">
-          <SelectTrigger className="w-[130px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="25">25 per page</SelectItem>
-            <SelectItem value="50">50 per page</SelectItem>
-            <SelectItem value="100">100 per page</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-3">
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => p - 1)}>Prev</Button>
+              <span className="text-sm text-muted-foreground px-2">Page {currentPage} of {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => p + 1)}>Next</Button>
+            </div>
+          )}
+          <Select value={String(itemsPerPage)} onValueChange={(v) => setItemsPerPage(Number(v))}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="25">25 per page</SelectItem>
+              <SelectItem value="50">50 per page</SelectItem>
+              <SelectItem value="100">100 per page</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Lead Tags Modal */}

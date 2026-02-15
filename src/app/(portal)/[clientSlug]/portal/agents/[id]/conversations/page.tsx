@@ -39,7 +39,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  FileDown,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -190,8 +198,10 @@ export default function ConversationsPage() {
       .select("platform")
       .eq("id", agentId)
       .single();
-    if (agentData?.platform === "retell-chat") {
+    if (agentData?.platform === "retell-chat" || agentData?.platform === "retell-sms") {
       setIsChat(true);
+    } else {
+      setIsChat(false);
     }
 
     const { data, error } = await supabase
@@ -255,18 +265,19 @@ export default function ConversationsPage() {
       return;
     }
     const headers = ["Call ID", "Caller", "Phone/ID", "Date & Time", "Platform", "Duration", "Status", "Evaluation", "Summary"];
+    const csvEscape = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
     const rows = filteredConversations.map((c) => [
-      c.id,
-      c.callerName,
-      c.callerId,
-      c.timestamp,
-      c.platform,
-      c.duration,
-      c.reasonEnded,
-      c.evaluation.success ? "Success" : "Failed",
-      `"${(c.summary || "").replace(/"/g, '""')}"`,
+      csvEscape(c.id),
+      csvEscape(c.callerName),
+      csvEscape(c.callerId),
+      csvEscape(c.timestamp),
+      csvEscape(c.platform),
+      csvEscape(c.duration),
+      csvEscape(c.reasonEnded),
+      csvEscape(c.evaluation.success ? "Success" : "Failed"),
+      csvEscape(c.summary || ""),
     ]);
-    const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const csv = "\uFEFF" + [headers.map(csvEscape).join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -277,6 +288,81 @@ export default function ConversationsPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     toast.success(`Exported ${filteredConversations.length} conversations.`);
+  };
+
+  // PDF Export
+  const handleExportPDF = async () => {
+    if (filteredConversations.length === 0) {
+      toast.error("No conversations to export.");
+      return;
+    }
+    try {
+      const { default: jsPDF } = await import("jspdf");
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      let y = 20;
+
+      doc.setFontSize(16);
+      doc.text("Conversations Report", 14, y);
+      y += 8;
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      doc.text(`Generated ${new Date().toLocaleDateString()} | ${filteredConversations.length} conversations`, 14, y);
+      doc.setTextColor(0);
+      y += 12;
+
+      for (const conv of filteredConversations) {
+        if (y > 260) {
+          doc.addPage();
+          y = 20;
+        }
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.text(conv.callerName, 14, y);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+        doc.text(`${conv.timestamp} | ${conv.duration} | ${conv.platform}`, 14, y + 4);
+        doc.setTextColor(0);
+        y += 10;
+
+        doc.setFontSize(9);
+        const summaryLines = doc.splitTextToSize(conv.summary || "No summary.", pageWidth - 28);
+        doc.text(summaryLines, 14, y);
+        y += summaryLines.length * 4 + 4;
+
+        if (conv.transcript.length > 0) {
+          doc.setFontSize(8);
+          for (const msg of conv.transcript.slice(0, 10)) {
+            if (y > 270) {
+              doc.addPage();
+              y = 20;
+            }
+            const prefix = msg.role === "agent" ? "Agent: " : "User: ";
+            const lines = doc.splitTextToSize(prefix + msg.content, pageWidth - 28);
+            doc.text(lines, 14, y);
+            y += lines.length * 3.5 + 1;
+          }
+          if (conv.transcript.length > 10) {
+            doc.setTextColor(100);
+            doc.text(`... ${conv.transcript.length - 10} more messages`, 14, y);
+            doc.setTextColor(0);
+            y += 5;
+          }
+        }
+
+        y += 6;
+        doc.setDrawColor(220);
+        doc.line(14, y, pageWidth - 14, y);
+        y += 6;
+      }
+
+      doc.save(`conversations-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success(`Exported ${filteredConversations.length} conversations as PDF.`);
+    } catch {
+      toast.error("Failed to generate PDF.");
+    }
   };
 
   // Open slide-out panel (table view)
@@ -370,10 +456,25 @@ export default function ConversationsPage() {
               <List className="w-4 h-4" />
             </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
-            <Download className="w-4 h-4 mr-1.5" />
-            Export CSV
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Download className="w-4 h-4" />
+                Export
+                <ChevronDown className="w-3 h-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPDF}>
+                <FileDown className="w-4 h-4 mr-2" />
+                Export PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -410,7 +511,7 @@ export default function ConversationsPage() {
               </div>
             </div>
             <ScrollArea className="flex-1">
-              {filteredConversations.map((conv) => (
+              {paginatedConversations.map((conv) => (
                 <button
                   key={conv.id}
                   onClick={() => setSelectedConversation(conv)}

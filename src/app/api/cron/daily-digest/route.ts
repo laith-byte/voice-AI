@@ -10,12 +10,11 @@ export async function GET(request: NextRequest) {
   // Verify cron secret to prevent unauthorized access
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = await createServiceClient();
-  const currentHour = new Date().getHours();
 
   // Find all enabled daily_digest actions where send_at_hour matches current hour
   const { data: actions } = await supabase
@@ -34,8 +33,25 @@ export async function GET(request: NextRequest) {
     const config = action.config as Record<string, unknown>;
     const sendAtHour = (config.send_at_hour as number) ?? 18;
 
-    // Only send if the current hour matches the configured hour
-    if (sendAtHour !== currentHour) continue;
+    // Get client timezone from business_settings, default to UTC
+    const { data: bizSettings } = await supabase
+      .from("business_settings")
+      .select("timezone")
+      .eq("client_id", action.client_id)
+      .single();
+
+    const tz = bizSettings?.timezone || "UTC";
+    let clientHour: number;
+    try {
+      clientHour = parseInt(
+        new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: tz }).format(new Date())
+      );
+    } catch {
+      clientHour = new Date().getUTCHours();
+    }
+
+    // Only send if the client's local hour matches the configured hour
+    if (sendAtHour !== clientHour) continue;
 
     const recipients = (config.recipients as string[]) || [];
     if (recipients.length === 0) continue;
@@ -135,7 +151,7 @@ export async function GET(request: NextRequest) {
           to: recipient.trim(),
           subject,
           html,
-          from: `${clientName} <notifications@invarialabs.com>`,
+          from: `${clientName.replace(/[<>"'\r\n]/g, "")} <notifications@invarialabs.com>`,
         });
       }
 

@@ -92,7 +92,7 @@ export default function AgentOverviewPage() {
     );
   }
 
-  const agentId = agent.retell_agent_id;
+  const agentId = agent.retell_agent_id ?? "";
   const kbId = agent.knowledge_base_id ?? "";
   const kbName = agent.knowledge_base_name ?? "";
   const webhookUrl = agent.webhook_url ?? "";

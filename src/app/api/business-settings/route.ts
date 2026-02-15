@@ -50,9 +50,22 @@ export async function PATCH(request: NextRequest) {
 
   const body = await request.json();
 
+  // Allowlist safe columns to prevent arbitrary column injection
+  const ALLOWED_FIELDS = [
+    "business_name", "contact_email", "contact_phone", "website_url",
+    "address", "city", "state", "zip", "country", "timezone",
+    "description", "industry", "greeting_message", "after_hours_message",
+    "voicemail_message", "hold_message", "transfer_message",
+    "business_hours", "logo_url", "primary_color", "language",
+  ];
+  const safeUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  for (const key of ALLOWED_FIELDS) {
+    if (key in body) safeUpdate[key] = body[key];
+  }
+
   const { data, error } = await supabase
     .from("business_settings")
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(safeUpdate)
     .eq("client_id", clientId)
     .select()
     .single();

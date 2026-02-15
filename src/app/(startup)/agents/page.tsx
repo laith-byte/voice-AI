@@ -145,6 +145,8 @@ export default function AgentsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="retell">Voice AI</SelectItem>
+                    <SelectItem value="retell-chat">Chat AI</SelectItem>
+                    <SelectItem value="retell-sms">SMS AI</SelectItem>
                     <SelectItem value="elevenlabs">ElevenLabs</SelectItem>
                     <SelectItem value="vapi">Vapi</SelectItem>
                   </SelectContent>

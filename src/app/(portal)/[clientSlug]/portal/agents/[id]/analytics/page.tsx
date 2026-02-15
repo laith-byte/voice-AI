@@ -65,8 +65,10 @@ export default function AnalyticsPage() {
       .select("platform")
       .eq("id", agentId)
       .single();
-    if (agentData?.platform === "retell-chat") {
+    if (agentData?.platform === "retell-chat" || agentData?.platform === "retell-sms") {
       setIsChat(true);
+    } else {
+      setIsChat(false);
     }
 
     if (dateRange === "custom") {
@@ -122,14 +124,17 @@ export default function AnalyticsPage() {
         ? Math.max(1, Math.round((new Date(customEnd).getTime() - new Date(customStart).getTime()) / (1000 * 60 * 60 * 24)))
         : 7)
     : parseInt(dateRange);
-  const now = dateRange === "custom" && customEnd
-    ? (() => { const d = new Date(customEnd); d.setHours(23, 59, 59, 999); return d; })()
-    : new Date();
-  const currentPeriodStart = dateRange === "custom" && customStart
-    ? new Date(customStart)
-    : (() => { const d = new Date(now); d.setDate(now.getDate() - days); return d; })();
-  const previousPeriodStart = new Date(currentPeriodStart);
-  previousPeriodStart.setDate(previousPeriodStart.getDate() - days);
+  const { now, currentPeriodStart, previousPeriodStart } = useMemo(() => {
+    const n = dateRange === "custom" && customEnd
+      ? (() => { const d = new Date(customEnd); d.setHours(23, 59, 59, 999); return d; })()
+      : new Date();
+    const cps = dateRange === "custom" && customStart
+      ? new Date(customStart)
+      : (() => { const d = new Date(n); d.setDate(n.getDate() - days); return d; })();
+    const pps = new Date(cps);
+    pps.setDate(pps.getDate() - days);
+    return { now: n, currentPeriodStart: cps, previousPeriodStart: pps };
+  }, [dateRange, customStart, customEnd, days]);
 
   const currentLogs = useMemo(
     () => callLogs.filter((log) => log.started_at && new Date(log.started_at) >= currentPeriodStart),

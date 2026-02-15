@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
 import { regeneratePrompt } from "@/lib/prompt-generator";
 import { encrypt, decrypt } from "@/lib/crypto";
+import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -92,78 +93,118 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const agentType = onboarding.agent_type || "voice";
+
   try {
-    // 5. Build Retell agent config — clone from template agent or use defaults
-    let agentPayload: Record<string, unknown> = {
-      agent_name: onboarding.business_name || "AI Agent",
-    };
+    const retellApiKeyEncrypted = encrypt(retellApiKey);
+    let newAgentId: string;
+    let agentPlatform: string;
 
-    if (template.retell_agent_id) {
-      // Clone settings from the template's Retell agent
-      const templateRes = await fetch(
-        `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
-        {
-          headers: { Authorization: `Bearer ${retellApiKey}` },
+    const selectedLanguage = (onboarding.language || "en-US") as "en-US";
+
+    if (agentType === "chat" || agentType === "sms") {
+      // ---- CHAT / SMS AGENT CREATION ----
+      // SMS agents are chat agents under the hood; Retell routes SMS via the attached phone number
+      const retell = new Retell({ apiKey: retellApiKey });
+
+      // Try to get response_engine config from template's Retell agent
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let responseEngine: any = undefined;
+      if (template.retell_agent_id) {
+        try {
+          const templateRes = await fetch(
+            `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
+            { headers: { Authorization: `Bearer ${retellApiKey}` } }
+          );
+          if (templateRes.ok) {
+            const templateConfig = await templateRes.json();
+            responseEngine = templateConfig.response_engine;
+          }
+        } catch {
+          // Fall through to defaults
         }
-      );
+      }
 
-      if (!templateRes.ok) {
-        const errText = await templateRes.text();
-        console.error("Retell template fetch error:", errText);
+      if (!responseEngine) {
         return NextResponse.json(
-          { error: "Failed to fetch template agent from Retell" },
+          { error: "No template agent configuration found. Please select a different template or contact support." },
+          { status: 400 }
+        );
+      }
+
+      const chatAgentConfig = {
+        agent_name: onboarding.business_name || "AI Agent",
+        language: selectedLanguage,
+        response_engine: responseEngine,
+      };
+
+      const chatAgent = await retell.chatAgent.create(chatAgentConfig);
+      newAgentId = chatAgent.agent_id;
+      agentPlatform = agentType === "sms" ? "retell-sms" : "retell-chat";
+    } else {
+      // ---- VOICE AGENT CREATION (existing logic) ----
+      let agentPayload: Record<string, unknown> = {
+        agent_name: onboarding.business_name || "AI Agent",
+      };
+
+      if (template.retell_agent_id) {
+        const templateRes = await fetch(
+          `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
+          {
+            headers: { Authorization: `Bearer ${retellApiKey}` },
+          }
+        );
+
+        if (!templateRes.ok) {
+          const errText = await templateRes.text();
+          console.error("Retell template fetch error:", errText);
+          return NextResponse.json(
+            { error: "Failed to fetch template agent from Retell" },
+            { status: 502 }
+          );
+        }
+
+        const templateConfig = await templateRes.json();
+        agentPayload = {
+          ...agentPayload,
+          response_engine: templateConfig.response_engine,
+          voice_id: templateConfig.voice_id,
+          ambient_sound: templateConfig.ambient_sound,
+          ambient_sound_volume: templateConfig.ambient_sound_volume,
+          responsiveness: templateConfig.responsiveness,
+          interruption_sensitivity: templateConfig.interruption_sensitivity,
+          enable_backchanneling: templateConfig.enable_backchanneling,
+          language: selectedLanguage,
+        };
+      } else {
+        return NextResponse.json(
+          { error: "No template agent configuration found. Please select a different template or contact support." },
+          { status: 400 }
+        );
+      }
+
+      const createRes = await fetch("https://api.retellai.com/v2/agents", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${retellApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(agentPayload),
+      });
+
+      if (!createRes.ok) {
+        const errText = await createRes.text();
+        console.error("Retell agent creation error:", errText);
+        return NextResponse.json(
+          { error: "Failed to create agent in Retell" },
           { status: 502 }
         );
       }
 
-      const templateConfig = await templateRes.json();
-      agentPayload = {
-        ...agentPayload,
-        response_engine: templateConfig.response_engine,
-        voice_id: templateConfig.voice_id,
-        ambient_sound: templateConfig.ambient_sound,
-        ambient_sound_volume: templateConfig.ambient_sound_volume,
-        responsiveness: templateConfig.responsiveness,
-        interruption_sensitivity: templateConfig.interruption_sensitivity,
-        enable_backchanneling: templateConfig.enable_backchanneling,
-        language: templateConfig.language,
-      };
-    } else {
-      // No template agent — create with sensible defaults
-      agentPayload = {
-        ...agentPayload,
-        response_engine: {
-          type: "retell-llm",
-          llm_id: "", // Will be set after prompt generation
-        },
-        language: "en-US",
-        enable_backchanneling: true,
-        responsiveness: 0.5,
-        interruption_sensitivity: 0.8,
-      };
+      const newAgent = await createRes.json();
+      newAgentId = newAgent.agent_id;
+      agentPlatform = "retell";
     }
-
-    // 6. Create a new Retell agent
-    const createRes = await fetch("https://api.retellai.com/v2/agents", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${retellApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(agentPayload),
-    });
-
-    if (!createRes.ok) {
-      const errText = await createRes.text();
-      console.error("Retell agent creation error:", errText);
-      return NextResponse.json(
-        { error: "Failed to create agent in Retell" },
-        { status: 502 }
-      );
-    }
-
-    const newAgent = await createRes.json();
-    const retellApiKeyEncrypted = encrypt(retellApiKey);
 
     // 7. Insert the new agent row
     const { data: agentRow, error: agentError } = await supabase
@@ -172,8 +213,9 @@ export async function POST(request: NextRequest) {
         organization_id: orgId,
         client_id: clientId,
         name: onboarding.business_name || "AI Agent",
-        retell_agent_id: newAgent.agent_id,
+        retell_agent_id: newAgentId,
         retell_api_key_encrypted: retellApiKeyEncrypted,
+        platform: agentPlatform,
       })
       .select("id, retell_agent_id")
       .single();

@@ -60,6 +60,7 @@ export async function PATCH(
       if (body.business_address !== undefined) onboardingUpdate.business_address = body.business_address;
       if (body.contact_name !== undefined) onboardingUpdate.contact_name = body.contact_name;
       if (body.contact_email !== undefined) onboardingUpdate.contact_email = body.contact_email;
+      if (body.language !== undefined) onboardingUpdate.language = body.language;
 
       // Also create or update business_settings row
       const settingsPayload = {
@@ -89,7 +90,7 @@ export async function PATCH(
     }
 
     case 4: {
-      // Save call handling preferences to onboarding record
+      // Save call handling / chat settings preferences to onboarding record
       if (body.after_hours_behavior !== undefined) onboardingUpdate.after_hours_behavior = body.after_hours_behavior;
       if (body.unanswerable_behavior !== undefined) onboardingUpdate.unanswerable_behavior = body.unanswerable_behavior;
       if (body.escalation_phone !== undefined) onboardingUpdate.escalation_phone = body.escalation_phone;
@@ -98,7 +99,12 @@ export async function PATCH(
       if (body.post_call_log !== undefined) onboardingUpdate.post_call_log = body.post_call_log;
       if (body.post_call_followup_text !== undefined) onboardingUpdate.post_call_followup_text = body.post_call_followup_text;
 
-      // Also update business_settings with call handling fields
+      // Chat/SMS-specific fields
+      if (body.chat_welcome_message !== undefined) onboardingUpdate.chat_welcome_message = body.chat_welcome_message;
+      if (body.chat_offline_behavior !== undefined) onboardingUpdate.chat_offline_behavior = body.chat_offline_behavior;
+      if (body.sms_phone_number !== undefined) onboardingUpdate.sms_phone_number = body.sms_phone_number;
+
+      // Also update business_settings with call handling / chat fields
       const callSettingsPayload: Record<string, unknown> = { updated_at: now };
       if (body.after_hours_behavior !== undefined) callSettingsPayload.after_hours_behavior = body.after_hours_behavior;
       if (body.unanswerable_behavior !== undefined) callSettingsPayload.unanswerable_behavior = body.unanswerable_behavior;
@@ -107,6 +113,8 @@ export async function PATCH(
       if (body.post_call_email_summary !== undefined) callSettingsPayload.post_call_email_summary = body.post_call_email_summary;
       if (body.post_call_log !== undefined) callSettingsPayload.post_call_log = body.post_call_log;
       if (body.post_call_followup_text !== undefined) callSettingsPayload.post_call_followup_text = body.post_call_followup_text;
+      if (body.chat_welcome_message !== undefined) callSettingsPayload.chat_welcome_message = body.chat_welcome_message;
+      if (body.chat_offline_behavior !== undefined) callSettingsPayload.chat_offline_behavior = body.chat_offline_behavior;
 
       const { error: callSettingsError } = await supabase
         .from("business_settings")
@@ -115,7 +123,7 @@ export async function PATCH(
 
       if (callSettingsError) {
         console.error("DB error (business_settings):", callSettingsError.message);
-        return NextResponse.json({ error: "Failed to save call handling settings" }, { status: 500 });
+        return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });
       }
       break;
     }
@@ -129,9 +137,12 @@ export async function PATCH(
     }
 
     case 6: {
-      // Save phone number choice
+      // Save phone number choice or chat widget deployment
       if (body.phone_number_option !== undefined) {
         onboardingUpdate.phone_number_option = body.phone_number_option;
+      }
+      if (body.chat_widget_deployed !== undefined) {
+        onboardingUpdate.chat_widget_deployed = body.chat_widget_deployed;
       }
       break;
     }
