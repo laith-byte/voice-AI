@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/server";
 import PricingCards from "./pricing-cards";
+import type { PlanAddon } from "@/types/database";
 
 export default async function PricingPage({
   params,
@@ -27,6 +28,14 @@ export default async function PricingPage({
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
 
+  // Fetch add-ons
+  const { data: addons } = await supabase
+    .from("plan_addons")
+    .select("*")
+    .eq("organization_id", org.id)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true });
+
   // Fetch stripe connection for checkout
   const { data: stripeConnection } = await supabase
     .from("stripe_connections")
@@ -36,28 +45,11 @@ export default async function PricingPage({
     .single();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <div className="max-w-6xl mx-auto px-4 py-16">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Simple, transparent pricing</h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Choose the plan that fits your business. All plans include a one-time setup fee.
-          </p>
-        </div>
-
-        <PricingCards
-          plans={plans || []}
-          orgSlug={orgSlug}
-          stripeAccountId={stripeConnection?.stripe_account_id || null}
-        />
-
-        <div className="text-center mt-12">
-          <p className="text-sm text-muted-foreground">
-            All prices in USD. Cancel anytime. Need a custom plan?{" "}
-            <a href="#" className="text-blue-600 hover:underline">Contact us</a>
-          </p>
-        </div>
-      </div>
-    </div>
+    <PricingCards
+      plans={plans || []}
+      addons={(addons as PlanAddon[]) || []}
+      orgSlug={orgSlug}
+      stripeAccountId={stripeConnection?.stripe_account_id || null}
+    />
   );
 }

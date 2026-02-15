@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   if (clientError) return clientError;
 
   const body = await request.json();
-  const { vertical_template_id } = body;
+  const { vertical_template_id, agent_type } = body;
 
   if (!vertical_template_id) {
     return NextResponse.json(
@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
         status: "in_progress",
         current_step: 1,
         vertical_template_id,
+        agent_type: agent_type || "voice",
         updated_at: new Date().toISOString(),
       },
       { onConflict: "client_id" }

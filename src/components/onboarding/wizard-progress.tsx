@@ -6,9 +6,10 @@ import { Check } from "lucide-react";
 interface WizardProgressProps {
   currentStep: number; // 1-6
   totalSteps?: number; // default 6
+  agentType?: "voice" | "chat" | "sms";
 }
 
-const STEP_LABELS = [
+const VOICE_STEP_LABELS = [
   "Template",
   "Business Info",
   "Settings",
@@ -17,10 +18,30 @@ const STEP_LABELS = [
   "Go Live",
 ];
 
+const CHAT_STEP_LABELS = [
+  "Template",
+  "Business Info",
+  "Settings",
+  "Chat Settings",
+  "Test Chat",
+  "Go Live",
+];
+
+const SMS_STEP_LABELS = [
+  "Template",
+  "Business Info",
+  "Settings",
+  "SMS Settings",
+  "Test SMS",
+  "Go Live",
+];
+
 export function WizardProgress({
   currentStep,
   totalSteps = 6,
+  agentType = "voice",
 }: WizardProgressProps) {
+  const STEP_LABELS = agentType === "sms" ? SMS_STEP_LABELS : agentType === "chat" ? CHAT_STEP_LABELS : VOICE_STEP_LABELS;
   const steps = Array.from({ length: totalSteps }, (_, i) => i + 1);
 
   return (

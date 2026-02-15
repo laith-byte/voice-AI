@@ -105,6 +105,140 @@ CALL HANDLING RULES:
 - Never make up information — if unsure, {{unanswerable_behavior}}
 `;
 
+const DEFAULT_CHAT_PROMPT_TEMPLATE = `## Identity
+
+You are a friendly, professional AI chat assistant for {{business_name}}.
+{{#if business_address}}
+You are located at {{business_address}}.
+{{/if}}
+{{#if business_phone}}
+The business phone number is {{business_phone}}.
+{{/if}}
+{{#if business_website}}
+The business website is {{business_website}}.
+{{/if}}
+
+## Response Guidelines
+
+CHAT CONVERSATION RULES:
+- Keep responses concise and scannable — use short paragraphs
+- Use bullet points for lists of 3 or more items
+- Format important information clearly (bold key details)
+- Be conversational but professional
+- Respond promptly and stay on topic
+- If sharing links or URLs, format them as clickable text
+
+## Task Instructions
+
+BUSINESS HOURS ({{timezone}}):
+{{#each business_hours}}
+{{day}}: {{#if closed}}Closed{{else}}{{open}} - {{close}}{{/if}}
+{{/each}}
+
+{{#if services.length}}
+SERVICES WE OFFER:
+{{#each services}}
+- {{name}}{{#if description}}: {{description}}{{/if}}{{#if price}} ({{price}}){{/if}}{{#if ai_notes}}
+  [Agent Note: {{ai_notes}}]{{/if}}
+{{/each}}
+{{/if}}
+
+{{#if faqs.length}}
+FREQUENTLY ASKED QUESTIONS:
+{{#each faqs}}
+Q: {{question}}
+A: {{answer}}
+{{/each}}
+{{/if}}
+
+{{#if policies.length}}
+POLICIES:
+{{#each policies}}
+{{name}}: {{description}}
+{{/each}}
+{{/if}}
+
+{{#if locations.length}}
+LOCATIONS:
+{{#each locations}}
+- {{name}}: {{address}}{{#if phone}} ({{phone}}){{/if}}
+{{/each}}
+{{/if}}
+
+CHAT HANDLING RULES:
+- If the visitor asks about something not covered above, {{unanswerable_behavior}}
+- If chatting outside business hours, {{after_hours_behavior}}
+- Always be warm, helpful, and professional
+- Never make up information — if unsure, {{unanswerable_behavior}}
+`;
+
+const DEFAULT_SMS_PROMPT_TEMPLATE = `## Identity
+
+You are a friendly, professional AI SMS assistant for {{business_name}}.
+{{#if business_address}}
+You are located at {{business_address}}.
+{{/if}}
+{{#if business_phone}}
+The business phone number is {{business_phone}}.
+{{/if}}
+{{#if business_website}}
+The business website is {{business_website}}.
+{{/if}}
+
+## Response Guidelines
+
+SMS CONVERSATION RULES:
+- Keep responses under 160 characters when possible for SMS readability
+- Be concise and direct — every character counts in SMS
+- Use simple language, avoid complex formatting
+- If sharing URLs, keep them short
+- Be conversational but professional
+- Respond promptly and stay on topic
+
+## Task Instructions
+
+BUSINESS HOURS ({{timezone}}):
+{{#each business_hours}}
+{{day}}: {{#if closed}}Closed{{else}}{{open}} - {{close}}{{/if}}
+{{/each}}
+
+{{#if services.length}}
+SERVICES WE OFFER:
+{{#each services}}
+- {{name}}{{#if description}}: {{description}}{{/if}}{{#if price}} ({{price}}){{/if}}{{#if ai_notes}}
+  [Agent Note: {{ai_notes}}]{{/if}}
+{{/each}}
+{{/if}}
+
+{{#if faqs.length}}
+FREQUENTLY ASKED QUESTIONS:
+{{#each faqs}}
+Q: {{question}}
+A: {{answer}}
+{{/each}}
+{{/if}}
+
+{{#if policies.length}}
+POLICIES:
+{{#each policies}}
+{{name}}: {{description}}
+{{/each}}
+{{/if}}
+
+{{#if locations.length}}
+LOCATIONS:
+{{#each locations}}
+- {{name}}: {{address}}{{#if phone}} ({{phone}}){{/if}}
+{{/each}}
+{{/if}}
+
+SMS HANDLING RULES:
+- If the customer asks about something not covered above, {{unanswerable_behavior}}
+- If texting outside business hours, {{after_hours_behavior}}
+- Always be warm, helpful, and professional
+- Never make up information — if unsure, {{unanswerable_behavior}}
+`;
+
 interface HoursRow {
   day_of_week: number;
   is_open: boolean;
@@ -141,7 +275,8 @@ interface LocationRow {
  */
 export async function generatePrompt(
   clientId: string,
-  promptTemplate?: string | null
+  promptTemplate?: string | null,
+  agentType?: string
 ): Promise<string> {
   const supabase = await createServerClient();
 
@@ -180,7 +315,8 @@ export async function generatePrompt(
     throw new Error("Business settings not found for client");
   }
 
-  const templateSource = promptTemplate || DEFAULT_PROMPT_TEMPLATE;
+  const defaultTemplate = agentType === "sms" ? DEFAULT_SMS_PROMPT_TEMPLATE : agentType === "chat" ? DEFAULT_CHAT_PROMPT_TEMPLATE : DEFAULT_PROMPT_TEMPLATE;
+  const templateSource = promptTemplate || defaultTemplate;
   const template = Handlebars.compile(templateSource, { noEscape: true });
 
   const data = {
@@ -234,7 +370,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
   // Get the agent linked to this client, plus template if available
   const { data: agent } = await supabase
     .from("agents")
-    .select("id, retell_agent_id, retell_api_key_encrypted")
+    .select("id, retell_agent_id, retell_api_key_encrypted, platform")
     .eq("client_id", clientId)
     .limit(1)
     .single();
@@ -243,6 +379,8 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     // No agent for this client yet — skip silently (happens during onboarding before agent creation)
     return;
   }
+
+  const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
 
   // Check if there's a template with a prompt_template
   const { data: templateLink } = await supabase
@@ -261,7 +399,8 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     promptTemplate = tmpl?.prompt_template || null;
   }
 
-  const generatedPrompt = await generatePrompt(clientId, promptTemplate);
+  const agentTypeStr = agent.platform === "retell-sms" ? "sms" : isChat ? "chat" : "voice";
+  const generatedPrompt = await generatePrompt(clientId, promptTemplate, agentTypeStr);
 
   // Get business settings for max_call_duration
   const { data: settings } = await supabase
@@ -279,26 +418,53 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     throw new Error("No Retell API key available");
   }
 
-  // Push to Retell
-  const res = await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      response_engine: {
-        llm: {
-          system_prompt: generatedPrompt,
+  if (isChat) {
+    // Push to Retell Chat Agent API
+    const res = await fetch(
+      `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
         },
-      },
-      max_call_duration_ms: (settings?.max_call_duration_minutes || 5) * 60 * 1000,
-    }),
-  });
+        body: JSON.stringify({
+          response_engine: {
+            llm: {
+              system_prompt: generatedPrompt,
+            },
+          },
+        }),
+      }
+    );
 
-  if (!res.ok) {
-    const err = await res.text();
-    console.error("Retell API error:", err);
-    throw new Error(`Failed to update Retell agent: ${res.status}`);
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Retell Chat API error:", err);
+      throw new Error(`Failed to update Retell chat agent: ${res.status}`);
+    }
+  } else {
+    // Push to Retell Voice Agent API
+    const res = await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        response_engine: {
+          llm: {
+            system_prompt: generatedPrompt,
+          },
+        },
+        max_call_duration_ms: (settings?.max_call_duration_minutes || 5) * 60 * 1000,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Retell API error:", err);
+      throw new Error(`Failed to update Retell agent: ${res.status}`);
+    }
   }
 }

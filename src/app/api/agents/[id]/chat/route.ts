@@ -29,7 +29,7 @@ export async function POST(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  if (agent.platform !== "retell-chat") {
+  if (agent.platform !== "retell-chat" && agent.platform !== "retell-sms") {
     return NextResponse.json({ error: "Agent is not a chat agent" }, { status: 400 });
   }
 

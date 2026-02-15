@@ -5,6 +5,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   CreditCard,
   FileText,
   ExternalLink,
@@ -17,21 +29,14 @@ import {
   Sparkles,
   Calendar,
   ArrowUpRight,
+  Users,
+  Phone,
+  Zap,
+  Minus,
+  ChevronRight,
 } from "lucide-react";
-
-interface Plan {
-  id: string;
-  name: string;
-  description: string | null;
-  monthly_price: number | null;
-  yearly_price: number | null;
-  setup_fee: number;
-  agents_included: number;
-  call_minutes_included: number;
-  features: string[] | null;
-  stripe_monthly_price_id: string | null;
-  sort_order: number;
-}
+import { toast } from "sonner";
+import type { ClientPlan, PlanAddon } from "@/types";
 
 interface Subscription {
   id: string;
@@ -55,20 +60,27 @@ interface Invoice {
   hosted_invoice_url: string | null;
 }
 
-interface CurrentPlan {
+interface ClientAddonWithDetails {
   id: string;
-  name: string;
-  description: string | null;
-  monthly_price: number | null;
-  agents_included: number;
-  call_minutes_included: number;
+  addon_id: string;
+  quantity: number;
+  plan_addons: {
+    name: string;
+    description: string | null;
+    monthly_price: number | null;
+    one_time_price: number | null;
+    addon_type: string;
+    category: string;
+  };
 }
 
 interface BillingData {
   client_name: string;
   has_stripe: boolean;
-  current_plan: CurrentPlan | null;
-  plans: Plan[];
+  current_plan: ClientPlan | null;
+  plans: ClientPlan[];
+  addons: PlanAddon[];
+  client_addons: ClientAddonWithDetails[];
   subscription: Subscription | null;
   invoices: Invoice[];
 }
@@ -103,6 +115,207 @@ function InvoiceStatusBadge({ status }: { status: string }) {
   };
   const info = map[status] || { label: status, variant: "outline" as const };
   return <Badge variant={info.variant}>{info.label}</Badge>;
+}
+
+function getEnabledFeatures(plan: ClientPlan): string[] {
+  const features: string[] = [];
+  if (plan.is_custom_pricing) {
+    features.push("Custom AI Agents");
+    features.push("Custom Minutes");
+    features.push("Custom Phone Numbers");
+  } else {
+    features.push(`${plan.agents_included} AI Agent${plan.agents_included !== 1 ? "s" : ""}`);
+    features.push(`${plan.call_minutes_included.toLocaleString()} minutes/mo`);
+    features.push(`${plan.phone_numbers_included} Phone Number${plan.phone_numbers_included !== 1 ? "s" : ""}`);
+  }
+  if (plan.overage_rate) {
+    features.push(`$${plan.overage_rate}/min overage`);
+  }
+  features.push("All Features Included");
+  return features;
+}
+
+// Full comparison matrix for the plan comparison dialog
+const COMPARISON_CATEGORIES = [
+  {
+    name: "Usage",
+    rows: [
+      { label: "Included Minutes", key: "call_minutes_included", type: "number" as const },
+      { label: "AI Agents", key: "agents_included", type: "number" as const },
+      { label: "Phone Numbers", key: "phone_numbers_included", type: "number" as const },
+      { label: "Concurrent Calls", key: "concurrent_calls", type: "number" as const },
+      { label: "Knowledge Bases", key: "knowledge_bases", type: "number" as const },
+      { label: "Overage Rate", key: "overage_rate", type: "price" as const },
+    ],
+  },
+  {
+    name: "Analytics & Insights",
+    rows: [
+      { label: "Full Analytics Suite", key: "analytics_full", type: "boolean" as const },
+      { label: "AI Call Evaluation", key: "ai_evaluation", type: "boolean" as const },
+      { label: "Auto-Tagging", key: "ai_auto_tagging", type: "boolean" as const },
+      { label: "Misunderstood Query Detection", key: "ai_misunderstood", type: "boolean" as const },
+      { label: "Topic Management", key: "topic_management", type: "boolean" as const },
+      { label: "Daily Digest", key: "daily_digest", type: "boolean" as const },
+      { label: "Analytics Export", key: "analytics_export", type: "boolean" as const },
+      { label: "Custom Reporting", key: "custom_reporting", type: "boolean" as const },
+    ],
+  },
+  {
+    name: "Automations & Integrations",
+    rows: [
+      { label: "SMS Notifications", key: "sms_notification", type: "boolean" as const },
+      { label: "Caller Follow-up Email", key: "caller_followup_email", type: "boolean" as const },
+      { label: "Google Calendar", key: "google_calendar", type: "boolean" as const },
+      { label: "Slack Integration", key: "slack_integration", type: "boolean" as const },
+      { label: "CRM Integration", key: "crm_integration", type: "boolean" as const },
+      { label: "Webhook Forwarding", key: "webhook_forwarding", type: "boolean" as const },
+      { label: "Automation Recipes", key: "max_recipes", type: "recipes" as const },
+    ],
+  },
+  {
+    name: "Agent Configuration",
+    rows: [
+      { label: "Voice Selection", key: "voice_selection", type: "selection" as const },
+      { label: "LLM Selection", key: "llm_selection", type: "selection" as const },
+      { label: "Raw Prompt Editor", key: "raw_prompt_editor", type: "boolean" as const },
+      { label: "Functions & Tools", key: "functions_tools", type: "boolean" as const },
+      { label: "Pronunciation Dictionary", key: "pronunciation_dict", type: "boolean" as const },
+      { label: "Post-Call Analysis Config", key: "post_call_analysis_config", type: "boolean" as const },
+      { label: "Campaign Outbound", key: "campaign_outbound", type: "boolean" as const },
+      { label: "Full Speech Settings", key: "speech_settings_full", type: "boolean" as const },
+      { label: "MCP Configuration", key: "mcp_configuration", type: "boolean" as const },
+    ],
+  },
+  {
+    name: "Support & Compliance",
+    rows: [
+      { label: "Priority Support", key: "priority_support", type: "boolean" as const },
+      { label: "Dedicated Account Manager", key: "dedicated_account_manager", type: "boolean" as const },
+      { label: "Onboarding Call", key: "onboarding_call", type: "boolean" as const },
+      { label: "Custom Agent Buildout", key: "custom_agent_buildout", type: "boolean" as const },
+      { label: "SLA Guarantee", key: "sla_guarantee", type: "boolean" as const },
+      { label: "HIPAA Compliance", key: "hipaa_compliance", type: "boolean" as const },
+      { label: "Custom Branding", key: "custom_branding", type: "boolean" as const },
+    ],
+  },
+];
+
+function getCellValue(plan: ClientPlan, key: string, type: string): React.ReactNode {
+  const isCustom = plan.is_custom_pricing;
+  const val = (plan as unknown as Record<string, unknown>)[key];
+  switch (type) {
+    case "boolean":
+      return val ? (
+        <Check className="w-4 h-4 text-green-600 mx-auto" />
+      ) : (
+        <Minus className="w-4 h-4 text-gray-300 mx-auto" />
+      );
+    case "number":
+      return (
+        <span className="text-sm font-medium">
+          {isCustom ? "Custom" : val != null ? Number(val).toLocaleString() : "Custom"}
+        </span>
+      );
+    case "price":
+      return (
+        <span className="text-sm font-medium">
+          {isCustom || val == null ? "Custom" : `$${val}/min`}
+        </span>
+      );
+    case "recipes":
+      return (
+        <span className="text-sm font-medium">
+          {isCustom ? "Custom" : val == null ? "Unlimited" : String(val)}
+        </span>
+      );
+    case "selection":
+      return (
+        <span className="text-sm font-medium capitalize">
+          {isCustom ? "Custom" : val === "full" ? "Full" : "Standard"}
+        </span>
+      );
+    default:
+      return <span className="text-sm">{String(val ?? "—")}</span>;
+  }
+}
+
+function PlanComparisonDialog({
+  plans,
+  currentPlanId,
+  trigger,
+}: {
+  plans: ClientPlan[];
+  currentPlanId: string | undefined;
+  trigger: React.ReactNode;
+}) {
+  const colTemplate = `220px ${plans.map(() => "1fr").join(" ")}`;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="sm:max-w-6xl w-[95vw] h-[85vh] flex flex-col p-0 gap-0">
+        {/* Fixed header */}
+        <div className="px-6 pt-6 pb-0 flex-shrink-0">
+          <DialogHeader>
+            <DialogTitle>Compare Plans</DialogTitle>
+          </DialogHeader>
+
+          {/* Sticky plan names row */}
+          <div
+            className="grid mt-4 pb-3 border-b"
+            style={{ gridTemplateColumns: colTemplate }}
+          >
+            <div />
+            {plans.map((plan) => (
+              <div key={plan.id} className="text-center">
+                <p className="text-sm font-bold">{plan.name}</p>
+                {plan.id === currentPlanId && (
+                  <Badge variant="outline" className="text-green-600 border-green-300 text-[10px] mt-0.5">
+                    Current
+                  </Badge>
+                )}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {plan.is_custom_pricing
+                    ? "Custom"
+                    : `$${plan.monthly_price}/mo`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+          {COMPARISON_CATEGORIES.map((category) => (
+            <div key={category.name} className="mt-5">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                {category.name}
+              </h3>
+              {category.rows.map((row, i) => (
+                <div
+                  key={row.key}
+                  className={`grid items-center py-2 ${
+                    i < category.rows.length - 1
+                      ? "border-b border-gray-100 dark:border-gray-800"
+                      : ""
+                  }`}
+                  style={{ gridTemplateColumns: colTemplate }}
+                >
+                  <span className="text-sm text-muted-foreground">{row.label}</span>
+                  {plans.map((plan) => (
+                    <div key={plan.id} className="text-center">
+                      {getCellValue(plan, row.key, row.type)}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export default function PortalBillingPage() {
@@ -141,18 +354,27 @@ export default function PortalBillingPage() {
     }
   }
 
-  async function handleUpgrade(planId: string) {
-    setCheckoutLoading(planId);
+  async function handleUpgrade(plan: ClientPlan) {
+    if (!plan.stripe_monthly_price_id) {
+      toast.error("This plan is not available for checkout yet. Please contact support.");
+      return;
+    }
+
+    setCheckoutLoading(plan.id);
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: planId }),
+        body: JSON.stringify({ plan_id: plan.id, return_url: window.location.href }),
       });
       const json = await res.json();
       if (json.url) {
         window.location.href = json.url;
+      } else {
+        toast.error(json.error || "Failed to start checkout. Please try again.");
       }
+    } catch {
+      toast.error("Something went wrong. Please try again or contact support.");
     } finally {
       setCheckoutLoading(null);
     }
@@ -171,13 +393,11 @@ export default function PortalBillingPage() {
   const sub = data?.subscription;
   const plans = data?.plans || [];
   const currentPlan = data?.current_plan;
+  const addons = data?.addons || [];
+  const clientAddons = data?.client_addons || [];
   const invoices = data?.invoices || [];
 
-  // Determine which plan is "current" — match by plan_id or by subscription plan name
   const currentPlanId = currentPlan?.id;
-
-  // Mark the middle plan as popular if 3+ plans
-  const popularIndex = plans.length >= 3 ? 1 : -1;
 
   return (
     <div className="p-4 md:p-6">
@@ -224,8 +444,11 @@ export default function PortalBillingPage() {
                     <p className="text-lg font-semibold">
                       {sub.plan_name || currentPlan?.name || "Current Plan"}
                     </p>
+                    {currentPlan?.tagline && (
+                      <p className="text-sm text-muted-foreground">{currentPlan.tagline}</p>
+                    )}
                     {sub.plan_amount !== null && sub.plan_currency && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground mt-1">
                         {formatCurrency(sub.plan_amount, sub.plan_currency)}
                         {sub.plan_interval && `/${sub.plan_interval}`}
                       </p>
@@ -260,7 +483,7 @@ export default function PortalBillingPage() {
           </Card>
         )}
 
-        {/* Current Plan (no Stripe subscription) */}
+        {/* Current Plan Details (no Stripe subscription) */}
         {!sub && currentPlan && (
           <Card className="overflow-hidden animate-fade-in-up glass-card">
             <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
@@ -275,41 +498,150 @@ export default function PortalBillingPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-lg font-semibold">{currentPlan.name}</p>
+                  {currentPlan.tagline && (
+                    <p className="text-sm text-muted-foreground">{currentPlan.tagline}</p>
+                  )}
                   {currentPlan.description && (
-                    <p className="text-sm text-muted-foreground">{currentPlan.description}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{currentPlan.description}</p>
                   )}
                 </div>
-                {currentPlan.monthly_price !== null && (
+                {currentPlan.monthly_price !== null && !currentPlan.is_custom_pricing && (
                   <p className="text-lg font-bold">
                     ${currentPlan.monthly_price}<span className="text-sm font-normal text-muted-foreground">/mo</span>
                   </p>
+                )}
+                {currentPlan.is_custom_pricing && (
+                  <Badge variant="secondary">Custom Plan</Badge>
                 )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Available Plans */}
+        {/* Plan Usage Summary */}
+        {currentPlan && (
+          <Card className="overflow-hidden animate-fade-in-up glass-card">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-md bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                  <Zap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="font-semibold text-sm">Plan Includes</h3>
+              </div>
+            </div>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                  <Clock className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                  <p className="text-lg font-bold">{currentPlan.call_minutes_included.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">minutes/mo</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                  <Users className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                  <p className="text-lg font-bold">{currentPlan.agents_included}</p>
+                  <p className="text-xs text-muted-foreground">AI agents</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                  <Phone className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                  <p className="text-lg font-bold">{currentPlan.phone_numbers_included ?? 1}</p>
+                  <p className="text-xs text-muted-foreground">phone numbers</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                  <Zap className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                  <p className="text-lg font-bold">{currentPlan.concurrent_calls ?? 5}</p>
+                  <p className="text-xs text-muted-foreground">concurrent calls</p>
+                </div>
+              </div>
+              {currentPlan.overage_rate && (
+                <p className="text-xs text-muted-foreground mb-3">
+                  Overage rate: ${currentPlan.overage_rate}/min beyond included minutes
+                </p>
+              )}
+              {/* Enabled Features */}
+              {(() => {
+                const enabled = getEnabledFeatures(currentPlan);
+                if (enabled.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-1.5">
+                    {enabled.map((f) => (
+                      <Badge key={f} variant="outline" className="text-xs">
+                        <Check className="w-3 h-3 mr-1" />
+                        {f}
+                      </Badge>
+                    ))}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Active Add-ons */}
+        {clientAddons.length > 0 && (
+          <Card className="overflow-hidden animate-fade-in-up glass-card">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-md bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <h3 className="font-semibold text-sm">Active Add-ons</h3>
+              </div>
+            </div>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {clientAddons.map((ca) => (
+                  <div key={ca.id} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium">{ca.plan_addons.name}</p>
+                      {ca.plan_addons.description && (
+                        <p className="text-xs text-muted-foreground">{ca.plan_addons.description}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      {ca.quantity > 1 && (
+                        <span className="text-xs text-muted-foreground mr-2">x{ca.quantity}</span>
+                      )}
+                      <span className="text-sm font-medium">
+                        {ca.plan_addons.addon_type === "recurring"
+                          ? `$${(ca.plan_addons.monthly_price || 0) * ca.quantity}/mo`
+                          : `$${ca.plan_addons.one_time_price}`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Available Plans (Upgrade) */}
         {plans.length > 0 && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <h2 className="text-lg font-semibold">
-                {sub || currentPlan ? "Upgrade Your Plan" : "Available Plans"}
-              </h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h2 className="text-lg font-semibold">
+                  {sub || currentPlan ? "Upgrade Your Plan" : "Available Plans"}
+                </h2>
+              </div>
+              <PlanComparisonDialog
+                plans={plans}
+                currentPlanId={currentPlanId}
+                trigger={
+                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-foreground gap-1">
+                    Compare all plans
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                }
+              />
             </div>
             <div className={`grid gap-4 ${plans.length === 1 ? "grid-cols-1 max-w-md" : plans.length === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-3"}`}>
-              {plans.map((plan, index) => {
-                const isPopular = index === popularIndex;
+              {plans.map((plan) => {
                 const isCurrent = plan.id === currentPlanId;
-                const rawFeatures = plan.features;
-                const features: string[] = Array.isArray(rawFeatures)
-                  ? rawFeatures
-                  : typeof rawFeatures === "string"
-                  ? (() => { try { const p = JSON.parse(rawFeatures); return Array.isArray(p) ? p : []; } catch { return []; } })()
-                  : [];
-                const canCheckout = !!plan.stripe_monthly_price_id && !isCurrent;
+                const isHighlighted = plan.is_highlighted;
+                const isCustom = plan.is_custom_pricing;
                 const isLoading = checkoutLoading === plan.id;
+                const features = getEnabledFeatures(plan);
 
                 return (
                   <Card
@@ -317,63 +649,143 @@ export default function PortalBillingPage() {
                     className={`relative overflow-hidden transition-all ${
                       isCurrent
                         ? "border-green-500 border-2 bg-green-50/50 dark:bg-green-950/20"
-                        : isPopular
+                        : isHighlighted
                         ? "border-primary border-2 shadow-lg"
                         : ""
                     }`}
                   >
                     {isCurrent && (
-                      <Badge className="absolute -top-0 right-3 top-3 bg-green-600">
+                      <Badge className="absolute right-3 top-3 bg-green-600">
                         Current Plan
                       </Badge>
                     )}
-                    {isPopular && !isCurrent && (
+                    {plan.badge && !isCurrent && (
                       <Badge className="absolute right-3 top-3 bg-primary">
-                        Most Popular
+                        {plan.badge}
                       </Badge>
                     )}
                     <CardContent className="p-5 space-y-4">
                       <div>
                         <h3 className="text-lg font-bold">{plan.name}</h3>
-                        {plan.description && (
-                          <p className="text-sm text-muted-foreground mt-0.5">{plan.description}</p>
+                        {plan.tagline && (
+                          <p className="text-xs text-muted-foreground mt-0.5">{plan.tagline}</p>
                         )}
                       </div>
                       <div>
-                        <span className="text-3xl font-bold">
-                          ${plan.monthly_price ?? 0}
-                        </span>
-                        <span className="text-muted-foreground">/mo</span>
-                        {plan.setup_fee > 0 && (
+                        {isCustom ? (
+                          <>
+                            <span className="text-3xl font-bold">Custom</span>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Tailored to your needs
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-3xl font-bold">
+                              ${plan.monthly_price ?? 0}
+                            </span>
+                            <span className="text-muted-foreground">/mo</span>
+                          </>
+                        )}
+                        {!isCustom && plan.yearly_price && (
                           <p className="text-xs text-muted-foreground mt-1">
-                            + ${plan.setup_fee} one-time setup
+                            or ${plan.yearly_price.toLocaleString()}/year (save ~20%)
                           </p>
                         )}
                       </div>
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <p>{plan.agents_included} agent{plan.agents_included !== 1 ? "s" : ""} included</p>
-                        <p>{plan.call_minutes_included.toLocaleString()} minutes/mo</p>
-                      </div>
+
+                      {/* Usage stats */}
+                      {isCustom ? (
+                        <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/30 text-center">
+                          <div>
+                            <p className="text-xs font-semibold">Custom</p>
+                            <p className="text-[10px] text-muted-foreground">min/mo</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold">Custom</p>
+                            <p className="text-[10px] text-muted-foreground">agents</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold">Custom</p>
+                            <p className="text-[10px] text-muted-foreground">numbers</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900/30 text-center">
+                          <div>
+                            <p className="text-xs font-semibold">{plan.call_minutes_included.toLocaleString()}</p>
+                            <p className="text-[10px] text-muted-foreground">min/mo</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold">{plan.agents_included}</p>
+                            <p className="text-[10px] text-muted-foreground">agents</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold">{plan.phone_numbers_included ?? 1}</p>
+                            <p className="text-[10px] text-muted-foreground">numbers</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Key features */}
                       {features.length > 0 && (
-                        <ul className="space-y-2">
-                          {features.map((feature) => (
+                        <ul className="space-y-1.5">
+                          {features.slice(0, 6).map((feature) => (
                             <li key={feature} className="flex items-start gap-2 text-sm">
-                              <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                              {feature}
+                              <Check className="w-3.5 h-3.5 text-green-600 flex-shrink-0 mt-0.5" />
+                              <span className="text-xs">{feature}</span>
                             </li>
                           ))}
+                          {features.length > 6 && (
+                            <li>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <PlanComparisonDialog
+                                    plans={plans}
+                                    currentPlanId={currentPlanId}
+                                    trigger={
+                                      <button className="text-xs text-primary hover:underline cursor-pointer pl-5 flex items-center gap-1">
+                                        +{features.length - 6} more features
+                                        <ChevronRight className="w-3 h-3" />
+                                      </button>
+                                    }
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" align="start" className="max-w-xs">
+                                  <ul className="space-y-1 py-1">
+                                    {features.slice(6).map((f) => (
+                                      <li key={f} className="flex items-center gap-1.5 text-xs">
+                                        <Check className="w-3 h-3 text-green-600 flex-shrink-0" />
+                                        {f}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  <p className="text-[10px] text-muted-foreground mt-1.5 border-t pt-1.5">
+                                    Click to compare all plans
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </li>
+                          )}
                         </ul>
                       )}
+
                       {isCurrent ? (
                         <Button variant="outline" className="w-full" disabled>
                           <CheckCircle2 className="w-4 h-4 mr-1.5" />
                           Current Plan
                         </Button>
-                      ) : canCheckout ? (
+                      ) : isCustom ? (
+                        <Button variant="outline" className="w-full" asChild>
+                          <a href="mailto:sales@invarialabs.com">
+                            Contact Sales
+                          </a>
+                        </Button>
+                      ) : (
                         <Button
-                          className={`w-full ${isPopular ? "bg-primary hover:bg-primary/90" : ""}`}
-                          variant={isPopular ? "default" : "outline"}
-                          onClick={() => handleUpgrade(plan.id)}
+                          className={`w-full ${isHighlighted ? "bg-primary hover:bg-primary/90" : ""}`}
+                          variant={isHighlighted ? "default" : "outline"}
+                          onClick={() => handleUpgrade(plan)}
                           disabled={isLoading}
                         >
                           {isLoading ? (
@@ -384,13 +796,9 @@ export default function PortalBillingPage() {
                           ) : (
                             <>
                               <ArrowUpRight className="w-4 h-4 mr-1.5" />
-                              {sub || currentPlan ? "Upgrade" : "Get Started"}
+                              Upgrade
                             </>
                           )}
-                        </Button>
-                      ) : (
-                        <Button variant="outline" className="w-full" disabled>
-                          Coming Soon
                         </Button>
                       )}
                     </CardContent>

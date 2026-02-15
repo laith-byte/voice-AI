@@ -7,6 +7,9 @@ import { toast } from "sonner";
 import { RecipeCard } from "@/components/automations/recipe-card";
 import { RecipeSetupModal } from "@/components/automations/recipe-setup-modal";
 import { ActiveAutomationCard } from "@/components/automations/active-automation-card";
+import { usePlanAccess } from "@/hooks/use-plan-access";
+import { UpgradeBanner } from "@/components/portal/upgrade-banner";
+import { Lock } from "lucide-react";
 
 interface Recipe {
   id: string;
@@ -68,8 +71,39 @@ const PROVIDER_LABELS: Record<string, string> = {
   hubspot: "HubSpot",
 };
 
+// Map recipe categories/names to plan access fields
+const RECIPE_PLAN_GATES: Record<string, string> = {
+  sms_notification: "sms_notification",
+  sms: "sms_notification",
+  caller_followup_email: "caller_followup_email",
+  email: "caller_followup_email",
+  google_calendar: "google_calendar",
+  calendar: "google_calendar",
+  slack: "slack_integration",
+  slack_notification: "slack_integration",
+  crm: "crm_integration",
+  hubspot: "crm_integration",
+  webhook: "webhook_forwarding",
+  webhook_forwarding: "webhook_forwarding",
+};
+
+function isRecipeGated(recipeName: string, recipeCategory: string, planAccess: Record<string, unknown> | null): boolean {
+  if (!planAccess) return false; // No plan info = allow
+  const nameKey = recipeName.toLowerCase().replace(/\s+/g, "_");
+  const catKey = recipeCategory.toLowerCase().replace(/\s+/g, "_");
+
+  // Check name-based gate
+  for (const [pattern, field] of Object.entries(RECIPE_PLAN_GATES)) {
+    if (nameKey.includes(pattern) || catKey.includes(pattern)) {
+      return planAccess[field] === false;
+    }
+  }
+  return false;
+}
+
 export default function PortalAutomationsPage() {
   const searchParams = useSearchParams();
+  const { planAccess } = usePlanAccess();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [oauthConnections, setOauthConnections] = useState<OAuthConnection[]>([]);
@@ -150,10 +184,21 @@ export default function PortalAutomationsPage() {
 
   // Filter recipes: show only active ones that the client hasn't enabled yet
   const enabledRecipeIds = new Set(automations.map((a) => a.recipe_id));
-  const availableRecipes = recipes.filter(
+  const allAvailableRecipes = recipes.filter(
     (r) => r.is_active && !enabledRecipeIds.has(r.id)
   );
+  // Split available into unlocked and gated
+  const availableRecipes = allAvailableRecipes.filter(
+    (r) => !isRecipeGated(r.name, r.category, planAccess as Record<string, unknown> | null)
+  );
+  const gatedRecipes = allAvailableRecipes.filter(
+    (r) => isRecipeGated(r.name, r.category, planAccess as Record<string, unknown> | null)
+  );
   const comingSoonRecipes = recipes.filter((r) => r.is_coming_soon);
+
+  // Check max_recipes limit
+  const maxRecipes = planAccess?.max_recipes;
+  const atRecipeLimit = maxRecipes !== null && maxRecipes !== undefined && automations.length >= maxRecipes;
   const activeAutomations = automations.filter((a) => a.is_enabled);
   const disabledAutomations = automations.filter((a) => !a.is_enabled);
 
@@ -307,6 +352,15 @@ export default function PortalAutomationsPage() {
           </section>
         )}
 
+        {/* Recipe Limit Warning */}
+        {atRecipeLimit && (
+          <UpgradeBanner
+            feature="Recipe Limit Reached"
+            plan="Professional"
+            description={`Your plan allows up to ${maxRecipes} active automations. Upgrade for unlimited recipes.`}
+          />
+        )}
+
         {/* Available Recipes Gallery */}
         {availableRecipes.length > 0 && (
           <section>
@@ -318,8 +372,31 @@ export default function PortalAutomationsPage() {
                 <RecipeCard
                   key={recipe.id}
                   recipe={recipe}
-                  onSetup={() => setSetupRecipe(recipe)}
+                  onSetup={() => atRecipeLimit ? undefined : setSetupRecipe(recipe)}
                 />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Gated Recipes (locked by plan) */}
+        {gatedRecipes.length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              <Lock className="w-3.5 h-3.5 inline mr-1.5" />
+              Upgrade to Unlock
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
+              {gatedRecipes.map((recipe) => (
+                <div key={recipe.id} className="relative opacity-60">
+                  <RecipeCard
+                    recipe={recipe}
+                    onSetup={() => {}}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-black/40 rounded-xl">
+                    <Lock className="w-5 h-5 text-amber-600" />
+                  </div>
+                </div>
               ))}
             </div>
           </section>

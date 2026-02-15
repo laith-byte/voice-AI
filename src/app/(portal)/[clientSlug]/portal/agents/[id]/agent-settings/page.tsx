@@ -66,6 +66,8 @@ import { useRetellCall } from "@/hooks/use-retell-call";
 import { useDashboardTheme } from "@/components/portal/dashboard-theme-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { usePlanAccess } from "@/hooks/use-plan-access";
+import { UpgradeBanner } from "@/components/portal/upgrade-banner";
 
 interface Agent {
   id: string;
@@ -83,9 +85,20 @@ interface FunctionTool {
   [key: string]: unknown;
 }
 
+interface VoiceOption {
+  voice_id: string;
+  voice_name: string;
+  gender: "male" | "female";
+  provider: string;
+  accent: string | null;
+  age: string | null;
+  preview_audio_url: string | null;
+}
+
 export default function AgentSettingsPage() {
   const params = useParams();
   const agentId = params.id as string;
+  const { planAccess } = usePlanAccess();
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [agentName, setAgentName] = useState("");
@@ -93,11 +106,11 @@ export default function AgentSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const isChat = agent?.platform === "retell-chat";
+  const isChat = agent?.platform === "retell-chat" || agent?.platform === "retell-sms";
 
   // Agent Config state -- populated from Retell API
   const [llmId, setLlmId] = useState<string | null>(null);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useState("en-US");
   const [model, setModel] = useState("gpt-4o");
   const [voice, setVoice] = useState("nova");
   const [systemPrompt, setSystemPrompt] = useState("");
@@ -162,6 +175,11 @@ export default function AgentSettingsPage() {
   const [callDuration, setCallDuration] = useState(0);
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  // Voice options from Retell
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
 
   // Audio device selection
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
@@ -259,6 +277,7 @@ export default function AgentSettingsPage() {
       setSystemPrompt(data.system_prompt ?? "");
       setModel(data.llm_model ?? "gpt-4o");
       setVoice(data.voice ?? "nova");
+      setLanguage(data.language ?? "en-US");
       setFirstMessage(data.first_message ?? "");
 
       // Functions — preserve all fields from Retell (type, parameters, etc.)
@@ -379,6 +398,23 @@ export default function AgentSettingsPage() {
     }
   }, [agentId]);
 
+  // Fetch available voices from Retell
+  const fetchVoices = useCallback(async () => {
+    if (!agentId) return;
+    setVoicesLoading(true);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/voices`);
+      if (res.ok) {
+        const data = await res.json();
+        setVoiceOptions(data);
+      }
+    } catch {
+      // Use defaults if fetch fails
+    } finally {
+      setVoicesLoading(false);
+    }
+  }, [agentId]);
+
   // Fetch widget config
   const fetchWidgetConfig = useCallback(async () => {
     const supabase = createClient();
@@ -438,11 +474,11 @@ export default function AgentSettingsPage() {
   useEffect(() => {
     async function loadAll() {
       setLoading(true);
-      await Promise.all([fetchAgent(), fetchConfig(), fetchWidgetConfig(), fetchAiConfig()]);
+      await Promise.all([fetchAgent(), fetchConfig(), fetchWidgetConfig(), fetchAiConfig(), fetchVoices()]);
       setLoading(false);
     }
     loadAll();
-  }, [fetchAgent, fetchConfig, fetchWidgetConfig, fetchAiConfig]);
+  }, [fetchAgent, fetchConfig, fetchWidgetConfig, fetchAiConfig, fetchVoices]);
 
   // Widget save
   const handleWidgetSave = async () => {
@@ -635,6 +671,7 @@ export default function AgentSettingsPage() {
     // Build full config payload matching the API structure
     const payload: Record<string, unknown> = {
       ...(llmId && { llm_id: llmId }),
+      language,
       system_prompt: systemPrompt,
       llm_model: model,
       first_message: firstMessage,
@@ -884,12 +921,43 @@ export default function AgentSettingsPage() {
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="en">English</SelectItem>
-                          <SelectItem value="es">Spanish</SelectItem>
-                          <SelectItem value="fr">French</SelectItem>
-                          <SelectItem value="de">German</SelectItem>
-                          <SelectItem value="ar">Arabic</SelectItem>
+                        <SelectContent className="max-h-[300px]">
+                          <SelectItem value="en-US">English (US)</SelectItem>
+                          <SelectItem value="en-GB">English (UK)</SelectItem>
+                          <SelectItem value="en-AU">English (AU)</SelectItem>
+                          <SelectItem value="en-IN">English (India)</SelectItem>
+                          <SelectItem value="es-ES">Spanish (Spain)</SelectItem>
+                          <SelectItem value="es-419">Spanish (Latin America)</SelectItem>
+                          <SelectItem value="fr-FR">French (France)</SelectItem>
+                          <SelectItem value="fr-CA">French (Canada)</SelectItem>
+                          <SelectItem value="de-DE">German</SelectItem>
+                          <SelectItem value="it-IT">Italian</SelectItem>
+                          <SelectItem value="pt-BR">Portuguese (Brazil)</SelectItem>
+                          <SelectItem value="pt-PT">Portuguese (Portugal)</SelectItem>
+                          <SelectItem value="nl-NL">Dutch</SelectItem>
+                          <SelectItem value="zh-CN">Chinese (Mandarin)</SelectItem>
+                          <SelectItem value="ja-JP">Japanese</SelectItem>
+                          <SelectItem value="ko-KR">Korean</SelectItem>
+                          <SelectItem value="hi-IN">Hindi</SelectItem>
+                          <SelectItem value="ar-SA">Arabic</SelectItem>
+                          <SelectItem value="ru-RU">Russian</SelectItem>
+                          <SelectItem value="pl-PL">Polish</SelectItem>
+                          <SelectItem value="tr-TR">Turkish</SelectItem>
+                          <SelectItem value="vi-VN">Vietnamese</SelectItem>
+                          <SelectItem value="th-TH">Thai</SelectItem>
+                          <SelectItem value="sv-SE">Swedish</SelectItem>
+                          <SelectItem value="da-DK">Danish</SelectItem>
+                          <SelectItem value="no-NO">Norwegian</SelectItem>
+                          <SelectItem value="fi-FI">Finnish</SelectItem>
+                          <SelectItem value="uk-UA">Ukrainian</SelectItem>
+                          <SelectItem value="el-GR">Greek</SelectItem>
+                          <SelectItem value="cs-CZ">Czech</SelectItem>
+                          <SelectItem value="ro-RO">Romanian</SelectItem>
+                          <SelectItem value="hu-HU">Hungarian</SelectItem>
+                          <SelectItem value="bg-BG">Bulgarian</SelectItem>
+                          <SelectItem value="id-ID">Indonesian</SelectItem>
+                          <SelectItem value="sk-SK">Slovak</SelectItem>
+                          <SelectItem value="multi">Multilingual (auto-detect)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -905,11 +973,18 @@ export default function AgentSettingsPage() {
                         <SelectContent>
                           <SelectItem value="gpt-4o">GPT-4o</SelectItem>
                           <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                          <SelectItem value="gpt-4.1-mini">GPT-4.1 Mini</SelectItem>
-                          <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
-                          <SelectItem value="claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                          {(!planAccess || planAccess.llm_selection === "full") && (
+                            <>
+                              <SelectItem value="gpt-4.1-mini">GPT-4.1 Mini</SelectItem>
+                              <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
+                              <SelectItem value="claude-3.5-sonnet">Claude 3.5 Sonnet</SelectItem>
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
+                      {planAccess && planAccess.llm_selection !== "full" && (
+                        <p className="text-[10px] text-amber-600">Upgrade for more model options</p>
+                      )}
                     </div>
                     {!isChat && (
                       <div className="space-y-2">
@@ -919,21 +994,70 @@ export default function AgentSettingsPage() {
                         </Label>
                         <Select value={voice} onValueChange={setVoice}>
                           <SelectTrigger>
-                            <SelectValue />
+                            <SelectValue placeholder={voicesLoading ? "Loading voices..." : "Select a voice"} />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Hailey">Hailey</SelectItem>
-                            <SelectItem value="Grace">Grace</SelectItem>
-                            <SelectItem value="Nova">Nova</SelectItem>
-                            <SelectItem value="Aria">Aria</SelectItem>
-                            <SelectItem value="Luna">Luna</SelectItem>
-                            <SelectItem value="Stella">Stella</SelectItem>
+                          <SelectContent className="max-h-[300px]">
+                            {voiceOptions.length > 0 ? (
+                              voiceOptions.map((v) => (
+                                <SelectItem key={v.voice_id} value={v.voice_id}>
+                                  <span className="flex items-center gap-2">
+                                    {v.voice_name}
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {v.gender}{v.accent ? ` · ${v.accent}` : ""}
+                                    </span>
+                                  </span>
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <>
+                                <SelectItem value="Hailey">Hailey</SelectItem>
+                                <SelectItem value="Grace">Grace</SelectItem>
+                                <SelectItem value="Nova">Nova</SelectItem>
+                                <SelectItem value="Aria">Aria</SelectItem>
+                                <SelectItem value="Luna">Luna</SelectItem>
+                                <SelectItem value="Stella">Stella</SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
+                        {voice && voiceOptions.length > 0 && (() => {
+                          const selected = voiceOptions.find((v) => v.voice_id === voice);
+                          if (selected?.preview_audio_url) {
+                            return (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs gap-1.5"
+                                onClick={() => {
+                                  if (previewAudio) {
+                                    previewAudio.pause();
+                                    setPreviewAudio(null);
+                                    return;
+                                  }
+                                  const audio = new Audio(selected.preview_audio_url!);
+                                  audio.onended = () => setPreviewAudio(null);
+                                  audio.play();
+                                  setPreviewAudio(audio);
+                                }}
+                              >
+                                <Play className="w-3 h-3" />
+                                {previewAudio ? "Stop Preview" : "Preview Voice"}
+                              </Button>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     )}
                   </div>
 
+                  {planAccess && !planAccess.raw_prompt_editor ? (
+                    <UpgradeBanner
+                      feature="Raw Prompt Editor"
+                      plan="Professional"
+                      description="Directly edit the system prompt for full control over agent behavior."
+                    />
+                  ) : (
                   <div className="space-y-2">
                     <Label className="text-xs font-medium">System Prompt</Label>
                     <p className="text-[11px] text-muted-foreground -mt-1">Define how your agent behaves, its personality, and what it knows</p>
@@ -945,6 +1069,7 @@ export default function AgentSettingsPage() {
                       placeholder="You are a helpful assistant that..."
                     />
                   </div>
+                  )}
 
                   <div className="space-y-2">
                     <Label className="text-xs font-medium">First Message</Label>
@@ -1061,7 +1186,14 @@ export default function AgentSettingsPage() {
               </Collapsible>
 
               {/* Speech Settings - voice agents only */}
-              {!isChat && (
+              {!isChat && planAccess && !planAccess.speech_settings_full && (
+                <UpgradeBanner
+                  feature="Advanced Speech Settings"
+                  plan="Professional"
+                  description="Unlock responsiveness tuning, background sounds, and backchannel settings."
+                />
+              )}
+              {!isChat && (!planAccess || planAccess.speech_settings_full) && (
                 <Collapsible>
                   <Card className="overflow-hidden animate-fade-in-up stagger-3 glass-card rounded-xl">
                     <CollapsibleTrigger asChild>

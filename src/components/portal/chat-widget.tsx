@@ -37,7 +37,7 @@ export function PortalChatWidget() {
       const { data } = await supabase
         .from("agents")
         .select("id, name")
-        .eq("platform", "retell-chat")
+        .in("platform", ["retell-chat", "retell-sms"])
         .limit(1)
         .single();
       if (data) setChatAgent(data);

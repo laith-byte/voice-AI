@@ -5,16 +5,39 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { ShieldOff, ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { UpgradeBanner } from "@/components/portal/upgrade-banner";
+
+// Map feature names to plan column fields
+const FEATURE_TO_PLAN_FIELD: Record<string, string> = {
+  topics: "topic_management",
+  agent_settings: "raw_prompt_editor",
+  campaigns: "campaign_outbound",
+  analytics: "analytics_full",
+  ai_analysis: "ai_evaluation",
+  automations: "sms_notification",
+};
+
+// Map features to the plan name required
+const FEATURE_UPGRADE_PLAN: Record<string, string> = {
+  topics: "Professional",
+  agent_settings: "Professional",
+  campaigns: "Professional",
+  ai_analysis: "Professional",
+  automations: "Professional",
+};
 
 export function FeatureGate({
   feature,
+  planField,
   children,
 }: {
   feature: string;
+  planField?: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [blockedByPlan, setBlockedByPlan] = useState(false);
 
   useEffect(() => {
     async function check() {
@@ -47,6 +70,7 @@ export function FeatureGate({
         return;
       }
 
+      // 1. Check client_access first (admin override)
       const { data: access } = await supabase
         .from("client_access")
         .select("enabled")
@@ -54,12 +78,44 @@ export function FeatureGate({
         .eq("feature", feature)
         .single();
 
-      // If no record exists, allow by default (matches sidebar behavior)
-      setAllowed(access ? access.enabled : true);
+      // If explicit client_access record exists, use it
+      if (access) {
+        setAllowed(access.enabled);
+        if (!access.enabled) setBlockedByPlan(false);
+        return;
+      }
+
+      // 2. Fall back to plan column check
+      const fieldName = planField || FEATURE_TO_PLAN_FIELD[feature];
+      if (fieldName) {
+        try {
+          const res = await fetch("/api/client/plan-access");
+          if (res.ok) {
+            const planAccess = await res.json();
+            const fieldValue = planAccess[fieldName];
+            // For agent_settings, check if any advanced feature is enabled
+            if (feature === "agent_settings") {
+              const hasAccess = planAccess.raw_prompt_editor || planAccess.speech_settings_full;
+              setAllowed(hasAccess);
+              if (!hasAccess) setBlockedByPlan(true);
+              return;
+            }
+            const isAllowed = typeof fieldValue === "boolean" ? fieldValue : true;
+            setAllowed(isAllowed);
+            if (!isAllowed) setBlockedByPlan(true);
+            return;
+          }
+        } catch {
+          // Fall through to default
+        }
+      }
+
+      // Default: allow if no record exists (matches sidebar behavior)
+      setAllowed(true);
     }
 
     check();
-  }, [feature]);
+  }, [feature, planField]);
 
   if (allowed === null) {
     return (
@@ -70,6 +126,23 @@ export function FeatureGate({
   }
 
   if (!allowed) {
+    // If blocked by plan, show upgrade banner instead of generic restricted
+    if (blockedByPlan) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[400px] px-4">
+          <UpgradeBanner
+            feature={feature.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+            plan={FEATURE_UPGRADE_PLAN[feature] || "Professional"}
+            description={`This feature requires a higher plan. Upgrade to unlock ${feature.replace(/_/g, " ")}.`}
+          />
+          <Button variant="outline" className="mt-4" onClick={() => router.back()}>
+            <ArrowLeft className="w-4 h-4 mr-1.5" />
+            Go Back
+          </Button>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center px-4">
         <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">

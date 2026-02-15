@@ -22,9 +22,18 @@ export async function POST(request: NextRequest) {
     updated_at: now,
   };
 
-  // 2. If phone_number_option is provided, save it
-  if (body.phone_number_option) {
-    updatePayload.phone_number_option = body.phone_number_option;
+  // 2. Save deployment details based on agent type
+  if (body.phone_number_option || body.phone_option) {
+    updatePayload.phone_number_option = body.phone_number_option || body.phone_option;
+  }
+  if (body.chat_widget_deployed !== undefined) {
+    updatePayload.chat_widget_deployed = body.chat_widget_deployed;
+  }
+  if (body.sms_phone_configured !== undefined) {
+    updatePayload.sms_phone_configured = body.sms_phone_configured;
+  }
+  if (body.phone_number) {
+    updatePayload.phone_number = body.phone_number;
   }
 
   const { data, error } = await supabase

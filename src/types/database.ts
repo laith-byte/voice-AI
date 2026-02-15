@@ -177,19 +177,93 @@ export interface ClientPlan {
   id: string;
   organization_id: string;
   name: string;
+  slug: string | null;
+  tagline: string | null;
   description: string | null;
+  badge: string | null;
   monthly_price: number | null;
   yearly_price: number | null;
   setup_fee: number;
+  is_custom_pricing: boolean;
   agents_included: number;
+  phone_numbers_included: number;
   call_minutes_included: number;
+  concurrent_calls: number;
+  knowledge_bases: number;
   overage_rate: number | null;
   features: Record<string, unknown> | null;
   stripe_monthly_price_id: string | null;
   stripe_yearly_price_id: string | null;
   stripe_setup_price_id: string | null;
+  // Analytics gates
+  analytics_full: boolean;
+  ai_evaluation: boolean;
+  ai_auto_tagging: boolean;
+  ai_misunderstood: boolean;
+  topic_management: boolean;
+  daily_digest: boolean;
+  analytics_export: boolean;
+  custom_reporting: boolean;
+  // Automation gates
+  sms_notification: boolean;
+  caller_followup_email: boolean;
+  max_recipes: number | null;
+  google_calendar: boolean;
+  slack_integration: boolean;
+  crm_integration: boolean;
+  webhook_forwarding: boolean;
+  api_access: boolean;
+  // Agent config gates
+  voice_selection: string;
+  llm_selection: string;
+  raw_prompt_editor: boolean;
+  functions_tools: boolean;
+  pronunciation_dict: boolean;
+  post_call_analysis_config: boolean;
+  campaign_outbound: boolean;
+  mcp_configuration: boolean;
+  speech_settings_full: boolean;
+  // Support gates
+  priority_support: boolean;
+  dedicated_account_manager: boolean;
+  onboarding_call: boolean;
+  custom_agent_buildout: boolean;
+  sla_guarantee: boolean;
+  hipaa_compliance: boolean;
+  custom_branding: boolean;
+  // Display
   sort_order: number;
   is_active: boolean;
+  is_highlighted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanAddon {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  monthly_price: number | null;
+  one_time_price: number | null;
+  addon_type: "recurring" | "one_time";
+  category: string;
+  stripe_price_id: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientAddon {
+  id: string;
+  client_id: string;
+  addon_id: string;
+  quantity: number;
+  status: "active" | "cancelled";
+  stripe_subscription_item_id: string | null;
+  activated_at: string;
+  cancelled_at: string | null;
   created_at: string;
 }
 

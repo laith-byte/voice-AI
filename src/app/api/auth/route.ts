@@ -21,12 +21,12 @@ export async function POST(request: NextRequest) {
     }
 
     case "sign-up": {
-      const { email, password, fullName, role } = body;
+      const { email, password, fullName } = body;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName, role: role || "startup_admin" },
+          data: { full_name: fullName, role: "startup_admin" },
         },
       });
       if (error) return NextResponse.json({ error: "Failed to create account" }, { status: 400 });
