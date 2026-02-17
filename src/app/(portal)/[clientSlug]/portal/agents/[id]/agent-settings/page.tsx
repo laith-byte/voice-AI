@@ -108,6 +108,18 @@ interface FunctionTool {
   response_variables?: Record<string, string>;
   // extract_dynamic_variable
   variables?: Array<{ name: string; description: string; type: string; choices?: string[]; examples?: string[] }>;
+  // transfer_call
+  transfer_destination?: { type?: string; number?: string; extension?: string; prompt?: string };
+  transfer_option?: { type?: string; show_transferee_as_caller?: boolean; on_hold_music?: string; opt_out_human_detection?: boolean; opt_out_initial_message?: boolean; agent_detection_timeout_ms?: number };
+  ignore_e164_validation?: boolean;
+  custom_sip_headers?: Record<string, string>;
+  // custom tool
+  url?: string;
+  method?: string;
+  headers?: Record<string, string>;
+  parameters?: { properties: Record<string, unknown>; type: string; required?: string[] };
+  query_params?: Record<string, string>;
+  timeout_ms?: number;
   [key: string]: unknown;
 }
 
@@ -1052,6 +1064,16 @@ export default function AgentSettingsPage() {
       send_sms: { sms_content: { type: "predefined", content: "" } },
       mcp: { mcp_id: "" },
       extract_dynamic_variable: { variables: [] },
+      transfer_call: {
+        transfer_destination: { type: "predefined", number: "" },
+        transfer_option: { type: "cold_transfer" },
+      },
+      custom: {
+        url: "",
+        method: "POST",
+        speak_after_execution: true,
+        speak_during_execution: false,
+      },
     };
     setFunctions((prev) => [...prev, { ...base, ...(typeDefaults[type] || {}) }]);
   }
@@ -1870,6 +1892,299 @@ export default function AgentSettingsPage() {
                                 <Plus className="h-3 w-3" />
                                 Add Variable
                               </Button>
+                            </div>
+                          )}
+
+                          {/* --- Transfer Call fields --- */}
+                          {fn.type === "transfer_call" && (
+                            <div className="space-y-2 pt-1 border-t border-border/50">
+                              {/* Destination */}
+                              <div className="space-y-1">
+                                <Label className="text-[11px]">Destination Type</Label>
+                                <Select
+                                  value={fn.transfer_destination?.type || "predefined"}
+                                  onValueChange={(v) =>
+                                    updateTool(fn.id, {
+                                      transfer_destination: { ...fn.transfer_destination, type: v },
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="predefined">Predefined Number</SelectItem>
+                                    <SelectItem value="inferred">AI-Inferred</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {fn.transfer_destination?.type === "inferred" ? (
+                                <div className="space-y-1">
+                                  <Label className="text-[11px]">Destination Prompt</Label>
+                                  <Textarea
+                                    value={fn.transfer_destination?.prompt || ""}
+                                    onChange={(e) =>
+                                      updateTool(fn.id, {
+                                        transfer_destination: { ...fn.transfer_destination, prompt: e.target.value },
+                                      })
+                                    }
+                                    placeholder="Describe how the AI should determine the transfer number..."
+                                    rows={2}
+                                    className="text-sm"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-[1fr_auto] gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px]">Phone Number</Label>
+                                    <Input
+                                      value={fn.transfer_destination?.number || ""}
+                                      onChange={(e) =>
+                                        updateTool(fn.id, {
+                                          transfer_destination: { ...fn.transfer_destination, number: e.target.value },
+                                        })
+                                      }
+                                      placeholder="+1234567890"
+                                      className="text-sm font-mono h-8"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px]">Extension</Label>
+                                    <Input
+                                      value={fn.transfer_destination?.extension || ""}
+                                      onChange={(e) =>
+                                        updateTool(fn.id, {
+                                          transfer_destination: { ...fn.transfer_destination, extension: e.target.value },
+                                        })
+                                      }
+                                      placeholder="Opt."
+                                      className="text-sm font-mono h-8 w-20"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Transfer Option */}
+                              <div className="space-y-1">
+                                <Label className="text-[11px]">Transfer Mode</Label>
+                                <Select
+                                  value={fn.transfer_option?.type || "cold_transfer"}
+                                  onValueChange={(v) =>
+                                    updateTool(fn.id, {
+                                      transfer_option: { ...fn.transfer_option, type: v },
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cold_transfer">Cold Transfer</SelectItem>
+                                    <SelectItem value="warm_transfer">Warm Transfer</SelectItem>
+                                    <SelectItem value="agentic_warm_transfer">Agentic Warm Transfer</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              {/* Warm / Agentic options */}
+                              {(fn.transfer_option?.type === "warm_transfer" || fn.transfer_option?.type === "agentic_warm_transfer") && (
+                                <div className="space-y-2 pl-3 border-l-2 border-primary/20 ml-1">
+                                  <div className="space-y-1">
+                                    <Label className="text-[11px]">Hold Music</Label>
+                                    <Select
+                                      value={fn.transfer_option?.on_hold_music || "none"}
+                                      onValueChange={(v) =>
+                                        updateTool(fn.id, {
+                                          transfer_option: { ...fn.transfer_option, on_hold_music: v },
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        <SelectItem value="relaxing_sound">Relaxing Sound</SelectItem>
+                                        <SelectItem value="uplifting_beats">Uplifting Beats</SelectItem>
+                                        <SelectItem value="ringtone">Ringtone</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  {fn.transfer_option?.type === "warm_transfer" && (
+                                    <>
+                                      <div className="space-y-1">
+                                        <Label className="text-[11px]">Agent Detection Timeout (ms)</Label>
+                                        <Input
+                                          type="number"
+                                          value={fn.transfer_option?.agent_detection_timeout_ms ?? 30000}
+                                          onChange={(e) =>
+                                            updateTool(fn.id, {
+                                              transfer_option: { ...fn.transfer_option, agent_detection_timeout_ms: parseInt(e.target.value) || 30000 },
+                                            })
+                                          }
+                                          className="text-xs h-8 w-32"
+                                        />
+                                      </div>
+                                      <div className="flex flex-col gap-1.5">
+                                        <label className="flex items-center gap-1.5 text-[11px]">
+                                          <Checkbox
+                                            checked={fn.transfer_option?.opt_out_human_detection ?? false}
+                                            onCheckedChange={(v) =>
+                                              updateTool(fn.id, {
+                                                transfer_option: { ...fn.transfer_option, opt_out_human_detection: !!v },
+                                              })
+                                            }
+                                            className="h-3.5 w-3.5"
+                                          />
+                                          Skip human detection
+                                        </label>
+                                        <label className="flex items-center gap-1.5 text-[11px]">
+                                          <Checkbox
+                                            checked={fn.transfer_option?.opt_out_initial_message ?? false}
+                                            onCheckedChange={(v) =>
+                                              updateTool(fn.id, {
+                                                transfer_option: { ...fn.transfer_option, opt_out_initial_message: !!v },
+                                              })
+                                            }
+                                            className="h-3.5 w-3.5"
+                                          />
+                                          Skip initial message to transferee
+                                        </label>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Common transfer options */}
+                              <label className="flex items-center gap-1.5 text-[11px]">
+                                <Checkbox
+                                  checked={fn.transfer_option?.show_transferee_as_caller ?? false}
+                                  onCheckedChange={(v) =>
+                                    updateTool(fn.id, {
+                                      transfer_option: { ...fn.transfer_option, show_transferee_as_caller: !!v },
+                                    })
+                                  }
+                                  className="h-3.5 w-3.5"
+                                />
+                                Show original caller ID to transferee
+                              </label>
+                              <label className="flex items-center gap-1.5 text-[11px]">
+                                <Checkbox
+                                  checked={fn.ignore_e164_validation ?? false}
+                                  onCheckedChange={(v) => updateTool(fn.id, { ignore_e164_validation: !!v })}
+                                  className="h-3.5 w-3.5"
+                                />
+                                Skip E.164 phone number validation
+                              </label>
+                            </div>
+                          )}
+
+                          {/* --- Custom Tool fields --- */}
+                          {fn.type === "custom" && (
+                            <div className="space-y-2 pt-1 border-t border-border/50">
+                              <div className="grid grid-cols-[1fr_auto] gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-[11px]">Webhook URL</Label>
+                                  <Input
+                                    value={(fn.url as string) || ""}
+                                    onChange={(e) => updateTool(fn.id, { url: e.target.value })}
+                                    placeholder="https://your-server.com/tool"
+                                    className="text-xs font-mono h-8"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-[11px]">Method</Label>
+                                  <Select
+                                    value={(fn.method as string) || "POST"}
+                                    onValueChange={(v) => updateTool(fn.id, { method: v })}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs w-24">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="GET">GET</SelectItem>
+                                      <SelectItem value="POST">POST</SelectItem>
+                                      <SelectItem value="PUT">PUT</SelectItem>
+                                      <SelectItem value="PATCH">PATCH</SelectItem>
+                                      <SelectItem value="DELETE">DELETE</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px]">Execution Message</Label>
+                                <Input
+                                  value={(fn.execution_message_description as string) || ""}
+                                  onChange={(e) => updateTool(fn.id, { execution_message_description: e.target.value })}
+                                  placeholder="What the agent says while executing (e.g. 'Looking that up for you...')"
+                                  className="text-xs h-8"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px]">Timeout (ms)</Label>
+                                <Input
+                                  type="number"
+                                  value={fn.timeout_ms ?? 120000}
+                                  onChange={(e) => updateTool(fn.id, { timeout_ms: parseInt(e.target.value) || 120000 })}
+                                  className="text-xs h-8 w-32"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px]">Headers (JSON)</Label>
+                                <Textarea
+                                  value={fn.headers ? JSON.stringify(fn.headers, null, 2) : "{}"}
+                                  onChange={(e) => {
+                                    try {
+                                      const parsed = JSON.parse(e.target.value);
+                                      updateTool(fn.id, { headers: parsed });
+                                    } catch {
+                                      // allow invalid JSON while typing
+                                    }
+                                  }}
+                                  placeholder='{"Authorization": "Bearer ..."}'
+                                  rows={2}
+                                  className="text-xs font-mono"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px]">Parameters Schema (JSON)</Label>
+                                <Textarea
+                                  value={fn.parameters ? JSON.stringify(fn.parameters, null, 2) : '{"properties": {}, "type": "object"}'}
+                                  onChange={(e) => {
+                                    try {
+                                      const parsed = JSON.parse(e.target.value);
+                                      updateTool(fn.id, { parameters: parsed });
+                                    } catch {
+                                      // allow invalid JSON while typing
+                                    }
+                                  }}
+                                  placeholder='{"properties": {"query": {"type": "string", "description": "Search query"}}, "type": "object", "required": ["query"]}'
+                                  rows={3}
+                                  className="text-xs font-mono"
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                  JSON Schema defining the parameters the LLM extracts from conversation and sends to your URL.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-1.5 text-[11px]">
+                                  <Checkbox
+                                    checked={fn.speak_during_execution ?? false}
+                                    onCheckedChange={(v) => updateTool(fn.id, { speak_during_execution: !!v })}
+                                    className="h-3.5 w-3.5"
+                                  />
+                                  Speak during execution
+                                </label>
+                                <label className="flex items-center gap-1.5 text-[11px]">
+                                  <Checkbox
+                                    checked={fn.speak_after_execution ?? true}
+                                    onCheckedChange={(v) => updateTool(fn.id, { speak_after_execution: !!v })}
+                                    className="h-3.5 w-3.5"
+                                  />
+                                  Speak after execution
+                                </label>
+                              </div>
                             </div>
                           )}
                         </div>
