@@ -23,6 +23,12 @@ export async function GET(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
+  // Verify user belongs to same organization as the agent
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData || userData.organization_id !== agent.organization_id) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
   // Fetch KB sources from our database
   const { data: sources, error: sourcesError } = await supabase
     .from("knowledge_base_sources")
@@ -56,6 +62,12 @@ export async function POST(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
+  // Verify user belongs to same organization as the agent
+  const { data: postUserData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!postUserData || postUserData.organization_id !== agent.organization_id) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
   const retellApiKey =
     (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null) ||
     (await getIntegrationKey(agent.organization_id, "retell")) ||
@@ -66,7 +78,7 @@ export async function POST(
   }
 
   const body = await request.json();
-  const { source_type, name, content, url } = body;
+  const { source_type, name, content, url, enable_auto_refresh } = body;
 
   if (!source_type || !name) {
     return NextResponse.json({ error: "source_type and name are required" }, { status: 400 });
@@ -88,6 +100,7 @@ export async function POST(
         body: JSON.stringify({
           knowledge_base_name: name,
           knowledge_base_texts: [{ title: name, text: content }],
+          ...(enable_auto_refresh !== undefined && { enable_auto_refresh }),
         }),
       });
       if (res.ok) {
@@ -107,6 +120,7 @@ export async function POST(
         body: JSON.stringify({
           knowledge_base_name: name,
           knowledge_base_urls: [url],
+          ...(enable_auto_refresh !== undefined && { enable_auto_refresh }),
         }),
       });
       if (res.ok) {
