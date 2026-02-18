@@ -38,12 +38,13 @@ import {
   Loader2,
   BookOpen,
   AlertTriangle,
+  FileUp,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface KBSource {
   id: string;
-  source_type: "text" | "url";
+  source_type: "text" | "url" | "file";
   name: string;
   content: string | null;
   url: string | null;
@@ -62,10 +63,11 @@ export default function KnowledgeBasePage() {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   // Add form state
-  const [sourceType, setSourceType] = useState<"text" | "url">("text");
+  const [sourceType, setSourceType] = useState<"text" | "url" | "file">("text");
   const [sourceName, setSourceName] = useState("");
   const [sourceContent, setSourceContent] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
 
   const fetchSources = useCallback(async () => {
@@ -87,7 +89,7 @@ export default function KnowledgeBasePage() {
   }, [fetchSources]);
 
   const handleAdd = async () => {
-    if (!sourceName.trim()) {
+    if (sourceType !== "file" && !sourceName.trim()) {
       toast.error("Please enter a name.");
       return;
     }
@@ -99,19 +101,37 @@ export default function KnowledgeBasePage() {
       toast.error("Please enter a URL.");
       return;
     }
+    if (sourceType === "file" && !sourceFile) {
+      toast.error("Please select a file.");
+      return;
+    }
 
     setAdding(true);
     try {
-      const res = await fetch(`/api/agents/${agentId}/knowledge-base`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source_type: sourceType,
-          name: sourceName.trim(),
-          content: sourceType === "text" ? sourceContent.trim() : undefined,
-          url: sourceType === "url" ? sourceUrl.trim() : undefined,
-        }),
-      });
+      let res: Response;
+
+      if (sourceType === "file" && sourceFile) {
+        const formData = new FormData();
+        formData.append("source_type", "file");
+        formData.append("name", sourceName.trim() || sourceFile.name);
+        formData.append("file", sourceFile);
+
+        res = await fetch(`/api/agents/${agentId}/knowledge-base`, {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        res = await fetch(`/api/agents/${agentId}/knowledge-base`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_type: sourceType,
+            name: sourceName.trim(),
+            content: sourceType === "text" ? sourceContent.trim() : undefined,
+            url: sourceType === "url" ? sourceUrl.trim() : undefined,
+          }),
+        });
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -124,6 +144,7 @@ export default function KnowledgeBasePage() {
       setSourceName("");
       setSourceContent("");
       setSourceUrl("");
+      setSourceFile(null);
       setSourceType("text");
       toast.success("Knowledge base source added!");
     } catch (err) {
@@ -188,7 +209,7 @@ export default function KnowledgeBasePage() {
               <DialogHeader>
                 <DialogTitle>Add Knowledge Base Source</DialogTitle>
                 <DialogDescription>
-                  Add text content or a URL for your AI agent to reference.
+                  Add text content, a URL, or upload a file for your AI agent to reference.
                 </DialogDescription>
               </DialogHeader>
 
@@ -197,7 +218,7 @@ export default function KnowledgeBasePage() {
                   <Label>Source Type</Label>
                   <Select
                     value={sourceType}
-                    onValueChange={(v) => setSourceType(v as "text" | "url")}
+                    onValueChange={(v) => setSourceType(v as "text" | "url" | "file")}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -205,6 +226,7 @@ export default function KnowledgeBasePage() {
                     <SelectContent>
                       <SelectItem value="text">Text Content</SelectItem>
                       <SelectItem value="url">Website URL</SelectItem>
+                      <SelectItem value="file">File Upload</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -241,6 +263,26 @@ export default function KnowledgeBasePage() {
                     />
                     <p className="text-xs text-muted-foreground">
                       The page content will be crawled and indexed for your agent.
+                    </p>
+                  </div>
+                )}
+
+                {sourceType === "file" && (
+                  <div className="space-y-2">
+                    <Label>File</Label>
+                    <Input
+                      type="file"
+                      accept=".pdf,.txt,.doc,.docx,.csv"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        setSourceFile(f);
+                        if (f && !sourceName.trim()) {
+                          setSourceName(f.name);
+                        }
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Supported formats: PDF, TXT, DOC, DOCX, CSV
                     </p>
                   </div>
                 )}
@@ -281,6 +323,8 @@ export default function KnowledgeBasePage() {
                   <div className="w-10 h-10 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
                     {source.source_type === "url" ? (
                       <Globe className="w-5 h-5 text-muted-foreground" />
+                    ) : source.source_type === "file" ? (
+                      <FileUp className="w-5 h-5 text-muted-foreground" />
                     ) : (
                       <Type className="w-5 h-5 text-muted-foreground" />
                     )}

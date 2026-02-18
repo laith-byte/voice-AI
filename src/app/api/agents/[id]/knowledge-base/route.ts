@@ -77,8 +77,33 @@ export async function POST(
     return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
   }
 
-  const body = await request.json();
-  const { source_type, name, content, url, enable_auto_refresh } = body;
+  const contentType = request.headers.get("content-type") || "";
+  const isMultipart = contentType.includes("multipart/form-data");
+
+  let source_type: string;
+  let name: string;
+  let content: string | undefined;
+  let url: string | undefined;
+  let enable_auto_refresh: boolean | undefined;
+  let file: File | null = null;
+
+  if (isMultipart) {
+    const formData = await request.formData();
+    source_type = formData.get("source_type") as string;
+    name = formData.get("name") as string;
+    content = (formData.get("content") as string) || undefined;
+    url = (formData.get("url") as string) || undefined;
+    file = formData.get("file") as File | null;
+    const autoRefresh = formData.get("enable_auto_refresh");
+    enable_auto_refresh = autoRefresh ? autoRefresh === "true" : undefined;
+  } else {
+    const body = await request.json();
+    source_type = body.source_type;
+    name = body.name;
+    content = body.content;
+    url = body.url;
+    enable_auto_refresh = body.enable_auto_refresh;
+  }
 
   if (!source_type || !name) {
     return NextResponse.json({ error: "source_type and name are required" }, { status: 400 });
@@ -90,7 +115,29 @@ export async function POST(
 
     let retellError: string | null = null;
 
-    if (source_type === "text" && content) {
+    if (source_type === "file" && file) {
+      const formData = new FormData();
+      formData.append("knowledge_base_name", name);
+      formData.append("knowledge_base_files", file, file.name);
+      if (enable_auto_refresh !== undefined) {
+        formData.append("enable_auto_refresh", String(enable_auto_refresh));
+      }
+
+      const res = await fetch("https://api.retellai.com/create-knowledge-base", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${retellApiKey}`,
+        },
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        retellKbId = data.knowledge_base_id || null;
+      } else {
+        retellError = await res.text().catch(() => `HTTP ${res.status}`);
+        console.error("Retell KB file upload failed:", retellError);
+      }
+    } else if (source_type === "text" && content) {
       const res = await fetch("https://api.retellai.com/create-knowledge-base", {
         method: "POST",
         headers: {
