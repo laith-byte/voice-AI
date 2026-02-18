@@ -28,14 +28,16 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import type { AgentCostBreakdown } from "@/lib/retell-costs";
+import { COST_COMPONENT_LABELS, FALLBACK_COST_PER_MINUTE } from "@/lib/retell-costs";
 
-const COST_PER_MINUTE = 0.10;
 const STANDARD_NUMBER_COST = 2; // $/month
 const TOLL_FREE_NUMBER_COST = 3; // $/month
 
 interface CallLog {
   duration_seconds: number | null;
   started_at: string | null;
+  agent_id: string | null;
 }
 
 export default function SettingsUsagePage() {
@@ -53,6 +55,33 @@ export default function SettingsUsagePage() {
   const [standardNumbers, setStandardNumbers] = useState(0);
   const [tollFreeNumbers, setTollFreeNumbers] = useState(0);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
+
+  // Agent costs
+  const [agentCosts, setAgentCosts] = useState<Record<string, AgentCostBreakdown>>({});
+  const [costsLoading, setCostsLoading] = useState(true);
+
+  // Fetch agent costs on mount
+  useEffect(() => {
+    async function fetchAgentCosts() {
+      setCostsLoading(true);
+      try {
+        const res = await fetch("/api/usage/agent-costs");
+        if (res.ok) {
+          const data = await res.json();
+          const map: Record<string, AgentCostBreakdown> = {};
+          for (const agent of data.agents || []) {
+            map[agent.agentId] = agent;
+          }
+          setAgentCosts(map);
+        }
+      } catch {
+        // Fallback to flat rate
+      } finally {
+        setCostsLoading(false);
+      }
+    }
+    fetchAgentCosts();
+  }, []);
 
   const fetchUsageData = useCallback(async () => {
     setLoading(true);
@@ -81,7 +110,7 @@ export default function SettingsUsagePage() {
       // 3. Fetch call_logs in date range
       const { data: callLogs } = await supabase
         .from("call_logs")
-        .select("duration_seconds, started_at")
+        .select("duration_seconds, started_at, agent_id")
         .eq("organization_id", orgId)
         .gte("created_at", rangeStart)
         .lte("created_at", rangeEnd);
@@ -142,7 +171,33 @@ export default function SettingsUsagePage() {
     fetchUsageData();
   }, [fetchUsageData]);
 
-  const totalCost = totalMinutes * COST_PER_MINUTE;
+  // Helper: get per-minute cost for a specific call log
+  const getCostPerMinute = useCallback(
+    (agentId: string | null) => {
+      if (agentId && agentCosts[agentId]) {
+        return agentCosts[agentId].perMinute;
+      }
+      return FALLBACK_COST_PER_MINUTE;
+    },
+    [agentCosts]
+  );
+
+  // Compute total cost using per-agent rates
+  const totalCost = useMemo(() => {
+    return callLogs.reduce((sum, log) => {
+      const minutes = (log.duration_seconds ?? 0) / 60;
+      return sum + minutes * getCostPerMinute(log.agent_id);
+    }, 0);
+  }, [callLogs, getCostPerMinute]);
+
+  // Cost range across agents
+  const costRange = useMemo(() => {
+    const rates = Object.values(agentCosts).map((a) => a.perMinute);
+    if (rates.length === 0) return null;
+    const min = Math.min(...rates);
+    const max = Math.max(...rates);
+    return { min, max };
+  }, [agentCosts]);
 
   // Daily cost chart data: group call logs by date and calculate cost
   const dailyCostData = useMemo(() => {
@@ -151,7 +206,7 @@ export default function SettingsUsagePage() {
       if (!log.started_at) continue;
       const date = new Date(log.started_at).toISOString().split("T")[0];
       const minutes = (log.duration_seconds ?? 0) / 60;
-      const cost = minutes * COST_PER_MINUTE;
+      const cost = minutes * getCostPerMinute(log.agent_id);
       map[date] = (map[date] ?? 0) + cost;
     }
     return Object.entries(map)
@@ -163,24 +218,58 @@ export default function SettingsUsagePage() {
         }),
         cost: Math.round(cost * 100) / 100,
       }));
-  }, [callLogs]);
+  }, [callLogs, getCostPerMinute]);
 
-  // Cost by product chart data
+  // Cost by component pie chart — aggregate across all call logs
   const costByProductData = useMemo(() => {
-    const voiceCost = totalMinutes * COST_PER_MINUTE;
+    const componentTotals: Record<string, number> = {};
+
+    for (const log of callLogs) {
+      const minutes = (log.duration_seconds ?? 0) / 60;
+      if (minutes <= 0) continue;
+
+      const agentId = log.agent_id;
+      const breakdown = agentId ? agentCosts[agentId] : null;
+
+      if (breakdown) {
+        for (const [key, value] of Object.entries(breakdown.components)) {
+          if (value > 0) {
+            componentTotals[key] = (componentTotals[key] ?? 0) + minutes * value;
+          }
+        }
+      } else {
+        // Fallback: attribute all cost to infrastructure
+        componentTotals["infrastructure"] =
+          (componentTotals["infrastructure"] ?? 0) + minutes * FALLBACK_COST_PER_MINUTE;
+      }
+    }
+
+    // Add fixed monthly costs
     const standardCost = standardNumbers * STANDARD_NUMBER_COST;
     const tollFreeCost = tollFreeNumbers * TOLL_FREE_NUMBER_COST;
-    // Knowledge bases are included for visibility even if free
-    const items = [
-      { name: "Voice Minutes", value: Math.round(voiceCost * 100) / 100 },
-      { name: "Standard Numbers", value: standardCost },
-      { name: "Toll-Free Numbers", value: tollFreeCost },
-    ];
-    // Only include items with non-zero cost
-    return items.filter((item) => item.value > 0);
-  }, [totalMinutes, standardNumbers, tollFreeNumbers]);
+    if (standardCost > 0) componentTotals["phoneNumbersStandard"] = standardCost;
+    if (tollFreeCost > 0) componentTotals["phoneNumbersTollFree"] = tollFreeCost;
 
-  const PIE_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6"];
+    const labelMap: Record<string, string> = {
+      ...COST_COMPONENT_LABELS,
+      phoneNumbersStandard: "Standard Numbers",
+      phoneNumbersTollFree: "Toll-Free Numbers",
+    };
+
+    return Object.entries(componentTotals)
+      .filter(([, value]) => value > 0)
+      .map(([key, value]) => ({
+        name: labelMap[key] || key,
+        value: Math.round(value * 100) / 100,
+      }));
+  }, [callLogs, agentCosts, standardNumbers, tollFreeNumbers]);
+
+  const PIE_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#ec4899"];
+
+  // Agent cost table data
+  const agentCostList = useMemo(() => {
+    return Object.values(agentCosts).sort((a, b) => b.perMinute - a.perMinute);
+  }, [agentCosts]);
 
   return (
     <div className="space-y-6">
@@ -227,7 +316,15 @@ export default function SettingsUsagePage() {
                     ${totalCost.toFixed(2)}
                   </p>
                   <p className="text-[10px] text-[#9ca3af]">
-                    @ ${COST_PER_MINUTE.toFixed(2)}/min estimate
+                    {costsLoading ? (
+                      "Loading agent rates..."
+                    ) : costRange ? (
+                      costRange.min === costRange.max
+                        ? `@ $${costRange.min.toFixed(3)}/min`
+                        : `$${costRange.min.toFixed(3)}–$${costRange.max.toFixed(3)}/min across agents`
+                    ) : (
+                      `@ $${FALLBACK_COST_PER_MINUTE.toFixed(2)}/min fallback`
+                    )}
                   </p>
                 </div>
               </div>
@@ -284,6 +381,44 @@ export default function SettingsUsagePage() {
         </div>
       )}
 
+      {/* Cost Per Agent Table */}
+      {!costsLoading && agentCostList.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-[#6b7280]" />
+              Cost Per Agent
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#e5e7eb]">
+                    <th className="text-left py-2 font-medium text-[#6b7280]">Agent</th>
+                    <th className="text-left py-2 font-medium text-[#6b7280]">LLM Model</th>
+                    <th className="text-left py-2 font-medium text-[#6b7280]">Voice Provider</th>
+                    <th className="text-right py-2 font-medium text-[#6b7280]">$/min</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {agentCostList.map((agent) => (
+                    <tr key={agent.agentId} className="border-b border-[#f3f4f6]">
+                      <td className="py-2 text-[#111827] font-medium">{agent.agentName}</td>
+                      <td className="py-2 text-[#6b7280]">{agent.llmModel}</td>
+                      <td className="py-2 text-[#6b7280] capitalize">{agent.voiceProvider}</td>
+                      <td className="py-2 text-right text-[#111827] font-medium">
+                        ${agent.perMinute.toFixed(3)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Daily Cost Chart */}
@@ -338,12 +473,12 @@ export default function SettingsUsagePage() {
           </CardContent>
         </Card>
 
-        {/* Cost by Product Chart */}
+        {/* Cost by Component Chart */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[#6b7280]" />
-              Cost by Product
+              Cost by Component
             </CardTitle>
           </CardHeader>
           <CardContent>
