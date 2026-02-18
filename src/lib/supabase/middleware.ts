@@ -78,7 +78,7 @@ export async function updateSession(request: NextRequest) {
 
   // Public routes
   const publicRoutes = [
-    "/login", "/forgot-password", "/reset-password", "/auth/callback",
+    "/login", "/signup", "/setup-account", "/forgot-password", "/reset-password", "/auth/callback",
     "/pricing", "/features", "/about", "/contact", "/industries",
   ];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
@@ -98,9 +98,9 @@ export async function updateSession(request: NextRequest) {
     const userRole = user.user_metadata?.role as string | undefined;
     const isClientUser = userRole === "client_admin" || userRole === "client_member";
 
-    // Marketing routes should be accessible to everyone (auth and unauth)
-    const marketingRoutes = ["/pricing", "/features", "/about", "/contact", "/industries"];
-    const isMarketingRoute = pathname === "/" || marketingRoutes.some((p) => pathname.startsWith(p));
+    // These routes should be accessible to everyone (auth and unauth) — no auto-redirect
+    const noRedirectRoutes = ["/pricing", "/features", "/about", "/contact", "/industries", "/login", "/signup", "/setup-account", "/forgot-password", "/reset-password"];
+    const isMarketingRoute = pathname === "/" || noRedirectRoutes.some((p) => pathname.startsWith(p));
 
     // Redirect authenticated users away from login / auth routes (but NOT marketing pages)
     if ((isPublicRoute || pathname === "/") && !isMarketingRoute) {

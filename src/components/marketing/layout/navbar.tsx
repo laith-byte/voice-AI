@@ -107,7 +107,7 @@ export function Navbar() {
             <div className="flex items-center gap-3">
               <Link href="/contact" className="hidden lg:inline-flex items-center gap-2 rounded-lg bg-navy-900 px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-navy-800">Book a Demo</Link>
               <Link href="/login" className="hidden lg:inline-flex items-center text-sm font-medium text-gray-600 hover:text-navy-900 transition-colors">Log In</Link>
-              <Link href="/login" className="hidden lg:inline-flex items-center gap-2 rounded-lg border border-navy-900/20 px-4 py-2 text-sm font-semibold text-navy-900 transition-all duration-200 hover:bg-navy-900 hover:text-white">Sign Up</Link>
+              <Link href="/signup" className="hidden lg:inline-flex items-center gap-2 rounded-lg border border-navy-900/20 px-4 py-2 text-sm font-semibold text-navy-900 transition-all duration-200 hover:bg-navy-900 hover:text-white">Sign Up</Link>
               <button onClick={() => setMobileOpen(!mobileOpen)} className="relative z-50 rounded-lg p-2 text-gray-600 transition-colors hover:text-navy-900 lg:hidden" aria-label={mobileOpen ? "Close menu" : "Open menu"}>
                 {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
@@ -159,7 +159,10 @@ export function Navbar() {
                 <div className="my-2 h-px bg-gray-100" />
                 <Link href="/login" onClick={() => setMobileOpen(false)}
                   className="flex items-center justify-center gap-2 rounded-lg border border-navy-900/20 px-5 py-3 text-base font-semibold text-navy-900"
-                >Log In / Sign Up</Link>
+                >Log In</Link>
+                <Link href="/signup" onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-navy-900/5 px-5 py-3 text-base font-semibold text-navy-900"
+                >Sign Up</Link>
               </div>
             </motion.div>
           </>
