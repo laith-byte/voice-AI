@@ -1,6 +1,9 @@
 import { executeGoogleSheets } from "@/lib/oauth/executors/google-sheets";
 import { executeSlack } from "@/lib/oauth/executors/slack";
 import { executeHubSpot } from "@/lib/oauth/executors/hubspot";
+import { executeNotion } from "@/lib/oauth/executors/notion";
+import { executeTwilioSms } from "@/lib/oauth/executors/twilio-sms";
+import { executeQuickBooks } from "@/lib/oauth/executors/quickbooks";
 
 export async function executeNativeRecipe(
   provider: string,
@@ -18,6 +21,15 @@ export async function executeNativeRecipe(
     case "google-calendar":
       // Calendar is real-time only (mid-call), no post-call executor
       return;
+    case "calendly":
+      // Calendly is real-time only (mid-call), no post-call executor
+      return;
+    case "notion":
+      return executeNotion(callLog as never, clientId, config);
+    case "twilio-sms":
+      return executeTwilioSms(callLog as never, clientId, config);
+    case "quickbooks":
+      return executeQuickBooks(callLog as never, clientId, config);
     default:
       throw new Error(`Unknown native provider: ${provider}`);
   }

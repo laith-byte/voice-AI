@@ -20,6 +20,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
   slack: "Slack",
   hubspot: "HubSpot",
+  quickbooks: "QuickBooks",
 };
 
 export function OAuthConnectButton({

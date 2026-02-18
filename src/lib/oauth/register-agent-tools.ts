@@ -4,8 +4,8 @@ import { getIntegrationKey } from "@/lib/integrations";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://portal.invarialabs.com";
 
-// Tool definitions for Retell custom tools
-const CALENDAR_TOOLS = [
+// Tool definitions for Retell custom tools (exported for reuse by flow deployer)
+export const CALENDAR_TOOLS = [
   {
     type: "custom",
     name: "check_availability",
@@ -86,7 +86,80 @@ const CALENDAR_TOOLS = [
   },
 ];
 
-const HUBSPOT_TOOLS = [
+export const CALENDLY_TOOLS = [
+  {
+    type: "custom",
+    name: "check_calendly_availability",
+    description:
+      "Check available appointment slots on Calendly for a given date. Use this when a caller wants to schedule an appointment via Calendly.",
+    url: `${APP_URL}/api/tools/calendly/availability`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are checking Calendly for available times",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "The date to check availability for, in YYYY-MM-DD format",
+        },
+      },
+      required: ["date"],
+    },
+    response_variables: {
+      available_slots: "$.slots",
+      earliest_slot: "$.earliest",
+    },
+  },
+  {
+    type: "custom",
+    name: "book_calendly_appointment",
+    description:
+      "Book an appointment via Calendly. Use this after the caller confirms a time slot.",
+    url: `${APP_URL}/api/tools/calendly/book`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are booking the appointment on Calendly",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        event_type_uri: {
+          type: "string",
+          description: "The Calendly event type URI to book",
+        },
+        start_time: {
+          type: "string",
+          description: "ISO 8601 datetime for appointment start",
+        },
+        invitee_name: {
+          type: "string",
+          description: "The caller's name",
+        },
+        invitee_email: {
+          type: "string",
+          description: "The caller's email (if provided)",
+        },
+        invitee_phone: {
+          type: "string",
+          description: "The caller's phone number",
+        },
+      },
+      required: ["event_type_uri", "start_time"],
+    },
+    response_variables: {
+      booking_confirmed: "$.success",
+      booking_url: "$.booking_url",
+    },
+  },
+];
+
+export const HUBSPOT_TOOLS = [
   {
     type: "custom",
     name: "lookup_caller",
@@ -157,7 +230,7 @@ async function retellFetch(
   });
 }
 
-function injectClientId(
+export function injectClientId(
   tools: Record<string, unknown>[],
   clientId: string
 ): Record<string, unknown>[] {
@@ -168,7 +241,7 @@ function injectClientId(
   }));
 }
 
-function addAuthHeaders(
+export function addAuthHeaders(
   tools: Record<string, unknown>[]
 ): Record<string, unknown>[] {
   const apiKey = process.env.RETELL_TOOLS_API_KEY;
@@ -226,6 +299,10 @@ export async function registerAgentTools(
   } else if (provider === "hubspot") {
     newTools = addAuthHeaders(
       injectClientId(HUBSPOT_TOOLS as unknown as Record<string, unknown>[], clientId)
+    );
+  } else if (provider === "calendly") {
+    newTools = addAuthHeaders(
+      injectClientId(CALENDLY_TOOLS as unknown as Record<string, unknown>[], clientId)
     );
   }
 
@@ -301,6 +378,8 @@ export async function unregisterAgentTools(
     toolNamesToRemove = CALENDAR_TOOLS.map((t) => t.name);
   } else if (provider === "hubspot") {
     toolNamesToRemove = HUBSPOT_TOOLS.map((t) => t.name);
+  } else if (provider === "calendly") {
+    toolNamesToRemove = CALENDLY_TOOLS.map((t) => t.name);
   }
 
   const removeSet = new Set(toolNamesToRemove);

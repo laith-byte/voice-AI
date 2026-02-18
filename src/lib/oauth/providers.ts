@@ -42,6 +42,22 @@ const PROVIDERS: Record<string, () => OAuthProviderConfig> = {
     clientId: process.env.HUBSPOT_CLIENT_ID!,
     clientSecret: process.env.HUBSPOT_CLIENT_SECRET!,
   }),
+
+  calendly: () => ({
+    authUrl: "https://auth.calendly.com/oauth/authorize",
+    tokenUrl: "https://auth.calendly.com/oauth/token",
+    scopes: [],
+    clientId: process.env.CALENDLY_CLIENT_ID!,
+    clientSecret: process.env.CALENDLY_CLIENT_SECRET!,
+  }),
+
+  quickbooks: () => ({
+    authUrl: "https://appcenter.intuit.com/connect/oauth2",
+    tokenUrl: "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+    scopes: ["com.intuit.quickbooks.accounting"],
+    clientId: process.env.QUICKBOOKS_CLIENT_ID!,
+    clientSecret: process.env.QUICKBOOKS_CLIENT_SECRET!,
+  }),
 };
 
 export function getProviderConfig(provider: string): OAuthProviderConfig {

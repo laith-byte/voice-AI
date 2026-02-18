@@ -151,6 +151,31 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // For QuickBooks, extract realmId from callback URL
+    if (provider === "quickbooks") {
+      const realmId = url.searchParams.get("realmId");
+      if (realmId) {
+        providerMetadata = { realm_id: realmId };
+      }
+    }
+
+    // For Calendly, fetch user info
+    if (provider === "calendly") {
+      const calendlyInfoRes = await fetch(
+        "https://api.calendly.com/users/me",
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (calendlyInfoRes.ok) {
+        const calendlyInfo = await calendlyInfoRes.json();
+        providerEmail = calendlyInfo.resource?.email || null;
+        providerMetadata = {
+          calendly_uri: calendlyInfo.resource?.uri,
+          calendly_name: calendlyInfo.resource?.name,
+          calendly_slug: calendlyInfo.resource?.slug,
+        };
+      }
+    }
+
     // Upsert into oauth_connections
     const supabase = await createServiceClient();
     const { error: upsertError } = await supabase
@@ -178,7 +203,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Register Retell tools if applicable (non-blocking)
-    if (provider === "google" || provider === "hubspot") {
+    if (provider === "google" || provider === "hubspot" || provider === "calendly") {
       registerAgentTools(clientId, provider).catch((err) =>
         console.error("Failed to register Retell tools:", err)
       );
