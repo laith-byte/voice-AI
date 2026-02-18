@@ -77,7 +77,10 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Public routes
-  const publicRoutes = ["/login", "/forgot-password", "/reset-password", "/pricing", "/auth/callback"];
+  const publicRoutes = [
+    "/login", "/forgot-password", "/reset-password", "/auth/callback",
+    "/pricing", "/features", "/about", "/contact", "/industries",
+  ];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
   // API routes handle their own auth — don't redirect them
@@ -95,8 +98,12 @@ export async function updateSession(request: NextRequest) {
     const userRole = user.user_metadata?.role as string | undefined;
     const isClientUser = userRole === "client_admin" || userRole === "client_member";
 
-    // Redirect authenticated users away from login / public routes / root
-    if (isPublicRoute || pathname === "/") {
+    // Marketing routes should be accessible to everyone (auth and unauth)
+    const marketingRoutes = ["/pricing", "/features", "/about", "/contact", "/industries"];
+    const isMarketingRoute = pathname === "/" || marketingRoutes.some((p) => pathname.startsWith(p));
+
+    // Redirect authenticated users away from login / auth routes (but NOT marketing pages)
+    if ((isPublicRoute || pathname === "/") && !isMarketingRoute) {
       const url = request.nextUrl.clone();
       if (isClientUser) {
         const clientInfo = await getClientInfo(supabase, user.id);
