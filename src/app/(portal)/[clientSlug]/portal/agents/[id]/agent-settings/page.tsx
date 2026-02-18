@@ -60,7 +60,19 @@ import {
   DollarSign,
   History,
   BookOpen,
+  Undo2,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { PrototypeCallDialog } from "@/components/agents/prototype-call-dialog";
@@ -156,6 +168,8 @@ export default function AgentSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(null);
   const isChat = agent?.platform === "retell-chat" || agent?.platform === "retell-sms";
 
   // Agent Config state -- populated from Retell API
@@ -1040,6 +1054,7 @@ export default function AgentSettingsPage() {
       }
 
       toast.success("Agent configuration published");
+      setHasUnpublishedChanges(true);
     } catch (err) {
       console.error("Failed to publish agent config:", err);
       toast.error(
@@ -1109,6 +1124,7 @@ export default function AgentSettingsPage() {
       const res = await fetch(`/api/agents/${agent.id}/publish`, { method: "POST" });
       if (res.ok) {
         toast.success("Agent version published");
+        setHasUnpublishedChanges(false);
         fetchVersions();
       } else {
         const data = await res.json();
@@ -1118,6 +1134,31 @@ export default function AgentSettingsPage() {
       toast.error("Failed to publish agent version");
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function restoreVersion(version: number) {
+    if (!agent?.id) return;
+    setRestoringVersion(version);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version }),
+      });
+      if (res.ok) {
+        toast.success(`Restored to version ${version}`);
+        setHasUnpublishedChanges(true);
+        // Reload the page to pick up restored config
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to restore version");
+      }
+    } catch {
+      toast.error("Failed to restore version");
+    } finally {
+      setRestoringVersion(null);
     }
   }
 
@@ -3107,10 +3148,13 @@ export default function AgentSettingsPage() {
                           <div className="h-7 w-7 rounded-md bg-cyan-100 dark:bg-cyan-900/50 flex items-center justify-center">
                             <History className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                           </div>
-                          <div>
+                          <div className="flex items-center gap-2">
                             <CardTitle className="text-sm">Versioning</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Publish &amp; version history</p>
+                            {hasUnpublishedChanges && (
+                              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-400 text-amber-600 dark:text-amber-400">Draft</Badge>
+                            )}
                           </div>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 sr-only">Publish &amp; version history</p>
                         </div>
                         <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
                       </div>
@@ -3121,16 +3165,31 @@ export default function AgentSettingsPage() {
                       <p className="text-[11px] text-muted-foreground">
                         Publishing creates a snapshot of the current agent config. New calls will use the published version.
                       </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={publishVersion}
-                        disabled={publishing}
-                        className="gap-1.5 w-full"
-                      >
-                        {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                        {publishing ? "Publishing..." : "Publish Version"}
-                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={publishing}
+                            className="gap-1.5 w-full"
+                          >
+                            {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            {publishing ? "Publishing..." : "Publish Version"}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Publish Agent Version?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This creates a production snapshot. New calls will use this version.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={publishVersion}>Publish</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
 
                       <div className="pt-2 border-t border-border/50">
                         <div className="flex items-center justify-between mb-2">
@@ -3159,9 +3218,42 @@ export default function AgentSettingsPage() {
                                     <Badge variant="default" className="text-[9px] h-4 px-1.5">Live</Badge>
                                   )}
                                 </div>
-                                <span className="text-muted-foreground">
-                                  {v.created_at ? new Date(v.created_at).toLocaleDateString() : "—"}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-muted-foreground">
+                                    {v.created_at ? new Date(v.created_at).toLocaleDateString() : "—"}
+                                  </span>
+                                  {!v.is_published && (
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-5 px-1.5 text-[10px] gap-1"
+                                          disabled={restoringVersion === v.version}
+                                        >
+                                          {restoringVersion === v.version ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                          ) : (
+                                            <Undo2 className="h-3 w-3" />
+                                          )}
+                                          Restore
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Restore Version {v.version}?</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            This will apply the configuration from version {v.version} to the current agent. You can publish a new version afterward to make it live.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                          <AlertDialogAction onClick={() => restoreVersion(v.version)}>Restore</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>

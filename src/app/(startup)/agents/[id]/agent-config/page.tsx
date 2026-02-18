@@ -8,6 +8,9 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Sparkles,
+  RotateCcw,
+  Undo2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +21,17 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -129,6 +143,7 @@ export default function AgentConfigPage() {
     webhook: false,
     advancedLlm: false,
     kbConfig: false,
+    versioning: false,
   });
 
   // Tools state
@@ -192,6 +207,73 @@ export default function AgentConfigPage() {
   const [mcpServers, setMcpServers] = useState<
     { id: string; name: string; url: string }[]
   >([]);
+
+  // Versioning state
+  const [publishing, setPublishing] = useState(false);
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
+  const [versions, setVersions] = useState<{ version: number; is_published: boolean; created_at: number | null }[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [restoringVersion, setRestoringVersion] = useState<number | null>(null);
+
+  async function fetchVersions() {
+    if (!agentId) return;
+    setVersionsLoading(true);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/versions`);
+      if (res.ok) {
+        const data = await res.json();
+        setVersions(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setVersionsLoading(false);
+    }
+  }
+
+  async function publishVersion() {
+    if (!agentId) return;
+    setPublishing(true);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/publish`, { method: "POST" });
+      if (res.ok) {
+        toast.success("Agent version published");
+        setHasUnpublishedChanges(false);
+        fetchVersions();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to publish");
+      }
+    } catch {
+      toast.error("Failed to publish agent version");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  async function restoreVersion(version: number) {
+    if (!agentId) return;
+    setRestoringVersion(version);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/versions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version }),
+      });
+      if (res.ok) {
+        toast.success(`Restored to version ${version}`);
+        setHasUnpublishedChanges(true);
+        window.location.reload();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to restore version");
+      }
+    } catch {
+      toast.error("Failed to restore version");
+    } finally {
+      setRestoringVersion(null);
+    }
+  }
 
   // Fetch config from API
   const fetchConfig = useCallback(async () => {
@@ -526,6 +608,7 @@ export default function AgentConfigPage() {
       }
 
       toast.success("Agent configuration saved successfully");
+      setHasUnpublishedChanges(true);
     } catch (err) {
       console.error("Failed to save agent config:", err);
       toast.error(err instanceof Error ? err.message : "Failed to save configuration");
@@ -580,7 +663,7 @@ export default function AgentConfigPage() {
     children,
   }: {
     id: string;
-    title: string;
+    title: React.ReactNode;
     badge?: string;
     children: React.ReactNode;
   }) {
@@ -1403,6 +1486,89 @@ export default function AgentConfigPage() {
               <Button variant="outline" size="sm" onClick={addMcpServer} className="gap-1">
                 <Plus className="h-3.5 w-3.5" /> Add MCP Server
               </Button>
+            </div>
+          </CollapsiblePanel>
+
+          {/* 11. Versioning */}
+          <CollapsiblePanel id="versioning" title={<span className="flex items-center gap-2">Versioning{hasUnpublishedChanges && <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-400 text-amber-600">Draft</Badge>}</span>}>
+            <div className="space-y-3">
+              <p className="text-sm text-[#6b7280]">
+                Publishing creates a snapshot of the current agent config. New calls will use the published version.
+              </p>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={publishing} className="gap-1.5 w-full">
+                    {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {publishing ? "Publishing..." : "Publish Version"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Publish Agent Version?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This creates a production snapshot. New calls will use this version.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={publishVersion}>Publish</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm text-[#111827]">Version History</Label>
+                  <Button variant="ghost" size="sm" onClick={fetchVersions} disabled={versionsLoading} className="h-6 px-2 text-xs">
+                    {versionsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  </Button>
+                </div>
+                {versions.length === 0 ? (
+                  <p className="text-sm text-[#6b7280]">
+                    {versionsLoading ? "Loading..." : "Click refresh to load versions."}
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {versions.map((v) => (
+                      <div key={v.version} className="flex items-center justify-between p-2 bg-gray-50 rounded text-sm">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-medium">v{v.version}</span>
+                          {v.is_published && (
+                            <Badge variant="default" className="text-[9px] h-4 px-1.5">Live</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#6b7280]">
+                            {v.created_at ? new Date(v.created_at).toLocaleDateString() : "—"}
+                          </span>
+                          {!v.is_published && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-5 px-1.5 text-xs gap-1" disabled={restoringVersion === v.version}>
+                                  {restoringVersion === v.version ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+                                  Restore
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Restore Version {v.version}?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will apply the configuration from version {v.version} to the current agent. You can publish a new version afterward to make it live.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => restoreVersion(v.version)}>Restore</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </CollapsiblePanel>
         </div>
