@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
     agent_id: body.agent_id || null,
     client_id: body.client_id || null,
     type: body.type || "standard",
+    caller_id_name: body.caller_id_name || null,
+    caller_id_verified: body.caller_id_verified ?? false,
+    cnam_status: body.cnam_status || "none",
   }).select().single();
 
   if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
