@@ -7,6 +7,7 @@ const settingsTabs = [
   { label: "Whitelabel", href: "/settings/whitelabel" },
   { label: "Members", href: "/settings/members" },
   { label: "Integrations", href: "/settings/integrations" },
+  { label: "Phone / SIP", href: "/settings/phone-sip" },
   { label: "Webhook Logs", href: "/settings/webhook-logs" },
   { label: "Usage", href: "/settings/usage" },
 ];
