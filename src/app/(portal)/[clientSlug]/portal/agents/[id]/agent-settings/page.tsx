@@ -3264,7 +3264,7 @@ export default function AgentSettingsPage() {
                 </Card>
               </Collapsible>
 
-              {/* Integrations */}
+              {/* MCP Servers */}
               <Collapsible>
                 <Card className="overflow-hidden">
                   <CollapsibleTrigger asChild>
@@ -3275,8 +3275,8 @@ export default function AgentSettingsPage() {
                             <Plug className="w-3.5 h-3.5 text-primary dark:text-primary" />
                           </div>
                           <div>
-                            <CardTitle className="text-sm">Integrations</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">External tool connections</p>
+                            <CardTitle className="text-sm">MCP Servers</CardTitle>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">Model Context Protocol servers</p>
                           </div>
                         </div>
                         <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
@@ -3287,7 +3287,7 @@ export default function AgentSettingsPage() {
                     <CardContent className="p-4 pt-0 space-y-3">
                       {mcpServers.length === 0 && (
                         <p className="text-xs text-muted-foreground">
-                          No integrations configured yet.
+                          No MCP servers configured yet.
                         </p>
                       )}
                       {mcpServers.map((server) => (
@@ -3307,7 +3307,7 @@ export default function AgentSettingsPage() {
                                   )
                                 )
                               }
-                              placeholder="Integration name"
+                              placeholder="Server name"
                               className="text-sm h-8"
                             />
                             <Input
@@ -3340,7 +3340,7 @@ export default function AgentSettingsPage() {
                         className="gap-1"
                       >
                         <Plus className="h-3.5 w-3.5" />
-                        Add Integration
+                        Add MCP Server
                       </Button>
                     </CardContent>
                   </CollapsibleContent>
