@@ -57,14 +57,17 @@ export async function POST(request: NextRequest) {
     console.warn(`No Stripe connected account for org ${org.id} — checkout will use platform account`);
   }
 
-  // 4. Validate return_url if provided (must be same origin)
+  // 4. Validate return_url if provided (must be an allowed origin)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const allowedOrigins = [appUrl];
+  if (process.env.MARKETING_SITE_URL) {
+    allowedOrigins.push(process.env.MARKETING_SITE_URL);
+  }
   let safeReturnUrl: string | null = null;
   if (return_url) {
     try {
       const parsed = new URL(return_url);
-      const appParsed = new URL(appUrl);
-      if (parsed.origin === appParsed.origin) {
+      if (allowedOrigins.some((o) => { try { return new URL(o).origin === parsed.origin; } catch { return false; } })) {
         safeReturnUrl = return_url;
       }
     } catch {

@@ -21,7 +21,17 @@ import {
   Zap,
   ChevronDown,
   HelpCircle,
+  BrainCircuit,
+  AudioLines,
+  Server,
 } from "lucide-react";
+import {
+  RETELL_INFRA_COST,
+  TELEPHONY_COST,
+  ADDON_COSTS,
+  ESTIMATOR_LLM_MODELS,
+  ESTIMATOR_VOICE_PROVIDERS,
+} from "@/lib/retell-costs";
 import type { ClientPlan, PlanAddon } from "@/types";
 
 interface PricingCardsProps {
@@ -94,7 +104,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "What happens if I go over my minutes?",
-    a: "You'll be billed at your plan's per-minute overage rate. We'll notify you when you're approaching your limit so there are no surprises.",
+    a: "You'll be billed at your plan's per-minute overage rate, which includes AI processing, voice synthesis, telephony, and platform infrastructure. We'll notify you when you're approaching your limit so there are no surprises.",
   },
   {
     q: "Can I change plans later?",
@@ -138,6 +148,157 @@ function getKeyFeatures(plan: ClientPlan): string[] {
   features.push("All Features Included");
 
   return features;
+}
+
+function CostEstimator() {
+  const [selectedModel, setSelectedModel] = useState<string>(ESTIMATOR_LLM_MODELS[2].key); // gpt-4.1 default
+  const [selectedVoice, setSelectedVoice] = useState<string>(ESTIMATOR_VOICE_PROVIDERS[0].key); // openai default
+  const [hasPhone, setHasPhone] = useState(true);
+  const [hasKnowledgeBase, setHasKnowledgeBase] = useState(false);
+  const [hasDenoising, setHasDenoising] = useState(false);
+  const [hasPii, setHasPii] = useState(false);
+
+  const modelCost = ESTIMATOR_LLM_MODELS.find((m) => m.key === selectedModel)?.cost ?? 0.045;
+  const voiceCost = ESTIMATOR_VOICE_PROVIDERS.find((v) => v.key === selectedVoice)?.cost ?? 0;
+  const infraCost = RETELL_INFRA_COST;
+  const telephonyCost = hasPhone ? TELEPHONY_COST : 0;
+  const kbCost = hasKnowledgeBase ? ADDON_COSTS.knowledgeBase : 0;
+  const denoisingCost = hasDenoising ? ADDON_COSTS.advancedDenoising : 0;
+  const piiCost = hasPii ? ADDON_COSTS.piiRemoval : 0;
+  const totalPerMinute = infraCost + telephonyCost + modelCost + voiceCost + kbCost + denoisingCost + piiCost;
+
+  const breakdownItems = [
+    { label: "Platform Infrastructure", cost: infraCost, always: true },
+    { label: "AI Model", cost: modelCost, detail: ESTIMATOR_LLM_MODELS.find((m) => m.key === selectedModel)?.label },
+    { label: "Voice Provider", cost: voiceCost, detail: ESTIMATOR_VOICE_PROVIDERS.find((v) => v.key === selectedVoice)?.label },
+    ...(hasPhone ? [{ label: "Telephony", cost: telephonyCost }] : []),
+    ...(hasKnowledgeBase ? [{ label: "Knowledge Base", cost: kbCost }] : []),
+    ...(hasDenoising ? [{ label: "Advanced Denoising", cost: denoisingCost }] : []),
+    ...(hasPii ? [{ label: "PII Removal", cost: piiCost }] : []),
+  ];
+
+  return (
+    <div className="mb-16">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold">Per-Minute Cost Estimator</h2>
+        <p className="text-muted-foreground mt-1">
+          See exactly how your agent configuration affects per-minute costs
+        </p>
+      </div>
+      <div className="max-w-3xl mx-auto">
+        <Card>
+          <CardContent className="p-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Configuration */}
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                    <BrainCircuit className="w-3.5 h-3.5 inline mr-1" />
+                    AI Model
+                  </label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-white"
+                  >
+                    {ESTIMATOR_LLM_MODELS.map((m) => (
+                      <option key={m.key} value={m.key}>
+                        {m.label} — ${m.cost.toFixed(3)}/min
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                    <AudioLines className="w-3.5 h-3.5 inline mr-1" />
+                    Voice Provider
+                  </label>
+                  <select
+                    value={selectedVoice}
+                    onChange={(e) => setSelectedVoice(e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-white"
+                  >
+                    {ESTIMATOR_VOICE_PROVIDERS.map((v) => (
+                      <option key={v.key} value={v.key}>
+                        {v.label}{v.cost > 0 ? ` — $${v.cost.toFixed(3)}/min` : " — included"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasPhone}
+                      onChange={(e) => setHasPhone(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Phone calls (+${TELEPHONY_COST.toFixed(3)}/min)</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasKnowledgeBase}
+                      onChange={(e) => setHasKnowledgeBase(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Knowledge Base (+${ADDON_COSTS.knowledgeBase.toFixed(3)}/min)</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasDenoising}
+                      onChange={(e) => setHasDenoising(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">Advanced Denoising (+${ADDON_COSTS.advancedDenoising.toFixed(3)}/min)</span>
+                  </label>
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasPii}
+                      onChange={(e) => setHasPii(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-sm">PII Removal (+${ADDON_COSTS.piiRemoval.toFixed(3)}/min)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Breakdown */}
+              <div>
+                <div className="rounded-lg bg-gray-50 p-4">
+                  <p className="text-xs font-medium text-muted-foreground mb-3">Cost Breakdown</p>
+                  <div className="space-y-2">
+                    {breakdownItems.map((item) => (
+                      <div key={item.label} className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {item.label}
+                          {"detail" in item && item.detail && (
+                            <span className="text-xs text-muted-foreground/70 ml-1">({item.detail})</span>
+                          )}
+                        </span>
+                        <span className="font-medium tabular-nums">${item.cost.toFixed(3)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t mt-3 pt-3 flex items-center justify-between">
+                    <span className="text-sm font-semibold">Total per minute</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      ${totalPerMinute.toFixed(3)}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Example: 500 minutes/mo = ${(totalPerMinute * 500).toFixed(2)}/mo in usage costs
+                  </p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }
 
 export default function PricingCards({ plans, addons, orgSlug, stripeAccountId }: PricingCardsProps) {
@@ -333,6 +494,9 @@ export default function PricingCards({ plans, addons, orgSlug, stripeAccountId }
             );
           })}
         </div>
+
+        {/* Per-Minute Cost Estimator */}
+        <CostEstimator />
 
         {/* Add-ons Section */}
         {addons.length > 0 && (

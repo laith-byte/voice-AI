@@ -19,20 +19,46 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Upsert: create new onboarding record or reset an existing one
-  const { data, error } = await supabase
+  // Check if an onboarding record already exists
+  const { data: existing } = await supabase
     .from("client_onboarding")
-    .upsert(
-      {
-        client_id: clientId,
+    .select("id")
+    .eq("client_id", clientId)
+    .maybeSingle();
+
+  if (existing) {
+    // Update existing record without regressing current_step
+    const { data, error } = await supabase
+      .from("client_onboarding")
+      .update({
         status: "in_progress",
-        current_step: 1,
         vertical_template_id,
         agent_type: agent_type || "voice",
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "client_id" }
-    )
+      })
+      .eq("client_id", clientId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("DB error:", error.message);
+      return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
+  }
+
+  // Create new onboarding record
+  const { data, error } = await supabase
+    .from("client_onboarding")
+    .insert({
+      client_id: clientId,
+      status: "in_progress",
+      current_step: 1,
+      vertical_template_id,
+      agent_type: agent_type || "voice",
+      updated_at: new Date().toISOString(),
+    })
     .select()
     .single();
 

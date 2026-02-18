@@ -49,7 +49,6 @@ export async function GET(
         provider: v.provider,
         accent: v.accent || null,
         age: v.age || null,
-        preview_audio_url: v.preview_audio_url || null,
       }))
     );
   } catch {

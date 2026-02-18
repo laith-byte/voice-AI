@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import { Phone, Clock, MessageSquare, MessagesSquare, TrendingUp, TrendingDown, CheckCircle2, Users, Timer, ArrowDownUp, PhoneIncoming, PhoneOutgoing } from "lucide-react";
 import {
   ComposedChart,
@@ -92,7 +93,9 @@ export default function AnalyticsPage() {
         .lte("started_at", end.toISOString())
         .order("started_at", { ascending: true });
 
-      if (!error && data) {
+      if (error) {
+        toast.error("Failed to load analytics data");
+      } else if (data) {
         setCallLogs(data);
       }
     } else {
@@ -108,7 +111,9 @@ export default function AnalyticsPage() {
         .gte("started_at", startDate.toISOString())
         .order("started_at", { ascending: true });
 
-      if (!error && data) {
+      if (error) {
+        toast.error("Failed to load analytics data");
+      } else if (data) {
         setCallLogs(data);
       }
     }

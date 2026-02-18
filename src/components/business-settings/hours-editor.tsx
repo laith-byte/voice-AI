@@ -168,11 +168,14 @@ export function HoursEditor({ clientId }: HoursEditorProps) {
       }
 
       // Also save timezone to main business_settings
-      await fetch(apiUrl("", clientId), {
+      const tzRes = await fetch(apiUrl("", clientId), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone }),
       });
+      if (!tzRes.ok) {
+        throw new Error("Hours saved but failed to save timezone");
+      }
 
       toast.success("Business hours saved successfully");
     } catch (err) {

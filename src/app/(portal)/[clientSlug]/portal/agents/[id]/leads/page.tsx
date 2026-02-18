@@ -190,7 +190,9 @@ export default function LeadsPage() {
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    if (error) {
+      toast.error("Failed to load leads");
+    } else if (data) {
       setLeads(data);
     }
     setLoading(false);
@@ -449,6 +451,33 @@ export default function LeadsPage() {
     }
   }
 
+  function handleExportCSV() {
+    if (filteredLeads.length === 0) {
+      toast.error("No leads to export.");
+      return;
+    }
+    const csvEscape = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
+    const headers = ["Phone", "Name", "Tags"];
+    const rows = filteredLeads.map((lead) => [
+      csvEscape(lead.phone),
+      csvEscape(lead.name || ""),
+      csvEscape((lead.tags || []).join("; ")),
+    ]);
+    const csv =
+      "\uFEFF" +
+      [headers.map(csvEscape).join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filteredLeads.length} leads.`);
+  }
+
   function handleImportClose(open: boolean) {
     setImportOpen(open);
     if (!open) {
@@ -607,7 +636,7 @@ export default function LeadsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExportCSV}>
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>

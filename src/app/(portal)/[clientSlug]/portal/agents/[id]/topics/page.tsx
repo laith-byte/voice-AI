@@ -18,13 +18,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -34,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { Plus, Search, Tags, MessageSquare, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 interface TopicRow {
   id: string;
@@ -74,7 +68,9 @@ export default function TopicsPage() {
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    if (error) {
+      toast.error("Failed to load topics");
+    } else if (data) {
       setTopics(data);
     }
     setLoading(false);
@@ -94,7 +90,9 @@ export default function TopicsPage() {
       description: newTopicDescription.trim() || null,
     });
 
-    if (!error) {
+    if (error) {
+      toast.error("Failed to create topic");
+    } else {
       setDialogOpen(false);
       setNewTopicName("");
       setNewTopicDescription("");
@@ -190,16 +188,6 @@ export default function TopicsPage() {
             className="pl-9 rounded-xl shadow-none focus:shadow-sm focus:ring-2 focus:ring-primary/20 transition-all"
           />
         </div>
-        <Select defaultValue="7">
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Last 7 days</SelectItem>
-            <SelectItem value="30">Last 30 days</SelectItem>
-            <SelectItem value="90">Last 90 days</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {loading ? (

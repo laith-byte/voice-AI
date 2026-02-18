@@ -9,6 +9,7 @@ import { RecipeSetupModal } from "@/components/automations/recipe-setup-modal";
 import { ActiveAutomationCard } from "@/components/automations/active-automation-card";
 import { usePlanAccess } from "@/hooks/use-plan-access";
 import { UpgradeBanner } from "@/components/portal/upgrade-banner";
+import { ZapierConnectionCard } from "@/components/portal/zapier-connection-card";
 import { Lock } from "lucide-react";
 
 interface Recipe {
@@ -69,6 +70,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
   slack: "Slack",
   hubspot: "HubSpot",
+  quickbooks: "QuickBooks",
 };
 
 // Map recipe categories/names to plan access fields
@@ -416,6 +418,18 @@ export default function PortalAutomationsPage() {
                   onSetup={() => {}}
                 />
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* Integrations */}
+        {clientId && (
+          <section>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Integrations
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ZapierConnectionCard clientId={clientId} />
             </div>
           </section>
         )}

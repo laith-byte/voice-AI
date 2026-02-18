@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executePostCallActions } from "@/lib/post-call-actions";
 import { executeRecipes } from "@/lib/automation-recipes";
+import { redactTranscript, redactText } from "@/lib/pii-redaction";
+import { dispatchZapierEvent } from "@/lib/zapier";
 import { sendEmail } from "@/lib/resend";
 import Retell from "retell-sdk";
 
@@ -58,6 +60,41 @@ export async function POST(request: NextRequest) {
           console.warn("call_started: no matching agent for retell agent_id:", call.agent_id);
           break;
         }
+
+        // Snapshot agent config for historical cost accuracy
+        let costSnapshot: Record<string, unknown> | null = null;
+        try {
+          const snapshotApiKey = process.env.RETELL_API_KEY;
+          if (snapshotApiKey && call.agent_id) {
+            const agentConfigRes = await fetch(
+              `https://api.retellai.com/get-agent/${call.agent_id}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${snapshotApiKey}`,
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+            if (agentConfigRes.ok) {
+              const agentConfig = await agentConfigRes.json();
+              costSnapshot = {
+                llm_model:
+                  agentConfig.response_engine?.llm?.model || null,
+                voice_id: agentConfig.voice_id || null,
+                denoising_mode: agentConfig.denoising_mode || null,
+                has_pii_config: !!agentConfig.pii_config,
+              };
+            }
+          }
+        } catch (snapshotErr) {
+          console.error("Cost snapshot error (non-blocking):", snapshotErr);
+        }
+
+        const callMetadata = {
+          ...(call.metadata || {}),
+          ...(costSnapshot ? { cost_snapshot: costSnapshot } : {}),
+        };
+
         const { error: insertError } = await supabase.from("call_logs").insert({
           organization_id: organizationId,
           client_id: clientId,
@@ -71,7 +108,7 @@ export async function POST(request: NextRequest) {
           started_at: call.start_timestamp
             ? new Date(call.start_timestamp).toISOString()
             : new Date().toISOString(),
-          metadata: call.metadata || null,
+          metadata: callMetadata,
         });
         if (insertError) console.error("Failed to insert call_log:", insertError);
         break;
@@ -129,6 +166,43 @@ export async function POST(request: NextRequest) {
     // Only trigger on call_analyzed to avoid double execution (call_ended + call_analyzed)
     // and to ensure summary/analysis data is available for actions
     if (clientId && event === "call_analyzed") {
+      // Apply PII redaction if configured for this client
+      try {
+        const { data: piiConfig } = await supabase
+          .from("pii_redaction_configs")
+          .select("*")
+          .eq("client_id", clientId)
+          .single();
+
+        if (piiConfig?.enabled) {
+          const redactedUpdate: Record<string, unknown> = {};
+
+          // Fetch current call log to redact
+          const { data: currentLog } = await supabase
+            .from("call_logs")
+            .select("transcript, summary")
+            .eq("retell_call_id", call.call_id)
+            .single();
+
+          if (currentLog) {
+            if (currentLog.transcript && Array.isArray(currentLog.transcript)) {
+              redactedUpdate.transcript = redactTranscript(currentLog.transcript, piiConfig);
+            }
+            if (currentLog.summary) {
+              redactedUpdate.summary = redactText(currentLog.summary, piiConfig);
+            }
+            if (Object.keys(redactedUpdate).length > 0) {
+              await supabase
+                .from("call_logs")
+                .update(redactedUpdate)
+                .eq("retell_call_id", call.call_id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("PII redaction error:", err);
+      }
+
       // Fetch the stored call log to pass to actions
       const { data: callLogRow } = await supabase
         .from("call_logs")
@@ -137,13 +211,16 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (callLogRow) {
-        // Run both post-call actions and automation recipes in parallel
+        // Run post-call actions, automation recipes, and Zapier dispatch in parallel
         await Promise.all([
           executePostCallActions(callLogRow, clientId).catch((err) =>
             console.error("Post-call actions error:", err)
           ),
           executeRecipes(callLogRow, clientId).catch((err) =>
             console.error("Automation recipes error:", err)
+          ),
+          dispatchZapierEvent(clientId, "call.completed", callLogRow).catch((err) =>
+            console.error("Zapier dispatch error:", err)
           ),
         ]);
       }

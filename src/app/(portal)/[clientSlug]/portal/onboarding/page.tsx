@@ -39,6 +39,7 @@ import {
   Smartphone,
   Code,
   Copy,
+  GitBranch,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import confetti from "canvas-confetti";
@@ -56,6 +57,7 @@ import { HoursEditor } from "@/components/business-settings/hours-editor";
 import { ServicesList } from "@/components/business-settings/services-list";
 import { FaqsList } from "@/components/business-settings/faqs-list";
 import { PoliciesList } from "@/components/business-settings/policies-list";
+import { INDUSTRIES, generateTemplateNodes } from "@/lib/conversation-flow-templates";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,6 +173,8 @@ export default function OnboardingWizardPage() {
   // Step 6 state
   const [phoneOption, setPhoneOption] = useState("temporary");
   const [goingLive, setGoingLive] = useState(false);
+  const [deployingFlow, setDeployingFlow] = useState(false);
+  const [flowDeployed, setFlowDeployed] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Fetch onboarding status & templates on mount
@@ -217,14 +221,13 @@ export default function OnboardingWizardPage() {
         if (statusData.chat_offline_behavior) setChatOfflineBehavior(statusData.chat_offline_behavior);
         if (statusData.sms_phone_number) setSmsPhoneNumber(statusData.sms_phone_number);
 
-        // Restore chatAgentId by looking up the chat/sms agent for this client
-        if (statusData.client_id && (statusData.agent_type === "chat" || statusData.agent_type === "sms")) {
+        // Restore chatAgentId by looking up the agent for this client
+        if (statusData.client_id) {
           const supabaseInner = createClient();
           const { data: agentRow } = await supabaseInner
             .from("agents")
             .select("id")
             .eq("client_id", statusData.client_id)
-            .in("platform", ["retell-chat", "retell-sms"])
             .limit(1)
             .maybeSingle();
           if (agentRow?.id) {
@@ -289,11 +292,15 @@ export default function OnboardingWizardPage() {
     setSaving(true);
     try {
       // Start onboarding
-      await fetch("/api/onboarding/start", {
+      const startRes = await fetch("/api/onboarding/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ vertical_template_id: selectedTemplate, agent_type: agentType }),
       });
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to start onboarding");
+      }
       // Save step 1
       await saveStep(1, { vertical_template_id: selectedTemplate });
       setStep(2);
@@ -457,6 +464,85 @@ export default function OnboardingWizardPage() {
       setCallDurationSeconds(
         Math.round((Date.now() - callStartTimeRef.current) / 1000)
       );
+    }
+  }
+
+  // Deploy conversation flow
+  async function deployConversationFlow() {
+    const currentTemplate = templates.find((t) => t.id === selectedTemplate);
+    const industryKey = selectedIndustry || currentTemplate?.industry;
+    const useCaseKey = currentTemplate?.use_case;
+
+    if (!chatAgentId || !industryKey || !useCaseKey) {
+      toast.error("Missing agent or template information to deploy a flow.");
+      return;
+    }
+
+    const nodes = generateTemplateNodes(industryKey, useCaseKey);
+    if (!nodes.length) {
+      toast.error("No matching flow template found for your industry and use case.");
+      return;
+    }
+
+    setDeployingFlow(true);
+    try {
+      // Check if a flow already exists for this agent
+      const existingRes = await fetch("/api/conversation-flows");
+      if (existingRes.ok) {
+        const existingFlows = await existingRes.json();
+        const agentFlow = Array.isArray(existingFlows)
+          ? existingFlows.find((f: { agent_id: string | null }) => f.agent_id === chatAgentId)
+          : null;
+        if (agentFlow) {
+          // Flow already exists — update nodes then re-deploy
+          await fetch(`/api/conversation-flows/${agentFlow.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nodes }),
+          });
+          const deployRes = await fetch(`/api/conversation-flows/${agentFlow.id}`, {
+            method: "POST",
+          });
+          if (!deployRes.ok) throw new Error("Failed to deploy existing conversation flow");
+          setFlowDeployed(true);
+          toast.success("Conversation flow deployed to your agent!");
+          return;
+        }
+      }
+
+      const industryLabel = INDUSTRIES[industryKey]?.label || industryKey;
+      const useCaseLabel = USE_CASE_LABELS[useCaseKey] || useCaseKey;
+      const flowName = `${industryLabel} ${useCaseLabel}`;
+
+      // Create the flow
+      const createRes = await fetch("/api/conversation-flows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: flowName,
+          agent_id: chatAgentId,
+          nodes,
+        }),
+      });
+
+      if (!createRes.ok) throw new Error("Failed to create conversation flow");
+      const flow = await createRes.json();
+
+      // Deploy the flow to Retell
+      const deployRes = await fetch(`/api/conversation-flows/${flow.id}`, {
+        method: "POST",
+      });
+
+      if (!deployRes.ok) throw new Error("Failed to deploy conversation flow");
+
+      setFlowDeployed(true);
+      toast.success("Conversation flow deployed to your agent!");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to deploy conversation flow"
+      );
+    } finally {
+      setDeployingFlow(false);
     }
   }
 
@@ -2229,6 +2315,58 @@ export default function OnboardingWizardPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Deploy conversation flow */}
+              {(() => {
+                const currentTemplate = templates.find((t) => t.id === selectedTemplate);
+                const industryKey = selectedIndustry || currentTemplate?.industry;
+                const useCaseKey = currentTemplate?.use_case;
+                const hasFlow = !!(industryKey && useCaseKey && INDUSTRIES[industryKey]);
+                if (!hasFlow) return null;
+                const industryLabel = INDUSTRIES[industryKey!]?.label || industryKey;
+                const useCaseLabel = USE_CASE_LABELS[useCaseKey!] || useCaseKey;
+                return (
+                  <Card className="glass-card">
+                    <CardContent className="p-6">
+                      <div className="flex items-center gap-2 mb-1">
+                        <GitBranch className="w-4 h-4 text-primary" />
+                        <h3 className="font-semibold text-sm">
+                          Deploy Conversation Flow
+                        </h3>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        Deploy a <strong>{industryLabel} {useCaseLabel}</strong> conversation
+                        flow to guide your agent through calls with a structured script,
+                        scheduling, and CRM lookups.
+                      </p>
+                      {flowDeployed ? (
+                        <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                          <Check className="w-4 h-4" />
+                          Flow deployed successfully
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={deployConversationFlow}
+                          disabled={deployingFlow || !chatAgentId}
+                          className="gap-2"
+                        >
+                          {deployingFlow ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Rocket className="w-3.5 h-3.5" />
+                          )}
+                          {deployingFlow ? "Deploying..." : "Deploy Flow"}
+                        </Button>
+                      )}
+                      <p className="text-[11px] text-muted-foreground mt-3">
+                        You can customize this flow later from the Conversation Flows page.
+                      </p>
+                    </CardContent>
+                  </Card>
+                );
+              })()}
 
               {/* Phone number selection (voice only), Widget embed (chat), or SMS phone config */}
               {agentType === "sms" ? (

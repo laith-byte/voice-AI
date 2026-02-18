@@ -24,6 +24,7 @@ import {
   CreditCard,
   Sparkles,
   BookOpen,
+  GitBranch,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -275,16 +276,16 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
               Agents
             </Link>
             <Link
-              href={`/${clientSlug}/portal/settings/business`}
+              href={`/${clientSlug}/portal/conversation-flows`}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                pathname === `/${clientSlug}/portal/settings/business`
+                pathname === `/${clientSlug}/portal/conversation-flows`
                   ? "bg-white/10 text-white font-medium"
                   : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
               }`}
-              style={pathname === `/${clientSlug}/portal/settings/business` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+              style={pathname === `/${clientSlug}/portal/conversation-flows` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
             >
-              <Building2 className="w-4 h-4" />
-              Business Settings
+              <GitBranch className="w-4 h-4" />
+              Flows
             </Link>
             <Link
               href={`/${clientSlug}/portal/automations`}
@@ -297,6 +298,18 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
             >
               <Sparkles className="w-4 h-4" />
               Automations
+            </Link>
+            <Link
+              href={`/${clientSlug}/portal/settings/business`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                pathname === `/${clientSlug}/portal/settings/business`
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}
+              style={pathname === `/${clientSlug}/portal/settings/business` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+            >
+              <Building2 className="w-4 h-4" />
+              Business Settings
             </Link>
             <Link
               href={`/${clientSlug}/portal/billing`}

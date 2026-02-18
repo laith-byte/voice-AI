@@ -402,10 +402,10 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
   const agentTypeStr = agent.platform === "retell-sms" ? "sms" : isChat ? "chat" : "voice";
   const generatedPrompt = await generatePrompt(clientId, promptTemplate, agentTypeStr);
 
-  // Get business settings for max_call_duration
+  // Get business settings for max_call_duration and escalation phone
   const { data: settings } = await supabase
     .from("business_settings")
-    .select("max_call_duration_minutes")
+    .select("max_call_duration_minutes, unanswerable_behavior, escalation_phone")
     .eq("client_id", clientId)
     .single();
 
@@ -444,27 +444,127 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
       throw new Error(`Failed to update Retell chat agent: ${res.status}`);
     }
   } else {
-    // Push to Retell Voice Agent API
-    const res = await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        response_engine: {
-          llm: {
-            system_prompt: generatedPrompt,
-          },
-        },
-        max_call_duration_ms: (settings?.max_call_duration_minutes || 5) * 60 * 1000,
-      }),
-    });
+    // Build transfer_call tool if escalation is configured
+    const transferTool =
+      settings?.unanswerable_behavior === "transfer" && settings?.escalation_phone
+        ? {
+            type: "transfer_call" as const,
+            name: "transfer_to_human",
+            description:
+              "Transfer the call to a human agent when the caller explicitly requests to speak with a person, or when you cannot resolve their issue.",
+            transfer_destination: {
+              type: "predefined" as const,
+              number: settings.escalation_phone,
+            },
+            transfer_option: {
+              type: "warm_transfer" as const,
+              show_transferee_as_caller: false,
+              on_hold_music: "ringtone" as const,
+            },
+            speak_during_execution: true,
+            execution_message_description:
+              "Let the caller know you are transferring them now.",
+            execution_message_type: "prompt" as const,
+          }
+        : null;
 
-    if (!res.ok) {
-      const err = await res.text();
-      console.error("Retell API error:", err);
-      throw new Error(`Failed to update Retell agent: ${res.status}`);
+    // Fetch current agent config to get existing LLM ID or inline config
+    const agentConfigRes = await fetch(
+      `https://api.retellai.com/get-agent/${agent.retell_agent_id}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+
+    let usesLlmId = false;
+    let llmId: string | null = null;
+    let existingTools: Record<string, unknown>[] = [];
+
+    if (agentConfigRes.ok) {
+      const agentConfig = await agentConfigRes.json();
+      const engine = agentConfig.response_engine;
+      if (engine?.llm_id) {
+        usesLlmId = true;
+        llmId = engine.llm_id;
+        // Fetch existing tools from the standalone LLM
+        const llmRes = await fetch(
+          `https://api.retellai.com/get-retell-llm/${llmId}`,
+          { headers: { Authorization: `Bearer ${apiKey}` } }
+        );
+        if (llmRes.ok) {
+          const llm = await llmRes.json();
+          existingTools = llm.general_tools || [];
+        }
+      } else if (engine?.llm) {
+        // Inline LLM — preserve existing tools (e.g. from flow deployments)
+        existingTools = engine.llm.general_tools || engine.llm.tools || [];
+      }
+    }
+
+    // Merge transfer tool: remove any old transfer_to_human, add new one if configured
+    const toolsWithoutOldTransfer = existingTools.filter(
+      (t) => t.name !== "transfer_to_human"
+    );
+    const mergedTools = transferTool
+      ? [...toolsWithoutOldTransfer, transferTool]
+      : toolsWithoutOldTransfer;
+
+    if (usesLlmId && llmId) {
+      // Push prompt + tools to the standalone LLM
+      const llmUpdateRes = await fetch(
+        `https://api.retellai.com/update-retell-llm/${llmId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            general_prompt: generatedPrompt,
+            general_tools: mergedTools,
+          }),
+        }
+      );
+
+      if (!llmUpdateRes.ok) {
+        const err = await llmUpdateRes.text();
+        console.error("Retell LLM update error:", err);
+        throw new Error(`Failed to update Retell LLM: ${llmUpdateRes.status}`);
+      }
+
+      // Still update agent-level settings (max duration)
+      await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          max_call_duration_ms: (settings?.max_call_duration_minutes || 5) * 60 * 1000,
+        }),
+      });
+    } else {
+      // Push to Retell Voice Agent API (inline LLM)
+      const res = await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          response_engine: {
+            llm: {
+              general_prompt: generatedPrompt,
+              general_tools: mergedTools,
+            },
+          },
+          max_call_duration_ms: (settings?.max_call_duration_minutes || 5) * 60 * 1000,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Retell API error:", err);
+        throw new Error(`Failed to update Retell agent: ${res.status}`);
+      }
     }
   }
 }

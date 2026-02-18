@@ -8,6 +8,7 @@ import { PoliciesList } from "@/components/business-settings/policies-list";
 import { LocationsList } from "@/components/business-settings/locations-list";
 import { CallHandlingSettings } from "@/components/business-settings/call-handling-settings";
 import { PostCallActions } from "@/components/business-settings/post-call-actions";
+import { PiiRedactionSettings } from "@/components/business-settings/pii-redaction-settings";
 
 export default function PortalBusinessSettingsPage() {
   return (
@@ -32,6 +33,11 @@ export default function PortalBusinessSettingsPage() {
         <div className="border-t pt-2" />
 
         <PostCallActions />
+
+        {/* Section divider */}
+        <div className="border-t pt-2" />
+
+        <PiiRedactionSettings />
       </div>
     </div>
   );

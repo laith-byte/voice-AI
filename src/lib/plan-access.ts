@@ -48,6 +48,15 @@ export interface PlanAccess {
   mcp_configuration: boolean;
   speech_settings_full: boolean;
 
+  // New feature gates
+  branded_caller_id: boolean;
+  verified_caller_id: boolean;
+  sip_trunking: boolean;
+  pii_redaction: boolean;
+  calendly_integration: boolean;
+  zapier_integration: boolean;
+  conversation_flows: boolean;
+
   // Support gates
   priority_support: boolean;
   dedicated_account_manager: boolean;
@@ -104,6 +113,13 @@ const DEFAULTS: PlanAccess = {
   campaign_outbound: false,
   mcp_configuration: false,
   speech_settings_full: false,
+  branded_caller_id: false,
+  verified_caller_id: false,
+  sip_trunking: false,
+  pii_redaction: false,
+  calendly_integration: false,
+  zapier_integration: false,
+  conversation_flows: false,
   priority_support: false,
   dedicated_account_manager: false,
   onboarding_call: false,
@@ -207,6 +223,14 @@ export async function getClientPlanAccess(clientId: string): Promise<PlanAccess>
     campaign_outbound: plan.campaign_outbound ?? false,
     mcp_configuration: plan.mcp_configuration ?? false,
     speech_settings_full: plan.speech_settings_full ?? false,
+
+    branded_caller_id: plan.branded_caller_id ?? false,
+    verified_caller_id: plan.verified_caller_id ?? false,
+    sip_trunking: plan.sip_trunking ?? false,
+    pii_redaction: plan.pii_redaction ?? false,
+    calendly_integration: plan.calendly_integration ?? false,
+    zapier_integration: plan.zapier_integration ?? false,
+    conversation_flows: plan.conversation_flows ?? false,
 
     priority_support: plan.priority_support ?? false,
     dedicated_account_manager: plan.dedicated_account_manager ?? false,

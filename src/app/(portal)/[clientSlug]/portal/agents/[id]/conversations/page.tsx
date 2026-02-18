@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
@@ -19,13 +18,9 @@ import {
 } from "@/components/ui/select";
 import {
   Search,
-  SlidersHorizontal,
   Download,
   Phone,
   Globe,
-  Smile,
-  Bookmark,
-  Trash2,
   Play,
   Pause,
   LayoutGrid,
@@ -84,6 +79,7 @@ interface Conversation {
   reasonEnded: string;
   transcript: TranscriptMessage[];
   recordingUrl: string | null;
+  rawTimestamp: string | null;
 }
 
 interface CallLogRow {
@@ -164,6 +160,7 @@ function mapCallLogToConversation(log: CallLogRow): Conversation {
     reasonEnded: disconnectionReason,
     transcript: parseTranscript(log.transcript),
     recordingUrl: log.recording_url || null,
+    rawTimestamp: log.started_at,
   };
 }
 
@@ -187,6 +184,8 @@ export default function ConversationsPage() {
   const [pageSize, setPageSize] = useState(25);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetConversation, setSheetConversation] = useState<Conversation | null>(null);
+  const [dateRange, setDateRange] = useState("all");
+  const [transcriptSearch, setTranscriptSearch] = useState("");
 
   const fetchConversations = useCallback(async () => {
     setLoading(true);
@@ -210,7 +209,9 @@ export default function ConversationsPage() {
       .eq("agent_id", agentId)
       .order("started_at", { ascending: false });
 
-    if (!error && data) {
+    if (error) {
+      toast.error("Failed to load conversations");
+    } else if (data) {
       const mapped = (data as CallLogRow[]).map(mapCallLogToConversation);
       setConversations(mapped);
       if (mapped.length > 0) {
@@ -239,12 +240,20 @@ export default function ConversationsPage() {
     }
   }, [selectedConversation]);
 
-  const filteredConversations = conversations.filter(
-    (conv) =>
+  const filteredConversations = conversations.filter((conv) => {
+    const matchesSearch =
       conv.callerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       conv.callerId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      conv.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      conv.id.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    if (dateRange !== "all" && conv.rawTimestamp) {
+      const days = parseInt(dateRange);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      if (new Date(conv.rawTimestamp) < cutoff) return false;
+    }
+    return true;
+  });
 
   // Pagination
   const totalPages = Math.max(1, Math.ceil(filteredConversations.length / pageSize));
@@ -253,10 +262,10 @@ export default function ConversationsPage() {
     currentPage * pageSize
   );
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or date range changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, dateRange]);
 
   // CSV Export
   const handleExportCSV = () => {
@@ -493,22 +502,17 @@ export default function ConversationsPage() {
                   className="pl-8 h-8 text-sm"
                 />
               </div>
-              <div className="flex gap-2">
-                <Select defaultValue="7">
-                  <SelectTrigger className="h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7">Last 7 days</SelectItem>
-                    <SelectItem value="30">Last 30 days</SelectItem>
-                    <SelectItem value="90">Last 90 days</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" size="sm" className="h-7 text-xs px-2">
-                  <SlidersHorizontal className="w-3 h-3 mr-1" />
-                  Filter
-                </Button>
-              </div>
+              <Select value={dateRange} onValueChange={setDateRange}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All time</SelectItem>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <ScrollArea className="flex-1">
               {paginatedConversations.map((conv) => (
@@ -622,25 +626,30 @@ export default function ConversationsPage() {
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4">
                 {selected.transcript.length > 0 ? (
-                  selected.transcript.map((msg, i) => (
-                    <div
-                      key={i}
-                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
+                  selected.transcript.map((msg, i) => {
+                    const isHighlighted =
+                      transcriptSearch &&
+                      msg.content.toLowerCase().includes(transcriptSearch.toLowerCase());
+                    return (
                       <div
-                        className={`max-w-[80%] px-3 py-2 ${
-                          msg.role === "user"
-                            ? "bg-primary text-white shadow-md shadow-primary/20 rounded-2xl rounded-br-md"
-                            : "bg-muted text-foreground shadow-sm ring-1 ring-border/50 rounded-2xl"
-                        }`}
+                        key={i}
+                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                       >
-                        <p className="text-sm">{msg.content}</p>
-                        <p className={`text-[10px] mt-1 ${msg.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-                          {msg.time}
-                        </p>
+                        <div
+                          className={`max-w-[80%] px-3 py-2 ${
+                            msg.role === "user"
+                              ? "bg-primary text-white shadow-md shadow-primary/20 rounded-2xl rounded-br-md"
+                              : "bg-muted text-foreground shadow-sm ring-1 ring-border/50 rounded-2xl"
+                          } ${isHighlighted ? "ring-2 ring-yellow-400" : ""}`}
+                        >
+                          <p className="text-sm">{msg.content}</p>
+                          <p className={`text-[10px] mt-1 ${msg.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                            {msg.time}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
                     No transcript available for this conversation.
@@ -662,22 +671,22 @@ export default function ConversationsPage() {
               <TabsContent value="settings" className="p-4 space-y-4 mt-0">
                 <div className="space-y-2">
                   <label className="text-xs font-medium text-muted-foreground">Search in transcript</label>
-                  <Input placeholder="Search..." className="h-8 text-sm" />
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground">Actions</label>
-                  <div className="flex gap-2 mt-1">
-                    <Button variant="outline" size="sm" className="h-8">
-                      <Smile className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-8">
-                      <Bookmark className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-8 text-red-500 hover:text-red-700">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                  <Input
+                    placeholder="Search..."
+                    className="h-8 text-sm"
+                    value={transcriptSearch}
+                    onChange={(e) => setTranscriptSearch(e.target.value)}
+                  />
+                  {transcriptSearch && (
+                    <p className="text-[10px] text-muted-foreground">
+                      {selected.transcript.filter((m) =>
+                        m.content.toLowerCase().includes(transcriptSearch.toLowerCase())
+                      ).length}{" "}
+                      match{selected.transcript.filter((m) =>
+                        m.content.toLowerCase().includes(transcriptSearch.toLowerCase())
+                      ).length !== 1 ? "es" : ""}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -687,14 +696,6 @@ export default function ConversationsPage() {
                   <Badge variant="outline" className="mt-1 block w-fit">
                     {selected.reasonEnded}
                   </Badge>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Notes</label>
-                  <Textarea
-                    placeholder="Add a note about this conversation..."
-                    className="text-sm min-h-[100px]"
-                  />
                 </div>
               </TabsContent>
 

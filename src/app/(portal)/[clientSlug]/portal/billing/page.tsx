@@ -34,7 +34,16 @@ import {
   Zap,
   Minus,
   ChevronRight,
+  Info,
 } from "lucide-react";
+import {
+  CLIENT_COST_CATEGORIES,
+  RETELL_INFRA_COST,
+  TELEPHONY_COST,
+  ESTIMATOR_LLM_MODELS,
+  ESTIMATOR_VOICE_PROVIDERS,
+  ADDON_COSTS,
+} from "@/lib/retell-costs";
 import { toast } from "sonner";
 import type { ClientPlan, PlanAddon } from "@/types";
 
@@ -557,6 +566,89 @@ export default function PortalBillingPage() {
                   Overage rate: ${currentPlan.overage_rate}/min beyond included minutes
                 </p>
               )}
+              {/* What's included in every minute — with pricing details */}
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 p-4 mb-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <Info className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">
+                    What&apos;s included in every minute
+                  </p>
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                      <span className="text-xs text-blue-700 dark:text-blue-300">Platform Infrastructure</span>
+                    </div>
+                    <span className="text-xs font-medium text-blue-700 dark:text-blue-300 tabular-nums">${RETELL_INFRA_COST.toFixed(3)}/min</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                      <span className="text-xs text-blue-700 dark:text-blue-300">Telephony</span>
+                    </div>
+                    <span className="text-xs font-medium text-blue-700 dark:text-blue-300 tabular-nums">${TELEPHONY_COST.toFixed(3)}/min</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                      <span className="text-xs text-blue-700 dark:text-blue-300">AI Processing</span>
+                    </div>
+                    <span className="text-xs text-blue-600 dark:text-blue-400">varies by model</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                      <span className="text-xs text-blue-700 dark:text-blue-300">Voice Synthesis</span>
+                    </div>
+                    <span className="text-xs text-blue-600 dark:text-blue-400">varies by provider</span>
+                  </div>
+                </div>
+                {/* Model pricing quick reference */}
+                <div className="border-t border-blue-200 dark:border-blue-800 pt-3">
+                  <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">AI Model Rates</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                    {ESTIMATOR_LLM_MODELS.slice(0, 6).map((m) => (
+                      <div key={m.key} className="flex items-center justify-between">
+                        <span className="text-[10px] text-blue-600 dark:text-blue-400">{m.label}</span>
+                        <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300 tabular-nums">${m.cost.toFixed(3)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Voice provider pricing */}
+                <div className="border-t border-blue-200 dark:border-blue-800 pt-2 mt-2">
+                  <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">Voice Provider Rates</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                    {ESTIMATOR_VOICE_PROVIDERS.map((v) => (
+                      <div key={v.key} className="flex items-center justify-between">
+                        <span className="text-[10px] text-blue-600 dark:text-blue-400">{v.label}</span>
+                        <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300 tabular-nums">
+                          {v.cost > 0 ? `$${v.cost.toFixed(3)}` : "included"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Optional add-ons */}
+                <div className="border-t border-blue-200 dark:border-blue-800 pt-2 mt-2">
+                  <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-1.5">Optional Add-Ons</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400">Knowledge Base</span>
+                      <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300 tabular-nums">+${ADDON_COSTS.knowledgeBase.toFixed(3)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400">Adv. Denoising</span>
+                      <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300 tabular-nums">+${ADDON_COSTS.advancedDenoising.toFixed(3)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-blue-600 dark:text-blue-400">PII Removal</span>
+                      <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300 tabular-nums">+${ADDON_COSTS.piiRemoval.toFixed(3)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               {/* Enabled Features */}
               {(() => {
                 const enabled = getEnabledFeatures(currentPlan);

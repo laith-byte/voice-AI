@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { sendSms } from "@/lib/twilio";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -182,28 +183,7 @@ async function sendSmsNotification(
 
   const message = `${businessName} — New call from ${callLog.from_number || "Unknown"} (${durationStr}). ${summarySnippet}`;
 
-  // Use Twilio if available, otherwise log
-  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
-  const twilioToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
-
-  if (twilioSid && twilioToken && twilioFrom) {
-    try {
-      // Dynamic require to avoid build errors when twilio is not installed
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const twilio = require("twilio");
-      const client = twilio(twilioSid, twilioToken);
-      await client.messages.create({
-        body: message,
-        from: twilioFrom,
-        to: phoneNumber,
-      });
-    } catch (err) {
-      console.error("Twilio SMS failed:", err);
-    }
-  } else {
-    console.log("[SMS Notification] Twilio not configured. Would send:", message, "to:", phoneNumber);
-  }
+  await sendSms(phoneNumber, message);
 }
 
 // ---------------------------------------------------------------------------

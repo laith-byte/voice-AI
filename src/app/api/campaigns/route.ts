@@ -5,10 +5,13 @@ export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
   const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agent_id");
 
-  let query = supabase.from("campaigns").select("*").order("created_at", { ascending: false });
+  let query = supabase.from("campaigns").select("*").eq("organization_id", userData.organization_id).order("created_at", { ascending: false });
   if (agentId) query = query.eq("agent_id", agentId);
 
   const { data, error } = await query;
@@ -25,14 +28,22 @@ export async function POST(request: NextRequest) {
   const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
   if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
+  // Verify agent belongs to user's organization
+  if (body.agent_id) {
+    const { data: agent } = await supabase.from("agents").select("organization_id").eq("id", body.agent_id).single();
+    if (!agent || agent.organization_id !== userData.organization_id) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+  }
+
   const { data, error } = await supabase.from("campaigns").insert({
     organization_id: userData.organization_id,
     agent_id: body.agent_id,
     name: body.name,
     status: "draft",
     start_date: body.start_date,
-    phone_numbers: body.phone_numbers || [],
-    phone_cycle: body.phone_cycle || false,
+    phone_number_ids: body.phone_number_ids || [],
+    cycle_numbers: body.cycle_numbers || false,
     calling_days: body.calling_days || ["mon", "tue", "wed", "thu", "fri"],
     calling_hours_start: body.calling_hours_start || "09:00",
     calling_hours_end: body.calling_hours_end || "17:00",
@@ -40,8 +51,8 @@ export async function POST(request: NextRequest) {
     timezone: body.timezone,
     retry_attempts: body.retry_attempts || 2,
     retry_interval_hours: body.retry_interval_hours || 4,
-    calls_per_batch: body.calls_per_batch || 5,
-    batch_interval_minutes: body.batch_interval_minutes || 1,
+    calling_rate: body.calling_rate || 5,
+    calling_rate_minutes: body.calling_rate_minutes || 1,
     total_leads: body.total_leads || 0,
     completed_leads: 0,
   }).select().single();

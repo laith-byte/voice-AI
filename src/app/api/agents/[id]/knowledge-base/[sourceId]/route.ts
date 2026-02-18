@@ -22,6 +22,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
+  // Verify user belongs to same organization as the agent
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData || userData.organization_id !== agent.organization_id) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
   // Get the source to find retell_kb_id
   const { data: source } = await supabase
     .from("knowledge_base_sources")

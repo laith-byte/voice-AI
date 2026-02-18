@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
           ambient_sound_volume: templateConfig.ambient_sound_volume,
           responsiveness: templateConfig.responsiveness,
           interruption_sensitivity: templateConfig.interruption_sensitivity,
-          enable_backchanneling: templateConfig.enable_backchanneling,
+          enable_backchannel: templateConfig.enable_backchannel,
           language: selectedLanguage,
         };
       } else {

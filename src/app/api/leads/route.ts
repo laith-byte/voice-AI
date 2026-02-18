@@ -5,10 +5,13 @@ export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
   const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agent_id");
 
-  let query = supabase.from("leads").select("*").order("created_at", { ascending: false });
+  let query = supabase.from("leads").select("*").eq("organization_id", userData.organization_id).order("created_at", { ascending: false });
   if (agentId) query = query.eq("agent_id", agentId);
 
   const { data, error } = await query;
@@ -24,6 +27,14 @@ export async function POST(request: NextRequest) {
 
   const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
   if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  // Verify agent belongs to user's organization
+  if (body.agent_id) {
+    const { data: agent } = await supabase.from("agents").select("organization_id").eq("id", body.agent_id).single();
+    if (!agent || agent.organization_id !== userData.organization_id) {
+      return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+    }
+  }
 
   // Support bulk import
   if (Array.isArray(body.leads)) {

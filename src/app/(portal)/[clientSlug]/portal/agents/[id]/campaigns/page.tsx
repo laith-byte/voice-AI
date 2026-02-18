@@ -47,6 +47,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 interface CampaignRow {
   id: string;
@@ -144,7 +145,9 @@ export default function CampaignsPage() {
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false });
 
-    if (!error && data) {
+    if (error) {
+      toast.error("Failed to load campaigns");
+    } else if (data) {
       setCampaigns(data);
     }
     setLoading(false);
@@ -275,7 +278,9 @@ export default function CampaignsPage() {
       completed_leads: 0,
     });
 
-    if (!error) {
+    if (error) {
+      toast.error("Failed to create campaign");
+    } else {
       setCreateOpen(false);
       resetForm();
       fetchCampaigns();
