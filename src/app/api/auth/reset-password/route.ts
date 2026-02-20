@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
+import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  if (!allowed) return rateLimitExceeded(resetMs);
+
   const { email } = await request.json();
 
   if (!email) {

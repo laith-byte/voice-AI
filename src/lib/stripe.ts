@@ -88,7 +88,7 @@ export async function createBillingPortalSession(
 export async function retrieveSubscription(subscriptionId: string, stripeAccountId?: string) {
   return getStripe().subscriptions.retrieve(
     subscriptionId,
-    { expand: ["default_payment_method"] },
+    { expand: ["default_payment_method", "items.data.price.product"] },
     stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
   );
 }

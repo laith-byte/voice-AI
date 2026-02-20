@@ -83,7 +83,7 @@ export async function POST(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_llm_id, retell_api_key_encrypted, organization_id, platform")
+    .select("retell_agent_id, retell_api_key_encrypted, organization_id, platform")
     .eq("id", id)
     .single();
 
@@ -140,25 +140,20 @@ export async function POST(
       });
     }
 
-    // Apply LLM config from version
-    if (target.response_engine?.llm && agent.retell_llm_id) {
-      const llmConfig = target.response_engine.llm;
-      const llmPayload: Record<string, unknown> = {};
-      if (llmConfig.model) llmPayload.model = llmConfig.model;
-      if (llmConfig.general_prompt !== undefined) llmPayload.general_prompt = llmConfig.general_prompt;
-      if (llmConfig.general_tools) llmPayload.general_tools = llmConfig.general_tools;
-      if (llmConfig.states) llmPayload.states = llmConfig.states;
-
-      if (Object.keys(llmPayload).length > 0) {
-        await fetch(`https://api.retellai.com/update-retell-llm/${agent.retell_llm_id}`, {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${retellApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(llmPayload),
-        });
-      }
+    // Apply LLM / response_engine config from version
+    if (target.response_engine) {
+      const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
+      const updateEndpoint = isChat
+        ? `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`
+        : `https://api.retellai.com/update-agent/${agent.retell_agent_id}`;
+      await fetch(updateEndpoint, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${retellApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ response_engine: target.response_engine }),
+      });
     }
 
     return NextResponse.json({ success: true, restored_version: version });

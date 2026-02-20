@@ -44,13 +44,26 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const retellApi = await import("@/lib/retell");
-      const result = await retellApi.createWebCall({
-        agent_id: body.agent_id,
-        metadata: body.metadata,
-        ...(orgApiKey ? { apiKey: orgApiKey } : {}),
+      const apiKey = orgApiKey || process.env.RETELL_API_KEY;
+      if (!apiKey) {
+        return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
+      }
+      const retellRes = await fetch("https://api.retellai.com/v2/create-web-call", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          agent_id: body.agent_id,
+          metadata: body.metadata,
+        }),
       });
-      return NextResponse.json(result);
+      if (!retellRes.ok) {
+        return NextResponse.json({ error: "Failed to create web call" }, { status: retellRes.status });
+      }
+      const result = await retellRes.json();
+      return NextResponse.json({ access_token: result.access_token, call_id: result.call_id });
     } catch {
       return NextResponse.json({ error: "Failed to create web call" }, { status: 500 });
     }

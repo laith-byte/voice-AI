@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 
 // Map industry slugs to Retell agent IDs
 const AGENT_MAP: Record<string, string> = {
@@ -21,6 +22,10 @@ function toE164(phone: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  if (!allowed) return rateLimitExceeded(resetMs);
+
   try {
     const { industry, callerName, phoneNumber, email, companyName } =
       await request.json();

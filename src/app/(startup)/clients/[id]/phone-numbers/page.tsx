@@ -79,6 +79,9 @@ export default function PhoneNumbersPage() {
       number: pn.number,
       retell_number_id: pn.retell_number_id,
       type: pn.type,
+      caller_id_name: pn.caller_id_name ?? null,
+      caller_id_verified: pn.caller_id_verified ?? false,
+      cnam_status: pn.cnam_status ?? null,
       created_at: pn.created_at,
       agent_name: pn.agents?.name ?? null,
     }));
