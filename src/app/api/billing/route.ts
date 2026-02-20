@@ -48,6 +48,18 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ accountId: account.id, url: link.url });
       }
 
+      case "create_account_link": {
+        if (!stripeAccountId) {
+          return NextResponse.json({ error: "stripeAccountId is required" }, { status: 400 });
+        }
+        const link = await stripeLib.createAccountLink(
+          stripeAccountId,
+          `${process.env.NEXT_PUBLIC_APP_URL}/billing/connect?connected=true`,
+          `${process.env.NEXT_PUBLIC_APP_URL}/billing/connect?refresh=true`
+        );
+        return NextResponse.json({ url: link.url });
+      }
+
       case "list_products": {
         const products = await stripeLib.listProducts(stripeAccountId);
         return NextResponse.json(products.data);

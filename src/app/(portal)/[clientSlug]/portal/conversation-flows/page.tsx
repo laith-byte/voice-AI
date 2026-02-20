@@ -53,11 +53,11 @@ import {
 import { toast } from "sonner";
 import {
   type FlowNode,
-  type IndustryConfig,
   INDUSTRIES,
   makeFlowId,
   generateTemplateNodes,
 } from "@/lib/conversation-flow-templates";
+import { FeatureGate } from "@/components/portal/feature-gate";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -205,10 +205,6 @@ const USE_CASE_NODE_COUNTS: Record<string, number> = {
   dispatch: 12,
 };
 
-// makeId alias for local use
-function makeId() {
-  return makeFlowId();
-}
 
 interface FlowTemplate {
   industryKey: string;
@@ -243,6 +239,14 @@ const ALL_TEMPLATES = getAllTemplates();
 // ---------------------------------------------------------------------------
 
 export default function ConversationFlowsPage() {
+  return (
+    <FeatureGate feature="conversation_flows">
+      <ConversationFlowsContent />
+    </FeatureGate>
+  );
+}
+
+function ConversationFlowsContent() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,6 +254,7 @@ export default function ConversationFlowsPage() {
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<string>("all");
 
@@ -268,6 +273,8 @@ export default function ConversationFlowsPage() {
       if (flowsRes.ok) {
         const data = await flowsRes.json();
         setFlows(Array.isArray(data) ? data : []);
+      } else if (flowsRes.status !== 401) {
+        toast.error("Failed to load flows");
       }
 
       // Fetch agents scoped to the user's client
@@ -313,7 +320,7 @@ export default function ConversationFlowsPage() {
       setFlowAgentId("");
       setNodes([
         {
-          id: makeId(),
+          id: makeFlowId(),
           type: "message",
           data: { text: "Hello! How can I help you today?" },
         },
@@ -341,7 +348,7 @@ export default function ConversationFlowsPage() {
   function addNode() {
     setNodes((prev) => [
       ...prev,
-      { id: makeId(), type: "message", data: { text: "" } },
+      { id: makeFlowId(), type: "message", data: { text: "" } },
     ]);
   }
 
@@ -395,6 +402,11 @@ export default function ConversationFlowsPage() {
   }
 
   async function handleSave() {
+    if (!flowName.trim()) {
+      toast.error("Please enter a flow name");
+      return;
+    }
+    if (saving) return;
     setSaving(true);
     try {
       if (creating) {
@@ -433,7 +445,7 @@ export default function ConversationFlowsPage() {
   }
 
   async function handleDeploy() {
-    if (!editingFlow) return;
+    if (!editingFlow || deploying) return;
 
     // Validate nodes before deploying
     const emptyWebhooks = nodes.filter((n) => n.type === "webhook" && !n.data.webhookUrl);
@@ -480,15 +492,23 @@ export default function ConversationFlowsPage() {
   }
 
   async function handleDelete(flowId: string) {
+    if (deletingId) return;
+    setDeletingId(flowId);
+    const previousFlows = flows;
+    setFlows((prev) => prev.filter((f) => f.id !== flowId));
     try {
       const res = await fetch(`/api/conversation-flows/${flowId}`, {
         method: "DELETE",
       });
-      if (!res.ok) throw new Error("Failed to delete");
+      if (!res.ok) {
+        setFlows(previousFlows);
+        throw new Error("Failed to delete");
+      }
       toast.success("Flow deleted");
-      fetchFlows();
     } catch {
       toast.error("Failed to delete flow");
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -532,6 +552,21 @@ export default function ConversationFlowsPage() {
         </div>
 
         {/* Existing Flows */}
+        {flows.length === 0 && (
+          <section className="border border-dashed border-border rounded-lg py-12 flex flex-col items-center justify-center text-center">
+            <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-4">
+              <GitBranch className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <h3 className="text-sm font-semibold mb-1">No flows yet</h3>
+            <p className="text-sm text-muted-foreground max-w-sm mb-4">
+              Create a blank flow or pick a template below to get started.
+            </p>
+            <Button onClick={() => openEditor()} size="sm" className="gap-2">
+              <Plus className="h-4 w-4" />
+              Create Blank Flow
+            </Button>
+          </section>
+        )}
         {flows.length > 0 && (
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">

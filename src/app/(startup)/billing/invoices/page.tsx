@@ -229,7 +229,7 @@ export default function BillingInvoicesPage() {
           <p className="text-sm text-[#6b7280] mb-4">
             Create an invoice to bill your clients.
           </p>
-          <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white">
+          <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white" onClick={() => toast.info("Invoice creation coming soon. Create invoices directly in your Stripe dashboard for now.")}>
             <Plus className="h-4 w-4 mr-2" />
             Create Invoice
           </Button>

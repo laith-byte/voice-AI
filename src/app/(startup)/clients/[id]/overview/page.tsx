@@ -31,6 +31,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Save, Plus, Trash2, Loader2, ExternalLink, RotateCcw, Sparkles, Eye, CheckCircle2, Clock } from "lucide-react";
 import type { Client } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
@@ -154,9 +165,6 @@ export default function ClientOverviewPage() {
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    const confirmed = window.confirm("Are you sure you want to remove this member?");
-    if (!confirmed) return;
-
     const supabase = createClient();
     const { error } = await supabase
       .from("users")
@@ -173,12 +181,7 @@ export default function ClientOverviewPage() {
     toast.success("Member removed.");
   };
 
-  const handleResetOnboarding = async (memberId: string, memberName: string) => {
-    const confirmed = window.confirm(
-      `Reset onboarding for ${memberName}? They will see the tutorial again on next login.`
-    );
-    if (!confirmed) return;
-
+  const handleResetOnboarding = async (memberId: string) => {
     const supabase = createClient();
     const { error } = await supabase
       .from("users")
@@ -503,24 +506,61 @@ export default function ClientOverviewPage() {
                     <TableCell className="text-right pr-6">
                       <div className="flex items-center justify-end gap-1">
                         {member.onboarding_completed_at && (
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            className="text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
-                            title="Reset onboarding — member will see the tutorial again"
-                            onClick={() => handleResetOnboarding(member.id, member.name)}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                className="text-muted-foreground hover:text-blue-600 hover:bg-blue-50"
+                                title="Reset onboarding — member will see the tutorial again"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Reset Onboarding?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Reset onboarding for {member.name}? They will see the tutorial again on next login.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleResetOnboarding(member.id)}>
+                                  Reset
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove Member?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to remove {member.name}? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-red-600 hover:bg-red-700 text-white"
+                                onClick={() => handleRemoveMember(member.id)}
+                              >
+                                Remove
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </TableCell>
                   </TableRow>

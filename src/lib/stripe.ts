@@ -22,10 +22,6 @@ export async function createAccountLink(accountId: string, returnUrl: string, re
   });
 }
 
-export async function getAccount(accountId: string) {
-  return getStripe().accounts.retrieve(accountId);
-}
-
 export async function createProduct(params: Stripe.ProductCreateParams, stripeAccountId?: string) {
   return getStripe().products.create(params, stripeAccountId ? { stripeAccount: stripeAccountId } : undefined);
 }
@@ -76,14 +72,6 @@ export async function listCoupons(stripeAccountId?: string) {
 
 export function constructWebhookEvent(payload: string | Buffer, sig: string, secret: string) {
   return getStripe().webhooks.constructEvent(payload, sig, secret);
-}
-
-export async function retrieveCheckoutSession(sessionId: string, stripeAccountId?: string) {
-  return getStripe().checkout.sessions.retrieve(
-    sessionId,
-    { expand: ["customer", "subscription"] },
-    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
-  );
 }
 
 export async function createBillingPortalSession(

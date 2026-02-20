@@ -74,7 +74,7 @@ export default function ClientsPage() {
   const [newClient, setNewClient] = useState({
     name: "",
     slug: "",
-    language: "English",
+    language: "en",
     dashboard_theme: "light",
   });
 
@@ -112,22 +112,27 @@ export default function ClientsPage() {
 
   const handleCreateClient = async () => {
     setCreating(true);
-    const res = await fetch("/api/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newClient),
-    });
+    try {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newClient),
+      });
 
-    if (res.ok) {
-      setDialogOpen(false);
-      setNewClient({ name: "", slug: "", language: "English", dashboard_theme: "light" });
-      toast.success("Client created.");
-      fetchClients();
-    } else {
-      const data = await res.json().catch(() => null);
-      toast.error(data?.error || "Failed to create client");
+      if (res.ok) {
+        setDialogOpen(false);
+        setNewClient({ name: "", slug: "", language: "en", dashboard_theme: "light" });
+        toast.success("Client created.");
+        fetchClients();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "Failed to create client");
+      }
+    } catch {
+      toast.error("Failed to create client. Please check your connection.");
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   };
 
   const handleNameChange = (name: string) => {
@@ -208,11 +213,11 @@ export default function ClientsPage() {
                     <SelectValue placeholder="Select language" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="English">English</SelectItem>
-                    <SelectItem value="Spanish">Spanish</SelectItem>
-                    <SelectItem value="French">French</SelectItem>
-                    <SelectItem value="German">German</SelectItem>
-                    <SelectItem value="Arabic">Arabic</SelectItem>
+                    <SelectItem value="en">English</SelectItem>
+                    <SelectItem value="es">Spanish</SelectItem>
+                    <SelectItem value="fr">French</SelectItem>
+                    <SelectItem value="de">German</SelectItem>
+                    <SelectItem value="ar">Arabic</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

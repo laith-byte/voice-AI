@@ -52,14 +52,11 @@ export async function PATCH(request: NextRequest) {
 
   // Allowlist safe columns to prevent arbitrary column injection
   const ALLOWED_FIELDS = [
-    "business_name", "contact_email", "contact_phone", "website_url",
-    "address", "city", "state", "zip", "country", "timezone",
-    "description", "industry", "greeting_message", "after_hours_message",
-    "voicemail_message", "hold_message", "transfer_message",
-    "business_hours", "logo_url", "primary_color", "language",
+    "business_name", "business_phone", "business_website", "business_address",
+    "timezone", "contact_name", "contact_email",
     "after_hours_behavior", "unanswerable_behavior", "escalation_phone",
     "max_call_duration_minutes", "post_call_email", "post_call_log",
-    "post_call_text",
+    "post_call_text", "chat_welcome_message", "chat_offline_behavior",
   ];
   const safeUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of ALLOWED_FIELDS) {

@@ -379,7 +379,7 @@ export default function PortalBillingPage() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: plan.id, return_url: window.location.href }),
+        body: JSON.stringify({ plan_id: plan.id, billing_period: "monthly", return_url: window.location.href }),
       });
       const json = await res.json();
       if (json.url) {

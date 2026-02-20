@@ -273,7 +273,7 @@ interface LocationRow {
  * Fetches all business data for a client and compiles the system prompt.
  * Returns the generated prompt string (does NOT push to Retell).
  */
-export async function generatePrompt(
+async function generatePrompt(
   clientId: string,
   promptTemplate?: string | null,
   agentType?: string

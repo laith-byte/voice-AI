@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Info, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import type { AiAnalysisConfig, Topic } from "@/types/database";
 export default function AiAnalysisPage() {
   const params = useParams();
   const agentId = params.id as string;
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Loading state
   const [loading, setLoading] = useState(true);

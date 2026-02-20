@@ -85,8 +85,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  // Strip unsafe keys
-  const { id: _id, client_id: _cid, created_at: _ca, ...safeBody } = body;
+  // Whitelist allowed fields to prevent manipulation of is_active, version, etc.
+  const safeBody: Record<string, unknown> = {};
+  if (body.name !== undefined) safeBody.name = body.name;
+  if (body.agent_id !== undefined) safeBody.agent_id = body.agent_id;
+  if (body.nodes !== undefined) safeBody.nodes = body.nodes;
+  if (body.edges !== undefined) safeBody.edges = body.edges;
 
   const { data, error } = await supabase
     .from("conversation_flows")

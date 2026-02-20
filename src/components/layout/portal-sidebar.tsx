@@ -25,6 +25,8 @@ import {
   Sparkles,
   BookOpen,
   GitBranch,
+  Code,
+  BrainCircuit,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +72,8 @@ const agentNavItems = [
   { label: "Knowledge Base", href: "knowledge-base", icon: BookOpen, featureKey: "knowledge_base" },
   { label: "Leads", href: "leads", icon: UserPlus, featureKey: "leads" },
   { label: "Campaigns", href: "campaigns", icon: Megaphone, featureKey: "campaigns" },
+  { label: "Widget", href: "widget", icon: Code },
+  { label: "AI Analysis", href: "ai-analysis", icon: BrainCircuit },
   { label: "Agent Settings", href: "agent-settings", icon: Settings, featureKey: "agent_settings" },
 ];
 
@@ -169,6 +173,7 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
             topics: planAccess.topic_management ?? true,
             campaigns: planAccess.campaign_outbound ?? true,
             agent_settings: (planAccess.raw_prompt_editor || planAccess.speech_settings_full) ?? true,
+            conversation_flows: planAccess.conversation_flows ?? false,
           };
 
           for (const [feature, enabled] of Object.entries(planFeatureMap)) {
@@ -275,18 +280,20 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
               <Bot className="w-4 h-4" />
               Agents
             </Link>
-            <Link
-              href={`/${clientSlug}/portal/conversation-flows`}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                pathname === `/${clientSlug}/portal/conversation-flows`
-                  ? "bg-white/10 text-white font-medium"
-                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
-              }`}
-              style={pathname === `/${clientSlug}/portal/conversation-flows` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
-            >
-              <GitBranch className="w-4 h-4" />
-              Flows
-            </Link>
+            {(allowedFeatures === null || allowedFeatures["conversation_flows"] !== false) && (
+              <Link
+                href={`/${clientSlug}/portal/conversation-flows`}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                  pathname === `/${clientSlug}/portal/conversation-flows`
+                    ? "bg-white/10 text-white font-medium"
+                    : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+                }`}
+                style={pathname === `/${clientSlug}/portal/conversation-flows` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+              >
+                <GitBranch className="w-4 h-4" />
+                Flows
+              </Link>
+            )}
             <Link
               href={`/${clientSlug}/portal/automations`}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${

@@ -186,13 +186,13 @@ function BillingConnectContent() {
   };
 
   const handleUpdate = async () => {
-    if (!userEmail) return;
+    if (!stripeAccountId) return;
     setActionLoading(true);
     try {
       const res = await fetch("/api/billing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_connect_account", email: userEmail }),
+        body: JSON.stringify({ action: "create_account_link", stripeAccountId }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);

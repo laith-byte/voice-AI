@@ -29,10 +29,14 @@ export interface Client {
   organization_id: string;
   name: string;
   slug: string;
-  status: "active" | "inactive" | "suspended";
+  status: "active" | "inactive" | "suspended" | "cancelled" | "past_due";
   language: string;
   dashboard_theme: string;
   custom_css: string | null;
+  dashboard_color: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +53,7 @@ export interface Agent {
   knowledge_base_id: string | null;
   knowledge_base_name: string | null;
   webhook_url: string | null;
+  phone_number: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -128,6 +133,9 @@ export interface PhoneNumber {
   number: string;
   retell_number_id: string | null;
   type: string;
+  caller_id_name: string | null;
+  caller_id_verified: boolean;
+  cnam_status: string;
   created_at: string;
 }
 
@@ -223,6 +231,14 @@ export interface ClientPlan {
   campaign_outbound: boolean;
   mcp_configuration: boolean;
   speech_settings_full: boolean;
+  // Feature gates (eight features)
+  branded_caller_id: boolean;
+  verified_caller_id: boolean;
+  sip_trunking: boolean;
+  pii_redaction: boolean;
+  calendly_integration: boolean;
+  zapier_integration: boolean;
+  conversation_flows: boolean;
   // Support gates
   priority_support: boolean;
   dedicated_account_manager: boolean;
@@ -293,6 +309,20 @@ export interface AgentTemplate {
   text_provider: string;
   voice_provider: string;
   retell_agent_id: string | null;
+  vertical: string | null;
+  prompt_template: string | null;
+  default_services: Record<string, unknown>[] | null;
+  default_faqs: Record<string, unknown>[] | null;
+  default_policies: Record<string, unknown>[] | null;
+  icon: string | null;
+  wizard_enabled: boolean;
+  industry: string | null;
+  use_case: string | null;
+  industry_icon: string | null;
+  use_case_icon: string | null;
+  use_case_description: string | null;
+  default_hours: Record<string, unknown>[] | null;
+  test_scenarios: Record<string, unknown>[] | null;
   created_at: string;
 }
 
@@ -353,7 +383,7 @@ export interface Integration {
 
 export interface WebhookLog {
   id: string;
-  organization_id: string;
+  organization_id: string | null;
   agent_id: string | null;
   event: string;
   import_result: string | null;
@@ -408,4 +438,265 @@ export interface CampaignLead {
   status: "pending" | "calling" | "completed" | "failed";
   attempts: number;
   last_called_at: string | null;
+}
+
+// --- Business Settings & Related Tables ---
+
+export interface BusinessSettings {
+  id: string;
+  client_id: string;
+  business_name: string | null;
+  business_phone: string | null;
+  business_website: string | null;
+  business_address: string | null;
+  timezone: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  after_hours_behavior: string;
+  unanswerable_behavior: string;
+  escalation_phone: string | null;
+  max_call_duration_minutes: number;
+  post_call_email: boolean;
+  post_call_log: boolean;
+  post_call_text: boolean;
+  chat_welcome_message: string | null;
+  chat_offline_behavior: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BusinessHours {
+  id: string;
+  client_id: string;
+  day_of_week: number;
+  is_open: boolean;
+  open_time: string | null;
+  close_time: string | null;
+}
+
+export interface BusinessService {
+  id: string;
+  client_id: string;
+  name: string;
+  description: string | null;
+  price_text: string | null;
+  duration_text: string | null;
+  ai_notes: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface BusinessFaq {
+  id: string;
+  client_id: string;
+  question: string;
+  answer: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface BusinessPolicy {
+  id: string;
+  client_id: string;
+  name: string;
+  description: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface BusinessLocation {
+  id: string;
+  client_id: string;
+  name: string;
+  address: string;
+  phone: string | null;
+  is_primary: boolean;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+// --- Onboarding ---
+
+export interface ClientOnboarding {
+  id: string;
+  client_id: string;
+  status: "not_started" | "in_progress" | "completed" | "skipped";
+  current_step: number;
+  vertical_template_id: string | null;
+  business_name: string | null;
+  business_phone: string | null;
+  business_website: string | null;
+  business_address: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  after_hours_behavior: string;
+  unanswerable_behavior: string;
+  escalation_phone: string | null;
+  max_call_duration_minutes: number;
+  post_call_email_summary: boolean;
+  post_call_log: boolean;
+  post_call_followup_text: boolean;
+  test_calls_used: number;
+  test_call_completed: boolean;
+  phone_number_option: string | null;
+  go_live_at: string | null;
+  completed_at: string | null;
+  first_call_notified_at: string | null;
+  checkin_email_sent_at: string | null;
+  total_calls_since_live: number;
+  agent_type: "voice" | "chat" | "sms";
+  chat_welcome_message: string | null;
+  chat_offline_behavior: string;
+  language: string;
+  sms_phone_number: string | null;
+  chat_widget_deployed: boolean;
+  sms_phone_configured: boolean;
+  phone_number: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Post-Call Actions ---
+
+export interface PostCallActions {
+  id: string;
+  client_id: string;
+  action_type: "email_summary" | "sms_notification" | "caller_followup_email" | "daily_digest" | "webhook";
+  is_enabled: boolean;
+  config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Automations ---
+
+export interface AutomationRecipe {
+  id: string;
+  organization_id: string;
+  name: string;
+  description: string | null;
+  long_description: string | null;
+  icon: string | null;
+  category: string;
+  n8n_webhook_url: string | null;
+  n8n_workflow_id: string | null;
+  config_schema: Record<string, unknown>[];
+  what_gets_sent: Record<string, unknown> | null;
+  is_active: boolean;
+  is_coming_soon: boolean;
+  sort_order: number;
+  execution_type: string;
+  provider: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClientAutomation {
+  id: string;
+  client_id: string;
+  recipe_id: string;
+  is_enabled: boolean;
+  config: Record<string, unknown>;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  error_count: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationLog {
+  id: string;
+  client_automation_id: string;
+  call_log_id: string | null;
+  status: "success" | "failed" | "skipped";
+  error_message: string | null;
+  response_code: number | null;
+  executed_at: string;
+}
+
+// --- OAuth & Integrations ---
+
+export interface OAuthConnection {
+  id: string;
+  client_id: string;
+  provider: string;
+  access_token: string;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  scopes: string[] | null;
+  provider_email: string | null;
+  provider_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeBaseSource {
+  id: string;
+  agent_id: string;
+  source_type: "document" | "text" | "url" | "file";
+  name: string;
+  content: string | null;
+  url: string | null;
+  retell_kb_id: string | null;
+  file_size_bytes: number | null;
+  status: string;
+  created_at: string;
+}
+
+// --- Eight Features Tables ---
+
+export interface SipTrunk {
+  id: string;
+  organization_id: string;
+  client_id: string | null;
+  label: string;
+  sip_uri: string;
+  username: string | null;
+  password_encrypted: string | null;
+  codec: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PiiRedactionConfig {
+  id: string;
+  client_id: string;
+  enabled: boolean;
+  redact_phone_numbers: boolean;
+  redact_emails: boolean;
+  redact_ssn: boolean;
+  redact_credit_cards: boolean;
+  redact_names: boolean;
+  custom_patterns: Record<string, unknown>[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ZapierSubscription {
+  id: string;
+  client_id: string;
+  hook_url: string;
+  event: string;
+  api_key_hash: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface ConversationFlow {
+  id: string;
+  client_id: string;
+  agent_id: string | null;
+  name: string;
+  nodes: Record<string, unknown>[];
+  edges: Record<string, unknown>[];
+  is_active: boolean;
+  version: number;
+  created_at: string;
+  updated_at: string;
 }

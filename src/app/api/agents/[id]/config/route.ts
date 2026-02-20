@@ -180,7 +180,14 @@ export async function GET(
       };
       config.call_settings = {
         voicemail_detection: retellAgent.enable_voicemail_detection,
-        voicemail_option: retellAgent.voicemail_option ?? null,
+        voicemail_option: retellAgent.voicemail_option?.action
+          ? {
+              type: retellAgent.voicemail_option.action.type,
+              ...(retellAgent.voicemail_option.action.text
+                ? { text: retellAgent.voicemail_option.action.text }
+                : {}),
+            }
+          : retellAgent.voicemail_option ?? null,
         keypad_input_detection: retellAgent.allow_user_dtmf,
         dtmf_options: retellAgent.user_dtmf_options ?? null,
         end_call_after_silence: retellAgent.end_call_after_silence_ms,
@@ -190,10 +197,15 @@ export async function GET(
       };
     }
 
-    config.post_call_analysis = {
-      model: retellAgent.post_call_analysis_model,
-      data: retellAgent.post_call_analysis_data,
-    };
+    config.post_call_analysis = isChat
+      ? {
+          model: retellAgent.post_chat_analysis_model,
+          data: retellAgent.post_chat_analysis_data,
+        }
+      : {
+          model: retellAgent.post_call_analysis_model,
+          data: retellAgent.post_call_analysis_data,
+        };
     config.security_fallback = {
       data_storage_setting: retellAgent.data_storage_setting,
       pii_redaction: !!retellAgent.pii_config,
@@ -332,6 +344,7 @@ export async function PATCH(
     // Update the agent-level fields
     const retellUpdate: Record<string, unknown> = {};
 
+    if (body.agent_name !== undefined) retellUpdate.agent_name = body.agent_name;
     if (body.voice && !isChat) retellUpdate.voice_id = body.voice;
     if (body.language !== undefined) retellUpdate.language = body.language;
 
@@ -394,7 +407,16 @@ export async function PATCH(
     if (body.call_settings && !isChat) {
       const c = body.call_settings;
       if (c.voicemail_detection !== undefined) retellUpdate.enable_voicemail_detection = c.voicemail_detection;
-      if (c.voicemail_option !== undefined) retellUpdate.voicemail_option = c.voicemail_option;
+      if (c.voicemail_option !== undefined) {
+        if (c.voicemail_option === null) {
+          retellUpdate.voicemail_option = null;
+        } else {
+          // Wrap flat { type, text } into Retell's { action: { type, text } } structure
+          const action: Record<string, unknown> = { type: c.voicemail_option.type };
+          if (c.voicemail_option.text) action.text = c.voicemail_option.text;
+          retellUpdate.voicemail_option = { action };
+        }
+      }
       if (c.keypad_input_detection !== undefined) retellUpdate.allow_user_dtmf = c.keypad_input_detection;
       if (c.dtmf_options !== undefined) retellUpdate.user_dtmf_options = c.dtmf_options;
       if (c.end_call_after_silence !== undefined) retellUpdate.end_call_after_silence_ms = c.end_call_after_silence;
@@ -410,10 +432,12 @@ export async function PATCH(
       if (cs.end_chat_after_silence_ms !== undefined) retellUpdate.end_chat_after_silence_ms = cs.end_chat_after_silence_ms;
     }
 
-    // Post call analysis
+    // Post call/chat analysis
     if (body.post_call_analysis) {
-      if (body.post_call_analysis.model) retellUpdate.post_call_analysis_model = body.post_call_analysis.model;
-      if (body.post_call_analysis.data) retellUpdate.post_call_analysis_data = body.post_call_analysis.data;
+      const analysisModelField = isChat ? "post_chat_analysis_model" : "post_call_analysis_model";
+      const analysisDataField = isChat ? "post_chat_analysis_data" : "post_call_analysis_data";
+      if (body.post_call_analysis.model) retellUpdate[analysisModelField] = body.post_call_analysis.model;
+      if (body.post_call_analysis.data) retellUpdate[analysisDataField] = body.post_call_analysis.data;
     }
 
     // Security fallback

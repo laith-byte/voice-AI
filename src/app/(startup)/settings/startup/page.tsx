@@ -376,7 +376,7 @@ export default function SettingsStartupPage() {
                     <XCircle className="h-4 w-4 text-red-500" />
                     <span className="text-sm text-red-500 font-medium">Not Enabled</span>
                   </div>
-                  <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-xs h-8">
+                  <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-xs h-8" onClick={() => toast.info("HIPAA compliance setup coming soon.")}>
                     Get HIPAA Compliance
                   </Button>
                 </>

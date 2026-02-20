@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
 import {
   ChevronDown,
@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Bot,
   Loader2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,10 +52,45 @@ const COLOR_PRESETS = [
   "#14b8a6",
 ];
 
+function CollapsiblePanel({
+  id,
+  title,
+  children,
+  openPanels,
+  togglePanel,
+}: {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+  openPanels: Record<string, boolean>;
+  togglePanel: (panel: string) => void;
+}) {
+  const isOpen = openPanels[id];
+  return (
+    <Collapsible open={isOpen} onOpenChange={() => togglePanel(id)}>
+      <div className="border border-[#e5e7eb] rounded-lg">
+        <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 hover:bg-gray-50 transition-colors">
+          <span className="text-sm font-medium text-[#111827]">{title}</span>
+          {isOpen ? (
+            <ChevronDown className="h-4 w-4 text-[#6b7280]" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-[#6b7280]" />
+          )}
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="px-4 pb-4 pt-1 border-t border-[#e5e7eb] space-y-4">
+            {children}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
 export default function WidgetPage() {
   const params = useParams();
   const agentId = params.id as string;
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   // Loading and saving state
   const [loading, setLoading] = useState(true);
@@ -92,6 +128,19 @@ export default function WidgetPage() {
   const [popupMessageEnabled, setPopupMessageEnabled] = useState(true);
   const [tosUrl, setTosUrl] = useState("");
   const [privacyUrl, setPrivacyUrl] = useState("");
+
+  // Image URLs
+  const [agentImageUrl, setAgentImageUrl] = useState("");
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState("");
+  const [launcherImageUrl, setLauncherImageUrl] = useState("");
+
+  // Upload refs
+  const agentImageInputRef = useRef<HTMLInputElement>(null);
+  const backgroundImageInputRef = useRef<HTMLInputElement>(null);
+  const launcherImageInputRef = useRef<HTMLInputElement>(null);
+
+  // Upload state
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
 
   // Collapsible panel states
   const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
@@ -144,6 +193,9 @@ export default function WidgetPage() {
         setPopupMessageEnabled(data.popup_message_enabled);
         setTosUrl(data.terms_of_service_url ?? "");
         setPrivacyUrl(data.privacy_policy_url ?? "");
+        setAgentImageUrl(data.agent_image_url ?? "");
+        setBackgroundImageUrl(data.background_image_url ?? "");
+        setLauncherImageUrl(data.launcher_image_url ?? "");
       } else {
         // Create default row
         const { data: newConfig, error: insertError } = await supabase
@@ -200,6 +252,9 @@ export default function WidgetPage() {
         popup_message_enabled: popupMessageEnabled,
         terms_of_service_url: tosUrl || null,
         privacy_policy_url: privacyUrl || null,
+        agent_image_url: agentImageUrl || null,
+        background_image_url: backgroundImageUrl || null,
+        launcher_image_url: launcherImageUrl || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", configId);
@@ -227,6 +282,9 @@ export default function WidgetPage() {
     popupMessageEnabled,
     tosUrl,
     privacyUrl,
+    agentImageUrl,
+    backgroundImageUrl,
+    launcherImageUrl,
     supabase,
   ]);
 
@@ -234,35 +292,47 @@ export default function WidgetPage() {
     setOpenPanels((prev) => ({ ...prev, [panel]: !prev[panel] }));
   }
 
-  function CollapsiblePanel({
-    id,
-    title,
-    children,
-  }: {
-    id: string;
-    title: string;
-    children: React.ReactNode;
-  }) {
-    const isOpen = openPanels[id];
-    return (
-      <Collapsible open={isOpen} onOpenChange={() => togglePanel(id)}>
-        <div className="border border-[#e5e7eb] rounded-lg">
-          <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 hover:bg-gray-50 transition-colors">
-            <span className="text-sm font-medium text-[#111827]">{title}</span>
-            {isOpen ? (
-              <ChevronDown className="h-4 w-4 text-[#6b7280]" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-[#6b7280]" />
-            )}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="px-4 pb-4 pt-1 border-t border-[#e5e7eb] space-y-4">
-              {children}
-            </div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
-    );
+  async function handleImageUpload(
+    file: File,
+    field: "agent_image" | "background_image" | "launcher_image"
+  ) {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file (PNG, JPG, etc.).");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image must be under 2MB.");
+      return;
+    }
+
+    setUploadingField(field);
+
+    const ext = file.name.split(".").pop() || "png";
+    const path = `widget/${agentId}/${field}_${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("widget-assets")
+      .upload(path, file, { upsert: true });
+
+    if (uploadError) {
+      console.error("Upload error:", uploadError);
+      toast.error("Failed to upload image. Please try again.");
+      setUploadingField(null);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("widget-assets")
+      .getPublicUrl(path);
+
+    const publicUrl = urlData.publicUrl;
+
+    if (field === "agent_image") setAgentImageUrl(publicUrl);
+    else if (field === "background_image") setBackgroundImageUrl(publicUrl);
+    else if (field === "launcher_image") setLauncherImageUrl(publicUrl);
+
+    toast.success("Image uploaded. Click Save to apply changes.");
+    setUploadingField(null);
   }
 
   if (loading) {
@@ -295,21 +365,67 @@ export default function WidgetPage() {
           </h2>
 
           {/* General */}
-          <CollapsiblePanel id="general" title="General">
+          <CollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="general" title="General">
             {/* Agent Image Upload */}
             <div>
               <Label className="text-sm font-medium text-[#111827] mb-1.5 block">
                 Agent Image
               </Label>
-              <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-6 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer">
-                <Upload className="h-8 w-8 text-[#6b7280] mb-2" />
-                <p className="text-sm text-[#6b7280]">
-                  Click to upload or drag and drop
-                </p>
-                <p className="text-xs text-[#6b7280] mt-1">
-                  PNG, JPG up to 2MB
-                </p>
-              </div>
+              <input
+                ref={agentImageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageUpload(file, "agent_image");
+                  e.target.value = "";
+                }}
+              />
+              {agentImageUrl ? (
+                <div className="relative border border-[#e5e7eb] rounded-lg p-2 group">
+                  <img
+                    src={agentImageUrl}
+                    alt="Agent"
+                    className="w-full h-24 object-contain rounded"
+                  />
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => agentImageInputRef.current?.click()}
+                      className="bg-white border border-[#e5e7eb] rounded p-1 hover:bg-gray-50"
+                      title="Replace image"
+                    >
+                      <Upload className="h-3 w-3 text-[#6b7280]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAgentImageUrl("")}
+                      className="bg-white border border-[#e5e7eb] rounded p-1 hover:bg-gray-50"
+                      title="Remove image"
+                    >
+                      <X className="h-3 w-3 text-[#6b7280]" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => !uploadingField && agentImageInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-6 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer"
+                >
+                  {uploadingField === "agent_image" ? (
+                    <Loader2 className="h-8 w-8 text-[#6b7280] mb-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-8 w-8 text-[#6b7280] mb-2" />
+                  )}
+                  <p className="text-sm text-[#6b7280]">
+                    Click to upload or drag and drop
+                  </p>
+                  <p className="text-xs text-[#6b7280] mt-1">
+                    PNG, JPG up to 2MB
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Widget Layout */}
@@ -358,16 +474,62 @@ export default function WidgetPage() {
           </CollapsiblePanel>
 
           {/* Theme */}
-          <CollapsiblePanel id="theme" title="Theme">
+          <CollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="theme" title="Theme">
             {/* Background Image */}
             <div>
               <Label className="text-sm font-medium text-[#111827] mb-1.5 block">
                 Background Image
               </Label>
-              <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-4 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer">
-                <Upload className="h-6 w-6 text-[#6b7280] mb-1" />
-                <p className="text-xs text-[#6b7280]">Upload background</p>
-              </div>
+              <input
+                ref={backgroundImageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageUpload(file, "background_image");
+                  e.target.value = "";
+                }}
+              />
+              {backgroundImageUrl ? (
+                <div className="relative border border-[#e5e7eb] rounded-lg p-2 group">
+                  <img
+                    src={backgroundImageUrl}
+                    alt="Background"
+                    className="w-full h-20 object-cover rounded"
+                  />
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => backgroundImageInputRef.current?.click()}
+                      className="bg-white border border-[#e5e7eb] rounded p-1 hover:bg-gray-50"
+                      title="Replace image"
+                    >
+                      <Upload className="h-3 w-3 text-[#6b7280]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBackgroundImageUrl("")}
+                      className="bg-white border border-[#e5e7eb] rounded p-1 hover:bg-gray-50"
+                      title="Remove image"
+                    >
+                      <X className="h-3 w-3 text-[#6b7280]" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => !uploadingField && backgroundImageInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-4 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer"
+                >
+                  {uploadingField === "background_image" ? (
+                    <Loader2 className="h-6 w-6 text-[#6b7280] mb-1 animate-spin" />
+                  ) : (
+                    <Upload className="h-6 w-6 text-[#6b7280] mb-1" />
+                  )}
+                  <p className="text-xs text-[#6b7280]">Upload background</p>
+                </div>
+              )}
             </div>
 
             {/* Launcher Image */}
@@ -375,10 +537,56 @@ export default function WidgetPage() {
               <Label className="text-sm font-medium text-[#111827] mb-1.5 block">
                 Launcher Image
               </Label>
-              <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-4 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer">
-                <Upload className="h-6 w-6 text-[#6b7280] mb-1" />
-                <p className="text-xs text-[#6b7280]">Upload launcher icon</p>
-              </div>
+              <input
+                ref={launcherImageInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageUpload(file, "launcher_image");
+                  e.target.value = "";
+                }}
+              />
+              {launcherImageUrl ? (
+                <div className="relative border border-[#e5e7eb] rounded-lg p-2 group">
+                  <img
+                    src={launcherImageUrl}
+                    alt="Launcher"
+                    className="w-full h-20 object-contain rounded"
+                  />
+                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      onClick={() => launcherImageInputRef.current?.click()}
+                      className="bg-white border border-[#e5e7eb] rounded p-1 hover:bg-gray-50"
+                      title="Replace image"
+                    >
+                      <Upload className="h-3 w-3 text-[#6b7280]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLauncherImageUrl("")}
+                      className="bg-white border border-[#e5e7eb] rounded p-1 hover:bg-gray-50"
+                      title="Remove image"
+                    >
+                      <X className="h-3 w-3 text-[#6b7280]" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => !uploadingField && launcherImageInputRef.current?.click()}
+                  className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-4 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer"
+                >
+                  {uploadingField === "launcher_image" ? (
+                    <Loader2 className="h-6 w-6 text-[#6b7280] mb-1 animate-spin" />
+                  ) : (
+                    <Upload className="h-6 w-6 text-[#6b7280] mb-1" />
+                  )}
+                  <p className="text-xs text-[#6b7280]">Upload launcher icon</p>
+                </div>
+              )}
             </div>
 
             {/* Google Font Name */}
@@ -434,7 +642,7 @@ export default function WidgetPage() {
           </CollapsiblePanel>
 
           {/* Advanced */}
-          <CollapsiblePanel id="advanced" title="Advanced">
+          <CollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="advanced" title="Advanced">
             {/* Autolaunch Popup */}
             <div className="flex items-center gap-2">
               <Checkbox

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +89,7 @@ function getPreviewText(call: RecentCall): string | null {
 
 export default function PortalAgentsPage() {
   const { clientSlug } = useParams<{ clientSlug: string }>();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -211,9 +212,10 @@ export default function PortalAgentsPage() {
           setPrevMinutes(Math.round((previousSec / 60) * 100) / 100);
         }
 
-        // Previous period active agents
+        // Previous period active agents (count distinct agents with calls in previous 30 days)
         if (prevAgentsResult.data) {
-          setPrevActiveAgents(agentsData.length);
+          const prevDistinctAgents = new Set(prevAgentsResult.data.map((r) => r.agent_id));
+          setPrevActiveAgents(prevDistinctAgents.size);
         }
 
         // Recent calls
@@ -637,7 +639,7 @@ export default function PortalAgentsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => {
-                            window.location.href = `/${clientSlug}/portal/agents/${agent.id}/agent-settings`;
+                            router.push(`/${clientSlug}/portal/agents/${agent.id}/agent-settings`);
                           }}>Edit</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toast.info("Agent duplication coming soon.")}>Duplicate</DropdownMenuItem>
                           <DropdownMenuItem className="text-red-600" onClick={async () => {

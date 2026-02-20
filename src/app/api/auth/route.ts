@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
           {
             id: inviteData.user.id,
             email: email,
+            name: email.split("@")[0] || "New Member",
             organization_id: organization_id,
             role: role,
           },

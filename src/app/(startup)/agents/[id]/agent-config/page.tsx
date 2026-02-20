@@ -106,6 +106,46 @@ const PII_CATEGORIES = [
   { key: "pin", label: "PIN" },
 ];
 
+function AgentConfigCollapsiblePanel({
+  id,
+  title,
+  badge,
+  children,
+  openPanels,
+  togglePanel,
+}: {
+  id: string;
+  title: React.ReactNode;
+  badge?: string;
+  children: React.ReactNode;
+  openPanels: Record<string, boolean>;
+  togglePanel: (panel: string) => void;
+}) {
+  const isOpen = openPanels[id];
+  return (
+    <Collapsible open={isOpen} onOpenChange={() => togglePanel(id)}>
+      <div className="border border-[#e5e7eb] rounded-lg">
+        <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 hover:bg-gray-50 transition-colors">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-[#111827]">{title}</span>
+            {badge && <Badge variant="secondary" className="text-[10px]">{badge}</Badge>}
+          </div>
+          {isOpen ? (
+            <ChevronDown className="h-4 w-4 text-[#6b7280]" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-[#6b7280]" />
+          )}
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="px-4 pb-4 pt-1 border-t border-[#e5e7eb] space-y-4">
+            {children}
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
+  );
+}
+
 export default function AgentConfigPage() {
   const { id: agentId } = useParams<{ id: string }>();
 
@@ -374,7 +414,7 @@ export default function AgentConfigPage() {
         setVoicemailDetection(cs.voicemail_detection ?? false);
         if (cs.voicemail_option) {
           setVoicemailAction(cs.voicemail_option.type ?? "hangup");
-          setVoicemailText(cs.voicemail_option.prompt ?? cs.voicemail_option.static_text ?? "");
+          setVoicemailText(cs.voicemail_option.text ?? "");
         }
         setKeypadInput(cs.keypad_input_detection ?? false);
         if (cs.dtmf_options) {
@@ -497,15 +537,13 @@ export default function AgentConfigPage() {
       }
     }
 
-    // Build voicemail_option for payload
+    // Build voicemail_option for payload (flat structure -- API route wraps in { action } for Retell)
     let voicemailOption = null;
     if (voicemailDetection) {
       if (voicemailAction === "hangup") {
         voicemailOption = { type: "hangup" };
-      } else if (voicemailAction === "prompt" && voicemailText.trim()) {
-        voicemailOption = { type: "prompt", prompt: voicemailText.trim() };
-      } else if (voicemailAction === "static_text" && voicemailText.trim()) {
-        voicemailOption = { type: "static_text", static_text: voicemailText.trim() };
+      } else if ((voicemailAction === "prompt" || voicemailAction === "static_text") && voicemailText.trim()) {
+        voicemailOption = { type: voicemailAction, text: voicemailText.trim() };
       }
     }
 
@@ -657,42 +695,6 @@ export default function AgentConfigPage() {
 
   function removeMcpServer(id: string) {
     setMcpServers((prev) => prev.filter((s) => s.id !== id));
-  }
-
-  function CollapsiblePanel({
-    id,
-    title,
-    badge,
-    children,
-  }: {
-    id: string;
-    title: React.ReactNode;
-    badge?: string;
-    children: React.ReactNode;
-  }) {
-    const isOpen = openPanels[id];
-    return (
-      <Collapsible open={isOpen} onOpenChange={() => togglePanel(id)}>
-        <div className="border border-[#e5e7eb] rounded-lg">
-          <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 hover:bg-gray-50 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-[#111827]">{title}</span>
-              {badge && <Badge variant="secondary" className="text-[10px]">{badge}</Badge>}
-            </div>
-            {isOpen ? (
-              <ChevronDown className="h-4 w-4 text-[#6b7280]" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-[#6b7280]" />
-            )}
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="px-4 pb-4 pt-1 border-t border-[#e5e7eb] space-y-4">
-              {children}
-            </div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
-    );
   }
 
   if (loading) {
@@ -880,7 +882,7 @@ export default function AgentConfigPage() {
           </h2>
 
           {/* 1. Tools */}
-          <CollapsiblePanel id="tools" title="Tools" badge={functions.length > 0 ? String(functions.length) : undefined}>
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="tools" title="Tools" badge={functions.length > 0 ? String(functions.length) : undefined}>
             <div className="space-y-3">
               {functions.map((fn) => (
                 <div key={fn.id} className="p-3 bg-gray-50 rounded-lg space-y-2">
@@ -1133,10 +1135,10 @@ export default function AgentConfigPage() {
                 </Button>
               </div>
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 2. Speech Settings */}
-          <CollapsiblePanel id="speech" title="Speech Settings">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="speech" title="Speech Settings">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-sm text-[#111827]">Responsiveness</Label>
@@ -1224,10 +1226,10 @@ export default function AgentConfigPage() {
                 <Plus className="h-3 w-3" /> Add Entry
               </Button>
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 3. Realtime Transcription */}
-          <CollapsiblePanel id="transcription" title="Realtime Transcription">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="transcription" title="Realtime Transcription">
             <div>
               <Label className="text-sm text-[#111827] mb-1.5 block">Denoising Mode</Label>
               <Select value={denoisingMode} onValueChange={setDenoisingMode}>
@@ -1256,10 +1258,10 @@ export default function AgentConfigPage() {
               <Label className="text-sm text-[#111827] mb-1.5 block">Boosted Keywords</Label>
               <Input value={boostedKeywords} onChange={(e) => setBoostedKeywords(e.target.value)} placeholder="Keywords to boost (comma separated)" className="text-sm" />
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 4. Call Settings */}
-          <CollapsiblePanel id="call" title="Call Settings">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="call" title="Call Settings">
             <div className="flex items-center justify-between">
               <Label className="text-sm text-[#111827]">Voicemail Detection</Label>
               <Switch checked={voicemailDetection} onCheckedChange={setVoicemailDetection} />
@@ -1322,10 +1324,10 @@ export default function AgentConfigPage() {
                 <Input type="number" value={ringDuration} onChange={(e) => setRingDuration(e.target.value)} className="text-sm" />
               </div>
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 5. Advanced LLM Settings */}
-          <CollapsiblePanel id="advancedLlm" title="Advanced LLM Settings">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="advancedLlm" title="Advanced LLM Settings">
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-sm text-[#111827]">High Priority Model</Label>
@@ -1340,10 +1342,10 @@ export default function AgentConfigPage() {
               </div>
               <Switch checked={toolCallStrictMode} onCheckedChange={setToolCallStrictMode} />
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 6. Knowledge Base Config */}
-          <CollapsiblePanel id="kbConfig" title="Knowledge Base Config">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="kbConfig" title="Knowledge Base Config">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-sm text-[#111827]">Top K (chunks)</Label>
@@ -1360,10 +1362,10 @@ export default function AgentConfigPage() {
               <Slider value={[parseFloat(kbFilterScore) || 0.7]} onValueChange={([v]) => setKbFilterScore(String(v))} min={0} max={1} step={0.05} />
               <p className="text-xs text-[#6b7280] mt-1">Minimum similarity score to include a chunk.</p>
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 7. Post Call Analysis */}
-          <CollapsiblePanel id="postCall" title="Post Call Analysis">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="postCall" title="Post Call Analysis">
             <div>
               <Label className="text-sm text-[#111827] mb-1.5 block">Analysis Model</Label>
               <Select value={postCallModel} onValueChange={setPostCallModel}>
@@ -1388,10 +1390,10 @@ export default function AgentConfigPage() {
                 className="font-mono text-sm resize-y"
               />
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 8. Security & Privacy */}
-          <CollapsiblePanel id="security" title="Security & Privacy">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="security" title="Security & Privacy">
             <div>
               <Label className="text-sm text-[#111827] mb-1.5 block">Data Storage</Label>
               <Select value={dataStorage} onValueChange={setDataStorage}>
@@ -1444,10 +1446,10 @@ export default function AgentConfigPage() {
               <Label className="text-sm text-[#111827] mb-1.5 block">Default Dynamic Variables</Label>
               <Textarea value={defaultDynamicVars} onChange={(e) => setDefaultDynamicVars(e.target.value)} rows={3} placeholder='{"company_name": "Acme"}' className="font-mono text-sm resize-y" />
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 9. Webhook */}
-          <CollapsiblePanel id="webhook" title="Webhook">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="webhook" title="Webhook">
             <div>
               <Label className="text-sm text-[#111827] mb-1.5 block">Webhook URL</Label>
               <Input value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://your-server.com/webhook" className="text-sm font-mono" />
@@ -1457,10 +1459,10 @@ export default function AgentConfigPage() {
               <Label className="text-sm text-[#111827] mb-1.5 block">Timeout (seconds)</Label>
               <Input type="number" value={webhookTimeout} onChange={(e) => setWebhookTimeout(e.target.value)} min="1" max="30" className="text-sm w-24" />
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 10. MCPs */}
-          <CollapsiblePanel id="mcps" title="MCPs">
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="mcps" title="MCPs">
             <div className="space-y-3">
               {mcpServers.length === 0 && (
                 <p className="text-sm text-[#6b7280]">No MCP servers configured.</p>
@@ -1490,10 +1492,10 @@ export default function AgentConfigPage() {
                 <Plus className="h-3.5 w-3.5" /> Add MCP Server
               </Button>
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
 
           {/* 11. Versioning */}
-          <CollapsiblePanel id="versioning" title={<span className="flex items-center gap-2">Versioning{hasUnpublishedChanges && <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-400 text-amber-600">Draft</Badge>}</span>}>
+          <AgentConfigCollapsiblePanel openPanels={openPanels} togglePanel={togglePanel} id="versioning" title={<span className="flex items-center gap-2">Versioning{hasUnpublishedChanges && <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-400 text-amber-600">Draft</Badge>}</span>}>
             <div className="space-y-3">
               <p className="text-sm text-[#6b7280]">
                 Publishing creates a snapshot of the current agent config. New calls will use the published version.
@@ -1573,7 +1575,7 @@ export default function AgentConfigPage() {
                 )}
               </div>
             </div>
-          </CollapsiblePanel>
+          </AgentConfigCollapsiblePanel>
         </div>
       </div>
     </div>

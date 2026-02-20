@@ -69,6 +69,8 @@ export async function PATCH(
         business_phone: body.business_phone || null,
         business_website: body.business_website || null,
         business_address: body.business_address || null,
+        contact_name: body.contact_name || null,
+        contact_email: body.contact_email || null,
         updated_at: now,
       };
 
@@ -110,9 +112,9 @@ export async function PATCH(
       if (body.unanswerable_behavior !== undefined) callSettingsPayload.unanswerable_behavior = body.unanswerable_behavior;
       if (body.escalation_phone !== undefined) callSettingsPayload.escalation_phone = body.escalation_phone;
       if (body.max_call_duration_minutes !== undefined) callSettingsPayload.max_call_duration_minutes = body.max_call_duration_minutes;
-      if (body.post_call_email_summary !== undefined) callSettingsPayload.post_call_email_summary = body.post_call_email_summary;
+      if (body.post_call_email_summary !== undefined) callSettingsPayload.post_call_email = body.post_call_email_summary;
       if (body.post_call_log !== undefined) callSettingsPayload.post_call_log = body.post_call_log;
-      if (body.post_call_followup_text !== undefined) callSettingsPayload.post_call_followup_text = body.post_call_followup_text;
+      if (body.post_call_followup_text !== undefined) callSettingsPayload.post_call_text = body.post_call_followup_text;
       if (body.chat_welcome_message !== undefined) callSettingsPayload.chat_welcome_message = body.chat_welcome_message;
       if (body.chat_offline_behavior !== undefined) callSettingsPayload.chat_offline_behavior = body.chat_offline_behavior;
 

@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         }
 
         <p style="margin-top: 24px;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://app.invarialabs.com"}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Dashboard</a>
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || ""}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Dashboard</a>
         </p>
 
         <p style="color: #666; font-size: 14px; margin-top: 16px;">

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     organization_id: userData.organization_id,
     name: body.name,
     slug: body.slug,
-    language: body.language || "English",
+    language: body.language || "en",
     dashboard_theme: body.dashboard_theme || "light",
     status: body.status || "active",
   }).select().single();

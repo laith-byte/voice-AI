@@ -40,28 +40,19 @@ export async function POST(request: NextRequest) {
   }
 
   // 2. Increment test_calls_used in client_onboarding
-  const { error: incrementError } = await supabase.rpc("increment_field", {
-    table_name: "client_onboarding",
-    field_name: "test_calls_used",
-    row_client_id: clientId,
-  });
+  const { data: onboarding } = await supabase
+    .from("client_onboarding")
+    .select("test_calls_used")
+    .eq("client_id", clientId)
+    .single();
 
-  // If the RPC doesn't exist, fall back to a manual update
-  if (incrementError) {
-    const { data: onboarding } = await supabase
-      .from("client_onboarding")
-      .select("test_calls_used")
-      .eq("client_id", clientId)
-      .single();
-
-    await supabase
-      .from("client_onboarding")
-      .update({
-        test_calls_used: (onboarding?.test_calls_used ?? 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("client_id", clientId);
-  }
+  await supabase
+    .from("client_onboarding")
+    .update({
+      test_calls_used: (onboarding?.test_calls_used ?? 0) + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("client_id", clientId);
 
   // 3. Create web call via Retell API
   try {

@@ -301,11 +301,12 @@ export default function SettingsWhitelabelPage() {
             <CardTitle className="text-base">Favicon</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-6 flex flex-col items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer max-w-xs">
+            <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-6 flex flex-col items-center justify-center max-w-xs opacity-50">
               <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-2">
                 <Upload className="h-4 w-4 text-[#6b7280]" />
               </div>
               <p className="text-xs text-[#6b7280]">Upload favicon (32x32px)</p>
+              <span className="text-[10px] text-amber-600 font-medium mt-1">Coming Soon</span>
             </div>
           </CardContent>
         </Card>
@@ -452,11 +453,12 @@ export default function SettingsWhitelabelPage() {
                   variant="outline"
                   size="sm"
                   className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  onClick={() => toast.info("Domain removal coming soon.")}
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1.5" />
                   Remove
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => { if (domain) window.open(`https://${domain}`, "_blank"); }}>
                   <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                   Launch
                 </Button>
@@ -543,11 +545,12 @@ export default function SettingsWhitelabelPage() {
                 <label className="block text-sm font-medium text-[#111827] mb-2">
                   Email Logo
                 </label>
-                <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-4 flex items-center justify-center hover:border-[#2563eb] transition-colors cursor-pointer">
+                <div className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-4 flex flex-col items-center justify-center opacity-50">
                   <div className="flex items-center gap-2">
                     <Upload className="h-4 w-4 text-[#6b7280]" />
                     <span className="text-xs text-[#6b7280]">Upload logo</span>
                   </div>
+                  <span className="text-[10px] text-amber-600 font-medium mt-1">Coming Soon</span>
                 </div>
               </div>
             </div>
@@ -635,7 +638,7 @@ export default function SettingsWhitelabelPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-3 pt-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => toast.info("Send Test Email coming soon.")}>
                   <Send className="h-3.5 w-3.5 mr-1.5" />
                   Send Test Email
                 </Button>

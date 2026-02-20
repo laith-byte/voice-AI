@@ -73,22 +73,27 @@ export default function AgentsPage() {
 
   const handleCreateAgent = async () => {
     setCreating(true);
-    const res = await fetch("/api/agents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newAgent),
-    });
+    try {
+      const res = await fetch("/api/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newAgent),
+      });
 
-    if (res.ok) {
-      setDialogOpen(false);
-      setNewAgent({ name: "", platform: "retell", retell_agent_id: "" });
-      toast.success("Agent created");
-      fetchAgents();
-    } else {
-      const data = await res.json().catch(() => null);
-      toast.error(data?.error || "Failed to create agent");
+      if (res.ok) {
+        setDialogOpen(false);
+        setNewAgent({ name: "", platform: "retell", retell_agent_id: "" });
+        toast.success("Agent created");
+        fetchAgents();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "Failed to create agent");
+      }
+    } catch {
+      toast.error("Failed to create agent. Please check your connection.");
+    } finally {
+      setCreating(false);
     }
-    setCreating(false);
   };
 
   function formatDate(dateStr: string) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { FeatureGate } from "@/components/portal/feature-gate";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import {
   ExternalLink,
   FileDown,
   ChevronDown,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -164,6 +165,14 @@ function mapCallLogToConversation(log: CallLogRow): Conversation {
 }
 
 export default function ConversationsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+      <ConversationsContent />
+    </Suspense>
+  );
+}
+
+function ConversationsContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const agentId = params.id as string;

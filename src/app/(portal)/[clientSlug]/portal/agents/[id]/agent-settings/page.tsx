@@ -499,7 +499,7 @@ export default function AgentSettingsPage() {
         setVoicemailDetection(cs.voicemail_detection ?? false);
         if (cs.voicemail_option) {
           setVoicemailAction(cs.voicemail_option.type ?? "hangup");
-          setVoicemailText(cs.voicemail_option.voicemail_message ?? cs.voicemail_option.prompt ?? cs.voicemail_option.static_text ?? "");
+          setVoicemailText(cs.voicemail_option.text ?? "");
         } else {
           setVoicemailAction("hangup");
           setVoicemailText("");
@@ -935,6 +935,7 @@ export default function AgentSettingsPage() {
     // Build full config payload matching the API structure
     const payload: Record<string, unknown> = {
       ...(llmId && { llm_id: llmId }),
+      agent_name: agentName || undefined,
       language,
       system_prompt: systemPrompt,
       llm_model: model,
@@ -1016,15 +1017,13 @@ export default function AgentSettingsPage() {
         vocabulary_specialization: vocabulary.trim(),
         boosted_keywords: parsedBoostedKeywords,
       };
-      // Build voicemail option
+      // Build voicemail option (flat structure -- API route wraps in { action } for Retell)
       let voicemailOption: Record<string, unknown> | null = null;
       if (voicemailDetection) {
         if (voicemailAction === "hangup") {
           voicemailOption = { type: "hangup" };
-        } else if (voicemailAction === "leave_voicemail_message") {
-          voicemailOption = { type: "leave_voicemail_message", voicemail_message: voicemailText };
-        } else {
-          voicemailOption = { type: voicemailAction, voicemail_message: voicemailText };
+        } else if ((voicemailAction === "prompt" || voicemailAction === "static_text") && voicemailText.trim()) {
+          voicemailOption = { type: voicemailAction, text: voicemailText.trim() };
         }
       }
       // Build DTMF options
@@ -1084,6 +1083,8 @@ export default function AgentSettingsPage() {
         toast.error("Failed to save name");
       } else {
         setAgent((prev) => (prev ? { ...prev, name: agentName } : prev));
+        // Sync name to Retell so it stays in sync with our DB
+        quickPublish({ agent_name: agentName });
       }
     }
   };

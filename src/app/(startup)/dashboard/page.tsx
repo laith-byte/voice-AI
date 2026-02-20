@@ -25,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 interface SetupStep {
   label: string;
@@ -42,7 +43,6 @@ export default function DashboardHomePage() {
   const [totalClients, setTotalClients] = useState(0);
   const [totalAgents, setTotalAgents] = useState(0);
   const [totalCalls, setTotalCalls] = useState(0);
-  const [totalMinutes, setTotalMinutes] = useState(0);
 
   // Setup checklist state
   const [retellConnected, setRetellConnected] = useState(false);
@@ -103,10 +103,10 @@ export default function DashboardHomePage() {
           .from("clients")
           .select("id", { count: "exact", head: true })
           .eq("organization_id", orgId),
-        // Call logs (duration_seconds for total minutes + count)
+        // Call logs count
         supabase
           .from("call_logs")
-          .select("duration_seconds")
+          .select("*", { count: "exact", head: true })
           .eq("organization_id", orgId),
         // Retell integration check
         supabase
@@ -139,14 +139,7 @@ export default function DashboardHomePage() {
       setTotalAgents(agentCount);
       setTotalClients(clientCount);
 
-      if (callLogsResult.data) {
-        setTotalCalls(callLogsResult.data.length);
-        const totalSec = callLogsResult.data.reduce(
-          (sum, log) => sum + (log.duration_seconds ?? 0),
-          0
-        );
-        setTotalMinutes(Math.round((totalSec / 60) * 100) / 100);
-      }
+      setTotalCalls(callLogsResult.count ?? 0);
 
       // Setup checklist
       setHasAgents(agentCount > 0);
@@ -319,10 +312,10 @@ export default function DashboardHomePage() {
                   <Clock className="h-5 w-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-[#6b7280]">Total Minutes</p>
-                  <p className="text-xl font-semibold text-[#111827]">
-                    {totalMinutes.toLocaleString()}
-                  </p>
+                  <p className="text-xs text-[#6b7280]">Usage</p>
+                  <Link href="/settings/usage" className="text-sm text-[#2563eb] hover:underline font-medium">
+                    View Details
+                  </Link>
                 </div>
               </div>
             </CardContent>
@@ -368,7 +361,7 @@ export default function DashboardHomePage() {
                     Visit
                   </a>
                 </Button>
-                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => toast.info("Domain removal coming soon.")}>
                   <Trash2 className="w-3.5 h-3.5 mr-1.5" />
                   Remove
                 </Button>

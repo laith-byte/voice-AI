@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createCheckoutSession } from "@/lib/stripe";
+import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 
 const PLAN_ID_MAP: Record<string, string | undefined> = {
   starter: process.env.PLATFORM_PLAN_ID_STARTER,
@@ -8,6 +9,10 @@ const PLAN_ID_MAP: Record<string, string | undefined> = {
 };
 
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  if (!allowed) return rateLimitExceeded(resetMs);
+
   try {
     const { plan, billing_period } = await request.json();
 

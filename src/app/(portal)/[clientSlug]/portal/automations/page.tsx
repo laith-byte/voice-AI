@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Sparkles, Zap } from "lucide-react";
 import { toast } from "sonner";
@@ -104,6 +104,14 @@ function isRecipeGated(recipeName: string, recipeCategory: string, planAccess: R
 }
 
 export default function PortalAutomationsPage() {
+  return (
+    <Suspense fallback={<div className="p-4 md:p-6"><div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div></div>}>
+      <PortalAutomationsContent />
+    </Suspense>
+  );
+}
+
+function PortalAutomationsContent() {
   const searchParams = useSearchParams();
   const { planAccess } = usePlanAccess();
   const [recipes, setRecipes] = useState<Recipe[]>([]);

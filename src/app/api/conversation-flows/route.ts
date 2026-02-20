@@ -32,12 +32,17 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) {
+    return NextResponse.json({ error: "Flow name is required" }, { status: 400 });
+  }
+
   const { data, error } = await supabase
     .from("conversation_flows")
     .insert({
       client_id: clientId,
       agent_id: body.agent_id || null,
-      name: body.name || "Main Flow",
+      name,
       nodes: body.nodes || [],
       edges: body.edges || [],
     })

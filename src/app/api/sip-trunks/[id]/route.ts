@@ -34,13 +34,16 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  // Strip unsafe keys
-  const { id: _id, organization_id: _oid, created_at: _ca, ...safeBody } = body;
+  // Whitelist allowed fields to prevent column injection
+  const ALLOWED_FIELDS = ["label", "sip_uri", "username", "codec", "client_id", "status"];
+  const safeBody: Record<string, unknown> = {};
+  for (const key of ALLOWED_FIELDS) {
+    if (body[key] !== undefined) safeBody[key] = body[key];
+  }
 
   // Encrypt password if provided
-  if (safeBody.password) {
-    safeBody.password_encrypted = encrypt(safeBody.password);
-    delete safeBody.password;
+  if (body.password) {
+    safeBody.password_encrypted = encrypt(body.password);
   }
 
   const { data, error } = await supabase

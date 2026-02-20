@@ -16,8 +16,12 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  // Strip unsafe keys to prevent column injection
-  const { id: _id, client_id: _cid, created_at: _ca, organization_id: _oid, ...safeBody } = body;
+  // Whitelist allowed fields to prevent column injection
+  const ALLOWED_FIELDS = ["question", "answer", "sort_order"];
+  const safeBody: Record<string, unknown> = {};
+  for (const key of ALLOWED_FIELDS) {
+    if (body[key] !== undefined) safeBody[key] = body[key];
+  }
 
   const { data, error } = await supabase
     .from("business_faqs")

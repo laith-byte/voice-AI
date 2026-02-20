@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import {
   BarChart,
@@ -279,18 +280,18 @@ export default function SettingsUsagePage() {
           <Calendar className="h-4 w-4 text-[#6b7280]" />
           <span className="text-sm text-[#6b7280]">Date Range:</span>
         </div>
-        <input
+        <Input
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
-          className="border border-[#e5e7eb] rounded-md px-3 py-1.5 text-sm text-[#111827]"
+          className="w-auto"
         />
         <span className="text-sm text-[#6b7280]">to</span>
-        <input
+        <Input
           type="date"
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
-          className="border border-[#e5e7eb] rounded-md px-3 py-1.5 text-sm text-[#111827]"
+          className="w-auto"
         />
         <Button variant="outline" size="sm" onClick={fetchUsageData} disabled={loading}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}

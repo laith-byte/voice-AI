@@ -112,36 +112,52 @@ export default function SettingsIntegrationsPage() {
     if (!orgId || !dialogProvider || !apiKeyInput.trim()) return;
     setSaving(true);
 
-    const res = await fetch("/api/integrations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: dialogProvider,
-        name: PROVIDER_META[dialogProvider].name,
-        api_key: apiKeyInput.trim(),
-      }),
-    });
+    try {
+      const res = await fetch("/api/integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: dialogProvider,
+          name: PROVIDER_META[dialogProvider].name,
+          api_key: apiKeyInput.trim(),
+        }),
+      });
 
-    if (res.ok) {
-      setDialogOpen(false);
-      setApiKeyInput("");
-      setDialogProvider(null);
-      await fetchIntegrations();
+      if (res.ok) {
+        setDialogOpen(false);
+        setApiKeyInput("");
+        setDialogProvider(null);
+        toast.success("Integration connected successfully.");
+        await fetchIntegrations();
+      } else {
+        toast.error("Failed to connect integration. Please try again.");
+      }
+    } catch {
+      toast.error("Failed to connect integration. Please check your connection.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleDisconnect = async (integrationId: string) => {
     setDisconnecting(integrationId);
 
-    const res = await fetch(`/api/integrations?id=${integrationId}`, {
-      method: "DELETE",
-    });
+    try {
+      const res = await fetch(`/api/integrations?id=${integrationId}`, {
+        method: "DELETE",
+      });
 
-    if (res.ok) {
-      await fetchIntegrations();
+      if (res.ok) {
+        toast.success("Integration disconnected.");
+        await fetchIntegrations();
+      } else {
+        toast.error("Failed to disconnect integration.");
+      }
+    } catch {
+      toast.error("Failed to disconnect integration. Please check your connection.");
+    } finally {
+      setDisconnecting(null);
     }
-    setDisconnecting(null);
   };
 
   const getIntegrationForProvider = (provider: Provider): IntegrationRow | undefined => {

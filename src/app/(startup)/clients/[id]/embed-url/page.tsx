@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Save, Globe, Info } from "lucide-react";
+import { toast } from "sonner";
 
 export default function EmbedUrlPage() {
   const params = useParams();
   const [domain, setDomain] = useState("");
 
   const handleSave = () => {
-    // Phase 2 — not yet implemented
+    toast.info("Embed URL saving coming soon.");
   };
 
   return (

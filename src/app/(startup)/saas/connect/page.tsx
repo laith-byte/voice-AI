@@ -164,8 +164,8 @@ export default function SaaSConnectPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "create_connect_account",
-          email: user.email,
+          action: "create_account_link",
+          stripeAccountId,
         }),
       });
 

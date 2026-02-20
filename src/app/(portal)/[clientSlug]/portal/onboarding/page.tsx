@@ -139,7 +139,7 @@ export default function OnboardingWizardPage() {
   const [afterHoursBehavior, setAfterHoursBehavior] = useState("callback");
   const [unanswerableBehavior, setUnanswerableBehavior] = useState("message");
   const [escalationPhone, setEscalationPhone] = useState("");
-  const [maxCallDuration, setMaxCallDuration] = useState("10");
+  const [maxCallDuration, setMaxCallDuration] = useState("5");
   const [emailSummary, setEmailSummary] = useState(true);
   const [logToDashboard, setLogToDashboard] = useState(true);
   const [followUpText, setFollowUpText] = useState(false);
@@ -365,6 +365,11 @@ export default function OnboardingWizardPage() {
   }
 
   async function handleStep4Continue() {
+    // Validate escalation phone when "transfer" is selected for voice agents
+    if (agentType === "voice" && unanswerableBehavior === "transfer" && !escalationPhone.trim()) {
+      toast.error("Please enter a phone number for call transfers.");
+      return;
+    }
     setSaving(true);
     try {
       if (agentType === "chat" || agentType === "sms") {

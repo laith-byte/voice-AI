@@ -173,6 +173,7 @@ export default function ClientAccessPage() {
 
     const upserts = features.map((f) => ({
       client_id: clientId,
+      agent_id: null,
       feature: f.key,
       enabled: f.enabled,
     }));

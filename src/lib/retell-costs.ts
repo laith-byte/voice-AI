@@ -64,7 +64,7 @@ export const ADDON_COSTS = {
 } as const;
 
 /** Monthly fixed costs */
-export const MONTHLY_COSTS = {
+const MONTHLY_COSTS = {
   phoneNumberStandard: 2,
   phoneNumberTollFree: 3,
 } as const;
@@ -74,7 +74,7 @@ export const FALLBACK_COST_PER_MINUTE = 0.1;
 
 // --- Types ---
 
-export interface AgentCostConfig {
+interface AgentCostConfig {
   agentId: string;
   agentName: string;
   llmModel: string;

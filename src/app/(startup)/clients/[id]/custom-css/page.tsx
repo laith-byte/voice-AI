@@ -1,20 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Save, Code, Info, Lightbulb } from "lucide-react";
+import { toast } from "sonner";
 
 export default function CustomCssPage() {
-  const params = useParams();
   const [css, setCss] = useState("");
 
   const handleSave = () => {
-    // Phase 2 — not yet implemented
+    toast.info("Custom CSS saving coming soon.");
   };
 
   return (

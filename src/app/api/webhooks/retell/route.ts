@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
               <p>Congratulations! Your AI agent for <strong>${safeBizName}</strong> just completed its first real phone call since going live.</p>
               <p>You can view the call details, listen to the recording, and read the transcript in your dashboard.</p>
               <p style="margin-top: 24px;">
-                <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://app.invarialabs.com"}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Dashboard</a>
+                <a href="${process.env.NEXT_PUBLIC_APP_URL || ""}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">View Dashboard</a>
               </p>
               <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
               <p style="color: #999; font-size: 12px;">Sent by ${safeBizName} via Invaria Labs</p>

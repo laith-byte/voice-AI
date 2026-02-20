@@ -82,6 +82,18 @@ export default function AgentDetailLayout({
       return;
     }
 
+    // Sync name to Retell so it matches in both systems
+    try {
+      await fetch(`/api/agents/${agent.id}/config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_name: editedName }),
+      });
+    } catch {
+      // Non-blocking — Supabase is the source of truth
+      console.error("Failed to sync agent name to Retell");
+    }
+
     setAgent((prev) => (prev ? { ...prev, name: editedName } : prev));
   }
 

@@ -70,6 +70,10 @@ export async function POST(request: NextRequest) {
       await handlePaymentFailed(event.data.object, supabase);
       break;
     }
+    case "invoice.paid": {
+      await handleInvoicePaid(event.data.object, supabase);
+      break;
+    }
     default:
       // Acknowledge unhandled events
       break;
@@ -301,6 +305,7 @@ async function createUserRow(supabase: any, userId: string, email: string, orgId
     {
       id: userId,
       email,
+      name: email.split("@")[0] || "New User",
       organization_id: orgId,
       client_id: clientId,
       role: "client_admin",
@@ -332,6 +337,7 @@ async function setClientPermissions(supabase: any, clientId: string, plan: any) 
 
   const rows = permissions.map((p) => ({
     client_id: clientId,
+    agent_id: null,
     feature: p.feature,
     enabled: p.enabled,
   }));
@@ -346,7 +352,7 @@ async function setClientPermissions(supabase: any, clientId: string, plan: any) 
 }
 
 async function sendWelcomeEmail(to: string, businessName: string, actionLink: string) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.invarialabs.com";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
 
   try {
     await sendEmail({
@@ -425,6 +431,334 @@ async function sendWelcomeEmail(to: string, businessName: string, actionLink: st
     console.log("Welcome email sent to:", to);
   } catch (err) {
     console.error("Failed to send welcome email:", err);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleInvoicePaid(invoice: any, supabase: any) {
+  const subscriptionId = invoice.subscription;
+  const customerEmail = invoice.customer_email;
+
+  if (!subscriptionId || !customerEmail) {
+    console.log("Invoice paid but no subscription or email — skipping receipt:", invoice.id);
+    return;
+  }
+
+  // Skip the very first invoice created at checkout (billing_reason = "subscription_create")
+  // because the client just received a welcome email
+  if (invoice.billing_reason === "subscription_create") {
+    console.log("Skipping receipt for initial subscription invoice:", invoice.id);
+    return;
+  }
+
+  // Find the client with this subscription
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, name, slug, plan_id, organization_id")
+    .eq("stripe_subscription_id", subscriptionId)
+    .maybeSingle();
+
+  if (!client) {
+    console.log("No client found for paid invoice subscription:", subscriptionId);
+    return;
+  }
+
+  // Get the client's plan details
+  let planName = "Your Plan";
+  let planDetails: { agents: number; minutes: number; phoneNumbers: number } | null = null;
+  if (client.plan_id) {
+    const { data: plan } = await supabase
+      .from("client_plans")
+      .select("name, agents_included, call_minutes_included, phone_numbers_included")
+      .eq("id", client.plan_id)
+      .single();
+    if (plan) {
+      planName = plan.name;
+      planDetails = {
+        agents: plan.agents_included ?? 1,
+        minutes: plan.call_minutes_included ?? 0,
+        phoneNumbers: plan.phone_numbers_included ?? 1,
+      };
+    }
+  }
+
+  // Get client's active add-ons
+  const { data: clientAddons } = await supabase
+    .from("client_addons")
+    .select("quantity, plan_addons(name, monthly_price, one_time_price, addon_type)")
+    .eq("client_id", client.id)
+    .eq("status", "active");
+
+  // Build line items from the Stripe invoice
+  const lineItems: { description: string; amount: string }[] = [];
+  if (invoice.lines?.data) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const line of invoice.lines.data as any[]) {
+      const desc = line.description || line.price?.product?.name || planName;
+      const amt = (line.amount ?? 0) / 100;
+      lineItems.push({
+        description: desc,
+        amount: `$${amt.toFixed(2)}`,
+      });
+    }
+  }
+
+  // If no line items from Stripe, use the invoice total
+  if (lineItems.length === 0) {
+    lineItems.push({
+      description: `${planName} — Monthly Subscription`,
+      amount: `$${((invoice.amount_paid ?? invoice.amount_due ?? 0) / 100).toFixed(2)}`,
+    });
+  }
+
+  // Add add-on details if the platform has them (informational, they may already be in Stripe line items)
+  // These are appended as context but won't duplicate Stripe's actual charges
+
+  const totalAmount = ((invoice.amount_paid ?? invoice.amount_due ?? 0) / 100).toFixed(2);
+  const invoiceDate = new Date((invoice.created ?? Math.floor(Date.now() / 1000)) * 1000);
+  const periodStart = invoice.period_start
+    ? new Date(invoice.period_start * 1000)
+    : invoice.lines?.data?.[0]?.period?.start
+    ? new Date(invoice.lines.data[0].period.start * 1000)
+    : null;
+  const periodEnd = invoice.period_end
+    ? new Date(invoice.period_end * 1000)
+    : invoice.lines?.data?.[0]?.period?.end
+    ? new Date(invoice.lines.data[0].period.end * 1000)
+    : null;
+
+  await sendReceiptEmail({
+    to: customerEmail,
+    clientName: client.name,
+    planName,
+    planDetails,
+    addons: clientAddons || [],
+    lineItems,
+    totalAmount: `$${totalAmount}`,
+    invoiceDate: invoiceDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+    billingPeriod:
+      periodStart && periodEnd
+        ? `${periodStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} — ${periodEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+        : null,
+    invoiceNumber: invoice.number || invoice.id,
+    invoicePdfUrl: invoice.invoice_pdf || null,
+    hostedInvoiceUrl: invoice.hosted_invoice_url || null,
+    portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/${client.slug}/portal/billing`,
+  });
+
+  console.log("Receipt email sent for invoice:", invoice.id, "to:", customerEmail);
+}
+
+interface ReceiptEmailParams {
+  to: string;
+  clientName: string;
+  planName: string;
+  planDetails: { agents: number; minutes: number; phoneNumbers: number } | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  addons: any[];
+  lineItems: { description: string; amount: string }[];
+  totalAmount: string;
+  invoiceDate: string;
+  billingPeriod: string | null;
+  invoiceNumber: string;
+  invoicePdfUrl: string | null;
+  hostedInvoiceUrl: string | null;
+  portalUrl: string;
+}
+
+async function sendReceiptEmail(params: ReceiptEmailParams) {
+  const {
+    to,
+    clientName,
+    planName,
+    planDetails,
+    addons,
+    lineItems,
+    totalAmount,
+    invoiceDate,
+    billingPeriod,
+    invoiceNumber,
+    invoicePdfUrl,
+    hostedInvoiceUrl,
+    portalUrl,
+  } = params;
+
+  // Build line items HTML
+  const lineItemsHtml = lineItems
+    .map(
+      (item) => `
+      <tr>
+        <td style="padding:10px 0;font-size:14px;color:rgba(255,255,255,0.8);border-bottom:1px solid rgba(255,255,255,0.06);">
+          ${escapeHtml(item.description)}
+        </td>
+        <td style="padding:10px 0;font-size:14px;color:#ffffff;text-align:right;font-weight:500;border-bottom:1px solid rgba(255,255,255,0.06);white-space:nowrap;">
+          ${escapeHtml(item.amount)}
+        </td>
+      </tr>`
+    )
+    .join("");
+
+  // Build plan details HTML if available
+  let planIncludesHtml = "";
+  if (planDetails) {
+    planIncludesHtml = `
+      <div style="margin-top:24px;padding:16px;background-color:rgba(37,99,235,0.1);border-radius:10px;border:1px solid rgba(37,99,235,0.2);">
+        <p style="margin:0 0 10px;font-size:11px;font-weight:600;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px;">Plan Includes</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="font-size:13px;color:rgba(255,255,255,0.7);padding:3px 0;">${planDetails.agents} AI Agent${planDetails.agents !== 1 ? "s" : ""}</td>
+            <td style="font-size:13px;color:rgba(255,255,255,0.7);padding:3px 0;text-align:center;">${planDetails.minutes.toLocaleString()} min/mo</td>
+            <td style="font-size:13px;color:rgba(255,255,255,0.7);padding:3px 0;text-align:right;">${planDetails.phoneNumbers} Phone Number${planDetails.phoneNumbers !== 1 ? "s" : ""}</td>
+          </tr>
+        </table>
+      </div>`;
+  }
+
+  // Build add-ons HTML if any
+  let addonsHtml = "";
+  if (addons.length > 0) {
+    const addonRows = addons
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((a: any) => {
+        const addon = a.plan_addons;
+        if (!addon) return "";
+        const qty = a.quantity > 1 ? ` x${a.quantity}` : "";
+        return `<li style="font-size:13px;color:rgba(255,255,255,0.7);padding:2px 0;">${escapeHtml(addon.name)}${qty}</li>`;
+      })
+      .filter(Boolean)
+      .join("");
+    if (addonRows) {
+      addonsHtml = `
+        <div style="margin-top:16px;padding:16px;background-color:rgba(139,92,246,0.1);border-radius:10px;border:1px solid rgba(139,92,246,0.2);">
+          <p style="margin:0 0 8px;font-size:11px;font-weight:600;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.5px;">Active Add-ons</p>
+          <ul style="margin:0;padding-left:16px;">${addonRows}</ul>
+        </div>`;
+    }
+  }
+
+  // Build CTA buttons
+  let ctaButtons = `
+    <div style="text-align:center;margin:32px 0 16px;">
+      <a href="${portalUrl}" style="display:inline-block;padding:12px 32px;background-color:#2563eb;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px;">
+        View Billing Dashboard
+      </a>
+    </div>`;
+  if (invoicePdfUrl || hostedInvoiceUrl) {
+    const url = hostedInvoiceUrl || invoicePdfUrl;
+    ctaButtons += `
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${url}" style="font-size:13px;color:#60a5fa;text-decoration:underline;">
+        Download Invoice PDF
+      </a>
+    </div>`;
+  }
+
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+        <!-- Logo -->
+        <tr><td align="center" style="padding-bottom:32px;">
+          <span style="font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">Invaria Labs</span>
+        </td></tr>
+        <!-- Card -->
+        <tr><td style="background-color:#1e293b;border-radius:16px;border:1px solid rgba(255,255,255,0.1);padding:48px 40px;">
+          <!-- Receipt icon -->
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="display:inline-block;width:48px;height:48px;background-color:#2563eb;border-radius:12px;line-height:48px;text-align:center;">
+              <span style="color:#ffffff;font-size:22px;">&#9993;</span>
+            </div>
+          </div>
+          <!-- Heading -->
+          <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#ffffff;text-align:center;">
+            Payment Receipt
+          </h1>
+          <p style="margin:0 0 24px;font-size:14px;color:rgba(255,255,255,0.6);text-align:center;">
+            Thank you, ${escapeHtml(clientName)}! Here's your receipt for ${escapeHtml(invoiceDate)}.
+          </p>
+
+          <!-- Invoice meta -->
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+            <tr>
+              <td style="font-size:12px;color:rgba(255,255,255,0.4);padding:4px 0;">Invoice</td>
+              <td style="font-size:12px;color:rgba(255,255,255,0.7);text-align:right;padding:4px 0;">${escapeHtml(invoiceNumber)}</td>
+            </tr>
+            <tr>
+              <td style="font-size:12px;color:rgba(255,255,255,0.4);padding:4px 0;">Plan</td>
+              <td style="font-size:12px;color:rgba(255,255,255,0.7);text-align:right;padding:4px 0;">${escapeHtml(planName)}</td>
+            </tr>
+            ${billingPeriod ? `<tr>
+              <td style="font-size:12px;color:rgba(255,255,255,0.4);padding:4px 0;">Billing Period</td>
+              <td style="font-size:12px;color:rgba(255,255,255,0.7);text-align:right;padding:4px 0;">${escapeHtml(billingPeriod)}</td>
+            </tr>` : ""}
+          </table>
+
+          <!-- Divider -->
+          <div style="border-top:1px solid rgba(255,255,255,0.1);margin:0 0 20px;"></div>
+
+          <!-- Line items -->
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;padding-bottom:8px;">Description</td>
+              <td style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.5px;padding-bottom:8px;text-align:right;">Amount</td>
+            </tr>
+            ${lineItemsHtml}
+          </table>
+
+          <!-- Total -->
+          <div style="border-top:2px solid rgba(255,255,255,0.15);margin-top:4px;padding-top:12px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="font-size:16px;font-weight:700;color:#ffffff;">Total Paid</td>
+                <td style="font-size:16px;font-weight:700;color:#10b981;text-align:right;">${escapeHtml(totalAmount)}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Plan includes -->
+          ${planIncludesHtml}
+
+          <!-- Active add-ons -->
+          ${addonsHtml}
+
+          <!-- CTA Buttons -->
+          ${ctaButtons}
+
+          <!-- Divider -->
+          <div style="border-top:1px solid rgba(255,255,255,0.1);margin:0 0 16px;"></div>
+
+          <!-- Footer note -->
+          <p style="margin:0;font-size:12px;color:rgba(255,255,255,0.35);text-align:center;line-height:1.5;">
+            This is an automated receipt from Invaria Labs. If you have questions about this charge, please contact your account manager or reply to this email.
+          </p>
+        </td></tr>
+        <!-- Footer -->
+        <tr><td style="padding-top:32px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:12px;color:rgba(255,255,255,0.3);">
+            Invaria Labs &mdash; AI-Powered Phone Agents
+          </p>
+          <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.2);">
+            ${(process.env.NEXT_PUBLIC_APP_URL || "").replace(/^https?:\/\//, "")}
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  try {
+    await sendEmail({
+      to,
+      subject: `Payment Receipt — ${planName} (${invoiceDate})`,
+      from: "Invaria Labs <billing@invarialabs.com>",
+      html,
+    });
+  } catch (err) {
+    console.error("Failed to send receipt email:", err);
   }
 }
 
