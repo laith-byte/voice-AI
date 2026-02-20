@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { BusinessInfoForm } from "@/components/business-settings/business-info-form";
 import { HoursEditor } from "@/components/business-settings/hours-editor";
 import { ServicesList } from "@/components/business-settings/services-list";
@@ -11,6 +12,24 @@ import { PostCallActions } from "@/components/business-settings/post-call-action
 import { PiiRedactionSettings } from "@/components/business-settings/pii-redaction-settings";
 
 export default function PortalBusinessSettingsPage() {
+  const [sharedSettings, setSharedSettings] = useState<Record<string, unknown> | null>(null);
+
+  const fetchSharedSettings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/business-settings");
+      if (res.ok) {
+        const data = await res.json();
+        setSharedSettings(data.settings ?? data);
+      }
+    } catch {
+      // Sub-components will fetch independently as fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSharedSettings();
+  }, [fetchSharedSettings]);
+
   return (
     <div className="p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -21,13 +40,13 @@ export default function PortalBusinessSettingsPage() {
           </p>
         </div>
 
-        <BusinessInfoForm />
+        <BusinessInfoForm initialSettings={sharedSettings} />
         <HoursEditor />
         <ServicesList />
         <FaqsList />
         <PoliciesList />
         <LocationsList />
-        <CallHandlingSettings />
+        <CallHandlingSettings initialSettings={sharedSettings} />
 
         {/* Section divider */}
         <div className="border-t pt-2" />

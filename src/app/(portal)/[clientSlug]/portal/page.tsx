@@ -14,7 +14,6 @@ import {
   Bot,
   MoreHorizontal,
   ArrowRight,
-  Loader2,
   Phone,
   Clock,
   TrendingUp,
@@ -112,6 +111,7 @@ export default function PortalAgentsPage() {
   const [totalCallsSinceLive, setTotalCallsSinceLive] = useState(0);
 
   const fetchData = useCallback(async () => {
+    try {
     const supabase = createClient();
 
     // Fetch client name for personalized header
@@ -213,8 +213,7 @@ export default function PortalAgentsPage() {
 
         // Previous period active agents
         if (prevAgentsResult.data) {
-          const uniquePrevAgents = new Set(prevAgentsResult.data.map((r) => r.agent_id));
-          setPrevActiveAgents(uniquePrevAgents.size);
+          setPrevActiveAgents(agentsData.length);
         }
 
         // Recent calls
@@ -243,6 +242,10 @@ export default function PortalAgentsPage() {
     }
 
     setLoading(false);
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -368,7 +371,7 @@ export default function PortalAgentsPage() {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-xl border border bg-white p-5">
+              <div key={i} className="rounded-xl border bg-white p-5">
                 <div className="flex items-center justify-between">
                   <div className="space-y-2">
                     <Skeleton className="h-3 w-24 shimmer" />
@@ -380,7 +383,7 @@ export default function PortalAgentsPage() {
               </div>
             ))}
           </div>
-          <div className="rounded-xl border border bg-white p-6">
+          <div className="rounded-xl border bg-white p-6">
             <Skeleton className="h-5 w-32 mb-4 shimmer" />
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center justify-between py-3">
@@ -397,7 +400,7 @@ export default function PortalAgentsPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-xl border border bg-white overflow-hidden">
+              <div key={i} className="rounded-xl border bg-white overflow-hidden">
                 <div className="p-5 space-y-3">
                   <div className="flex items-center gap-3">
                     <Skeleton className="h-10 w-10 rounded-lg shimmer" />
@@ -633,9 +636,24 @@ export default function PortalAgentsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => toast.info("Agent editing coming soon.")}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            window.location.href = `/${clientSlug}/portal/agents/${agent.id}/agent-settings`;
+                          }}>Edit</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toast.info("Agent duplication coming soon.")}>Duplicate</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={() => toast.info("Agent deletion coming soon.")}>Delete</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={async () => {
+                            if (!window.confirm(`Permanently delete agent "${agent.name}" and all its data?`)) return;
+                            try {
+                              const res = await fetch(`/api/agents/${agent.id}`, { method: "DELETE" });
+                              if (!res.ok) {
+                                const err = await res.json().catch(() => null);
+                                throw new Error(err?.error ?? "Failed to delete agent");
+                              }
+                              toast.success("Agent deleted");
+                              fetchData();
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : "Failed to delete agent");
+                            }
+                          }}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -645,7 +663,7 @@ export default function PortalAgentsPage() {
                     </p>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Edited {formatRelativeTime(agent.created_at)}</span>
+                      <span className="text-xs text-muted-foreground">Created {formatRelativeTime(agent.created_at)}</span>
                       <Badge variant="outline" className="text-[10px] h-5">
                         {clientName || "Client"}
                       </Badge>

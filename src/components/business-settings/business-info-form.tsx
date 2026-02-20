@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 interface BusinessInfoFormProps {
   clientId?: string;
+  initialSettings?: Record<string, unknown> | null;
 }
 
 function apiUrl(path: string, clientId?: string) {
@@ -17,7 +18,7 @@ function apiUrl(path: string, clientId?: string) {
   return clientId ? `${base}?client_id=${clientId}` : base;
 }
 
-export function BusinessInfoForm({ clientId }: BusinessInfoFormProps) {
+export function BusinessInfoForm({ clientId, initialSettings }: BusinessInfoFormProps) {
   const [businessName, setBusinessName] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
   const [businessWebsite, setBusinessWebsite] = useState("");
@@ -29,22 +30,31 @@ export function BusinessInfoForm({ clientId }: BusinessInfoFormProps) {
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
+      if (initialSettings) {
+        const settings = initialSettings;
+        setBusinessName((settings.business_name as string) ?? "");
+        setBusinessPhone((settings.contact_phone as string) ?? "");
+        setBusinessWebsite((settings.website_url as string) ?? "");
+        setBusinessAddress((settings.address as string) ?? "");
+        setLoading(false);
+        return;
+      }
       const res = await fetch(apiUrl("", clientId));
       if (!res.ok) throw new Error("Failed to fetch settings");
       const data = await res.json();
       const settings = data.settings ?? data;
       if (settings) {
         setBusinessName(settings.business_name ?? "");
-        setBusinessPhone(settings.business_phone ?? "");
-        setBusinessWebsite(settings.business_website ?? "");
-        setBusinessAddress(settings.business_address ?? "");
+        setBusinessPhone(settings.contact_phone ?? "");
+        setBusinessWebsite(settings.website_url ?? "");
+        setBusinessAddress(settings.address ?? "");
       }
     } catch {
       // Use defaults on error
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, initialSettings]);
 
   useEffect(() => {
     fetchSettings();
@@ -54,9 +64,9 @@ export function BusinessInfoForm({ clientId }: BusinessInfoFormProps) {
     setSaving(true);
     const payload = {
       business_name: businessName.trim() || null,
-      business_phone: businessPhone.trim() || null,
-      business_website: businessWebsite.trim() || null,
-      business_address: businessAddress.trim() || null,
+      contact_phone: businessPhone.trim() || null,
+      website_url: businessWebsite.trim() || null,
+      address: businessAddress.trim() || null,
     };
 
     try {

@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/portal/upgrade-banner";
 
 // Map feature names to plan column fields
+// Features without a mapping (knowledge_base, conversations, leads) are intentionally
+// ungated — they have no boolean plan field and are available to all plans.
 const FEATURE_TO_PLAN_FIELD: Record<string, string> = {
   topics: "topic_management",
   agent_settings: "raw_prompt_editor",
@@ -15,6 +17,7 @@ const FEATURE_TO_PLAN_FIELD: Record<string, string> = {
   analytics: "analytics_full",
   ai_analysis: "ai_evaluation",
   automations: "sms_notification",
+  conversation_flows: "conversation_flows",
 };
 
 // Map features to the plan name required

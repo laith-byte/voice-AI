@@ -745,6 +745,15 @@ export default function OnboardingWizardPage() {
                 {!selectedIndustry && (
                   <>
                     <div className="text-center mb-8">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="mb-4 text-muted-foreground"
+                        onClick={() => { setAgentType(null); setSelectedIndustry(null); setSelectedTemplate(null); }}
+                      >
+                        <ArrowLeft className="w-4 h-4 mr-1" />
+                        Change agent type
+                      </Button>
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 mb-4">
                         <Sparkles className="w-8 h-8 text-primary" />
                       </div>
@@ -1842,14 +1851,14 @@ export default function OnboardingWizardPage() {
                   {testSmsResponse && (
                     <div className="mt-4 space-y-3">
                       <div className="border-t pt-4" />
-                      <Label className="text-sm font-semibold">AI Response</Label>
+                      <Label className="text-sm font-semibold">AI Response (Simulated)</Label>
                       <div className="rounded-lg bg-muted/50 p-4">
                         <p className="text-sm">{testSmsResponse}</p>
                       </div>
                       {testSmsCompleted && (
                         <div className="flex items-center gap-2 text-green-600 text-sm">
                           <Check className="w-4 h-4" />
-                          Test completed successfully!
+                          Test simulation completed!
                         </div>
                       )}
                     </div>
@@ -2544,7 +2553,7 @@ export default function OnboardingWizardPage() {
                 <Button
                   size="lg"
                   onClick={handleGoLive}
-                  disabled={goingLive}
+                  disabled={goingLive || (agentType === "sms" && !smsPhoneNumber?.trim())}
                   className="min-w-[200px] gap-2 bg-gradient-to-r from-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 shadow-lg shadow-primary/25 text-base font-semibold h-12"
                 >
                   {goingLive ? (

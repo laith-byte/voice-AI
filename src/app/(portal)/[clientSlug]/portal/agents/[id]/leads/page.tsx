@@ -34,16 +34,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Search,
   Download,
   Upload,
-  Plus,
   Tag,
   FileDown,
   X,
   Loader2,
   CheckCircle2,
-  AlertCircle,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -182,13 +189,20 @@ export default function LeadsPage() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Edit/delete state
+  const [editingLead, setEditingLead] = useState<LeadRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
   const fetchLeads = useCallback(async () => {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("leads")
       .select("*")
       .eq("agent_id", agentId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(2000);
 
     if (error) {
       toast.error("Failed to load leads");
@@ -210,6 +224,19 @@ export default function LeadsPage() {
       }
     });
     return Array.from(tagSet).sort();
+  }, [leads]);
+
+  // Derive unique dynamic_var keys across all leads (max 5 displayed)
+  const dynamicVarKeys = useMemo(() => {
+    const keySet = new Set<string>();
+    for (const lead of leads) {
+      if (lead.dynamic_vars && typeof lead.dynamic_vars === "object") {
+        for (const k of Object.keys(lead.dynamic_vars)) {
+          keySet.add(k);
+        }
+      }
+    }
+    return Array.from(keySet).sort().slice(0, 5);
   }, [leads]);
 
   const filteredLeads = useMemo(() => leads.filter((lead) => {
@@ -457,11 +484,14 @@ export default function LeadsPage() {
       return;
     }
     const csvEscape = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
-    const headers = ["Phone", "Name", "Tags"];
+    const headers = ["Phone", "Name", "Tags", ...dynamicVarKeys];
     const rows = filteredLeads.map((lead) => [
       csvEscape(lead.phone),
       csvEscape(lead.name || ""),
       csvEscape((lead.tags || []).join("; ")),
+      ...dynamicVarKeys.map((k) =>
+        csvEscape(lead.dynamic_vars && typeof lead.dynamic_vars === "object" ? String((lead.dynamic_vars as Record<string, unknown>)[k] ?? "") : "")
+      ),
     ]);
     const csv =
       "\uFEFF" +
@@ -483,6 +513,52 @@ export default function LeadsPage() {
     if (!open) {
       setParsedLeads([]);
       setCsvFileName(null);
+    }
+  }
+
+  async function handleDeleteLead(leadId: string) {
+    if (!window.confirm("Are you sure you want to delete this lead?")) return;
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to delete lead");
+      }
+      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      toast.success("Lead deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete lead");
+    }
+  }
+
+  function openEditLead(lead: LeadRow) {
+    setEditingLead(lead);
+    setEditName(lead.name || "");
+    setEditTags((lead.tags || []).join(", "));
+  }
+
+  async function handleSaveEdit() {
+    if (!editingLead) return;
+    setEditSaving(true);
+    try {
+      const tags = editTags.split(",").map((t) => t.trim()).filter(Boolean);
+      const res = await fetch(`/api/leads/${editingLead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim() || null, tags }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to update lead");
+      }
+      const updated = await res.json();
+      setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+      setEditingLead(null);
+      toast.success("Lead updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update lead");
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -648,7 +724,7 @@ export default function LeadsPage() {
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search by phone number..."
+            placeholder="Search by phone or name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 rounded-xl shadow-none focus:shadow-sm focus:ring-2 focus:ring-primary/20 transition-all"
@@ -698,6 +774,10 @@ export default function LeadsPage() {
                   <TableHead>Phone</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Tags</TableHead>
+                  {dynamicVarKeys.map((k) => (
+                    <TableHead key={k} className="capitalize">{k}</TableHead>
+                  ))}
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -714,11 +794,37 @@ export default function LeadsPage() {
                         ))}
                       </div>
                     </TableCell>
+                    {dynamicVarKeys.map((k) => (
+                      <TableCell key={k} className="text-sm text-muted-foreground">
+                        {lead.dynamic_vars && typeof lead.dynamic_vars === "object"
+                          ? String((lead.dynamic_vars as Record<string, unknown>)[k] ?? "\u2014")
+                          : "\u2014"}
+                      </TableCell>
+                    ))}
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditLead(lead)}>
+                            <Pencil className="w-3.5 h-3.5 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteLead(lead.id)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {filteredLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={3 + dynamicVarKeys.length + 1} className="text-center py-8 text-muted-foreground">
                       {searchQuery || selectedTags.length > 0
                         ? "No leads match your current filters"
                         : "No leads yet. Import leads to get started."}
@@ -795,6 +901,39 @@ export default function LeadsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTagsOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Lead Dialog */}
+      <Dialog open={!!editingLead} onOpenChange={(open) => { if (!open) setEditingLead(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Lead</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Lead name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Tags (comma-separated)</Label>
+              <Input
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                placeholder="e.g., hot-lead, interested"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingLead(null)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={editSaving}>
+              {editSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Save
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

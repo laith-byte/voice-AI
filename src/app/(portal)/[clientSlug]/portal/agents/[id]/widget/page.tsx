@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Phone,
   PhoneOff,
@@ -27,6 +28,10 @@ import {
   Palette,
   MessageSquareText,
   Clock,
+  Image,
+  Link2,
+  Settings2,
+  Type,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRetellCall } from "@/hooks/use-retell-call";
@@ -44,9 +49,25 @@ export default function WidgetPage() {
   const [configId, setConfigId] = useState<string | null>(null);
   const [agentPlatform, setAgentPlatform] = useState<string>("retell");
 
-  // Simplified config state
+  // Widget config state
   const [description, setDescription] = useState("Our assistant is here to help.");
   const { color: accentColor, setColor: setAccentColor, saveColor } = useDashboardTheme();
+
+  // Extended widget config fields
+  const [widgetLayout, setWidgetLayout] = useState("default");
+  const [agentImageUrl, setAgentImageUrl] = useState("");
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState("");
+  const [launcherImageUrl, setLauncherImageUrl] = useState("");
+  const [googleFontName, setGoogleFontName] = useState("");
+  const [colorPresetName, setColorPresetName] = useState("");
+  const [customCss, setCustomCss] = useState("");
+  const [autolaunchPopup, setAutolaunchPopup] = useState(false);
+  const [launchMessage, setLaunchMessage] = useState("");
+  const [launchMessageEnabled, setLaunchMessageEnabled] = useState(false);
+  const [popupMessage, setPopupMessage] = useState("");
+  const [popupMessageEnabled, setPopupMessageEnabled] = useState(false);
+  const [termsOfServiceUrl, setTermsOfServiceUrl] = useState("");
+  const [privacyPolicyUrl, setPrivacyPolicyUrl] = useState("");
 
   // Call state
   const { isCallActive, isAgentTalking, isMuted, transcript, startCall, stopCall, toggleMute } =
@@ -140,6 +161,20 @@ export default function WidgetPage() {
     if (config) {
       setConfigId(config.id);
       setDescription(config.description ?? "Our assistant is here to help.");
+      setWidgetLayout(config.widget_layout ?? "default");
+      setAgentImageUrl(config.agent_image_url ?? "");
+      setBackgroundImageUrl(config.background_image_url ?? "");
+      setLauncherImageUrl(config.launcher_image_url ?? "");
+      setGoogleFontName(config.google_font_name ?? "");
+      setColorPresetName(config.color_preset ?? "");
+      setCustomCss(config.custom_css ?? "");
+      setAutolaunchPopup(config.autolaunch_popup ?? false);
+      setLaunchMessage(config.launch_message ?? "");
+      setLaunchMessageEnabled(config.launch_message_enabled ?? false);
+      setPopupMessage(config.popup_message ?? "");
+      setPopupMessageEnabled(config.popup_message_enabled ?? false);
+      setTermsOfServiceUrl(config.terms_of_service_url ?? "");
+      setPrivacyPolicyUrl(config.privacy_policy_url ?? "");
     }
 
     setLoading(false);
@@ -153,13 +188,27 @@ export default function WidgetPage() {
     setSaving(true);
     const supabase = createClient();
 
-    // Save widget description
+    // Save all widget config fields
     const { error } = await supabase
       .from("widget_config")
       .upsert({
         ...(configId ? { id: configId } : {}),
         agent_id: agentId,
         description,
+        widget_layout: widgetLayout || null,
+        agent_image_url: agentImageUrl || null,
+        background_image_url: backgroundImageUrl || null,
+        launcher_image_url: launcherImageUrl || null,
+        google_font_name: googleFontName || null,
+        color_preset: colorPresetName || null,
+        custom_css: customCss || null,
+        autolaunch_popup: autolaunchPopup,
+        launch_message: launchMessage || null,
+        launch_message_enabled: launchMessageEnabled,
+        popup_message: popupMessage || null,
+        popup_message_enabled: popupMessageEnabled,
+        terms_of_service_url: termsOfServiceUrl || null,
+        privacy_policy_url: privacyPolicyUrl || null,
       });
 
     // Save dashboard color globally for the client
@@ -325,6 +374,121 @@ export default function WidgetPage() {
                   className="w-8 h-8 rounded-md border shrink-0"
                   style={{ backgroundColor: accentColor }}
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Appearance */}
+          <Card className="overflow-hidden animate-fade-in-up stagger-3 glass-card rounded-xl">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-md bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
+                  <Image className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                </div>
+                <h3 className="font-semibold text-sm">Appearance</h3>
+              </div>
+            </div>
+            <CardContent className="p-4 space-y-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Layout</Label>
+                <Select value={widgetLayout} onValueChange={setWidgetLayout}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    <SelectItem value="compact">Compact</SelectItem>
+                    <SelectItem value="fullscreen">Fullscreen</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Agent Image URL</Label>
+                <Input value={agentImageUrl} onChange={(e) => setAgentImageUrl(e.target.value)} className="text-xs h-8" placeholder="https://..." />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Background Image URL</Label>
+                <Input value={backgroundImageUrl} onChange={(e) => setBackgroundImageUrl(e.target.value)} className="text-xs h-8" placeholder="https://..." />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Launcher Image URL</Label>
+                <Input value={launcherImageUrl} onChange={(e) => setLauncherImageUrl(e.target.value)} className="text-xs h-8" placeholder="https://..." />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium flex items-center gap-1"><Type className="w-3 h-3" /> Google Font</Label>
+                <Input value={googleFontName} onChange={(e) => setGoogleFontName(e.target.value)} className="text-xs h-8" placeholder="e.g., Inter" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Custom CSS</Label>
+                <Textarea value={customCss} onChange={(e) => setCustomCss(e.target.value)} rows={3} className="text-xs font-mono" placeholder=".widget { ... }" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Messages */}
+          <Card className="overflow-hidden animate-fade-in-up stagger-4 glass-card rounded-xl">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-md bg-green-100 dark:bg-green-900/50 flex items-center justify-center">
+                  <MessageSquareText className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                </div>
+                <h3 className="font-semibold text-sm">Messages</h3>
+              </div>
+            </div>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Launch Message</Label>
+                <Switch checked={launchMessageEnabled} onCheckedChange={setLaunchMessageEnabled} />
+              </div>
+              {launchMessageEnabled && (
+                <Input value={launchMessage} onChange={(e) => setLaunchMessage(e.target.value)} className="text-xs h-8" placeholder="Message shown on widget launch" />
+              )}
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Popup Message</Label>
+                <Switch checked={popupMessageEnabled} onCheckedChange={setPopupMessageEnabled} />
+              </div>
+              {popupMessageEnabled && (
+                <Input value={popupMessage} onChange={(e) => setPopupMessage(e.target.value)} className="text-xs h-8" placeholder="Popup notification text" />
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Links */}
+          <Card className="overflow-hidden animate-fade-in-up stagger-5 glass-card rounded-xl">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-md bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                  <Link2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="font-semibold text-sm">Links</h3>
+              </div>
+            </div>
+            <CardContent className="p-4 space-y-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Terms of Service URL</Label>
+                <Input value={termsOfServiceUrl} onChange={(e) => setTermsOfServiceUrl(e.target.value)} className="text-xs h-8" placeholder="https://..." />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Privacy Policy URL</Label>
+                <Input value={privacyPolicyUrl} onChange={(e) => setPrivacyPolicyUrl(e.target.value)} className="text-xs h-8" placeholder="https://..." />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Behavior */}
+          <Card className="overflow-hidden animate-fade-in-up stagger-6 glass-card rounded-xl">
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-md bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                  <Settings2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <h3 className="font-semibold text-sm">Behavior</h3>
+              </div>
+            </div>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">Auto-launch Popup</Label>
+                <Switch checked={autolaunchPopup} onCheckedChange={setAutolaunchPopup} />
               </div>
             </CardContent>
           </Card>

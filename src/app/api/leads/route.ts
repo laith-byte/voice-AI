@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agent_id");
 
-  let query = supabase.from("leads").select("*").eq("organization_id", userData.organization_id).order("created_at", { ascending: false });
+  let query = supabase.from("leads").select("*").eq("organization_id", userData.organization_id).order("created_at", { ascending: false }).limit(2000);
   if (agentId) query = query.eq("agent_id", agentId);
 
   const { data, error } = await query;

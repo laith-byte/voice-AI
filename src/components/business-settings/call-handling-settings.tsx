@@ -19,6 +19,7 @@ import { toast } from "sonner";
 
 interface CallHandlingSettingsProps {
   clientId?: string;
+  initialSettings?: Record<string, unknown> | null;
 }
 
 function apiUrl(path: string, clientId?: string) {
@@ -28,6 +29,7 @@ function apiUrl(path: string, clientId?: string) {
 
 export function CallHandlingSettings({
   clientId,
+  initialSettings,
 }: CallHandlingSettingsProps) {
   // After-hours behavior
   const [afterHoursBehavior, setAfterHoursBehavior] = useState("message");
@@ -45,38 +47,45 @@ export function CallHandlingSettings({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const applySettings = useCallback((settings: Record<string, unknown>) => {
+    setAfterHoursBehavior(
+      (settings.after_hours_behavior as string) ?? "message"
+    );
+    setUnanswerableBehavior(
+      (settings.unanswerable_behavior as string) ?? "message"
+    );
+    setEscalationPhone((settings.escalation_phone as string) ?? "");
+    setMaxCallDuration(
+      settings.max_call_duration_minutes
+        ? String(settings.max_call_duration_minutes)
+        : "10"
+    );
+    setEmailSummary((settings.post_call_email as boolean) ?? false);
+    setLogToDashboard((settings.post_call_log as boolean) ?? true);
+    setFollowUpText((settings.post_call_text as boolean) ?? false);
+  }, []);
+
   const fetchSettings = useCallback(async () => {
     setLoading(true);
     try {
+      if (initialSettings) {
+        applySettings(initialSettings);
+        setLoading(false);
+        return;
+      }
       const res = await fetch(apiUrl("", clientId));
       if (!res.ok) throw new Error("Failed to fetch settings");
       const data = await res.json();
-
-      // Read call handling fields from the main settings object
       const settings = data.settings ?? data;
       if (settings) {
-        setAfterHoursBehavior(
-          settings.after_hours_behavior ?? "message"
-        );
-        setUnanswerableBehavior(
-          settings.unanswerable_behavior ?? "message"
-        );
-        setEscalationPhone(settings.escalation_phone ?? "");
-        setMaxCallDuration(
-          settings.max_call_duration_minutes
-            ? String(settings.max_call_duration_minutes)
-            : "10"
-        );
-        setEmailSummary(settings.post_call_email ?? false);
-        setLogToDashboard(settings.post_call_log ?? true);
-        setFollowUpText(settings.post_call_text ?? false);
+        applySettings(settings);
       }
     } catch {
       // Use defaults on error
     } finally {
       setLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, initialSettings, applySettings]);
 
   useEffect(() => {
     fetchSettings();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { FeatureGate } from "@/components/portal/feature-gate";
 import { createClient } from "@/lib/supabase/client";
@@ -34,6 +34,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Search,
@@ -45,6 +51,13 @@ import {
   Users,
   Upload,
   Loader2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Pause,
+  Play,
+  CheckCircle2,
+  FileDown,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -76,13 +89,18 @@ interface CampaignRow {
 
 interface PhoneNumberRow {
   id: string;
-  phone_number: string;
+  number: string;
 }
 
 interface LeadPreviewRow {
   id: string;
   phone: string;
   name: string | null;
+}
+
+interface ParsedLead {
+  phone: string;
+  name: string;
 }
 
 const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string }> = {
@@ -103,6 +121,69 @@ const DAYS = [
 ];
 
 const DEFAULT_CALLING_DAYS = ["mon", "tue", "wed", "thu", "fri"];
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ",") {
+        result.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function parseCampaignCSV(text: string): ParsedLead[] {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length === 0) return [];
+
+  const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const phoneIdx = headers.findIndex(
+    (h) => h === "phone" || h === "phone_number" || h === "phone number"
+  );
+  const nameIdx = headers.findIndex(
+    (h) => h === "name" || h === "full_name" || h === "full name"
+  );
+  if (phoneIdx === -1) return [];
+
+  const results: ParsedLead[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCSVLine(lines[i]);
+    const phone = (cols[phoneIdx] || "").trim();
+    if (!phone) continue;
+    const normalized = phone.replace(/\s+/g, "");
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    const name = nameIdx >= 0 ? (cols[nameIdx] || "").trim() : "";
+    results.push({ phone, name });
+  }
+
+  return results;
+}
 
 export default function CampaignsPage() {
   const params = useParams();
@@ -131,11 +212,21 @@ export default function CampaignsPage() {
   const [callingRate, setCallingRate] = useState(5);
   const [callingRateMinutes, setCallingRateMinutes] = useState(1);
 
+  // CSV upload state for campaign creation
+  const [csvLeads, setCsvLeads] = useState<ParsedLead[]>([]);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
   // Data for the create form
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumberRow[]>([]);
   const [leadsPreview, setLeadsPreview] = useState<LeadPreviewRow[]>([]);
   const [leadsPreviewTotal, setLeadsPreviewTotal] = useState(0);
   const [leadTags, setLeadTags] = useState<string[]>([]);
+
+  // Edit campaign state
+  const [editingCampaign, setEditingCampaign] = useState<CampaignRow | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchCampaigns = useCallback(async () => {
     const supabase = createClient();
@@ -143,7 +234,8 @@ export default function CampaignsPage() {
       .from("campaigns")
       .select("*")
       .eq("agent_id", agentId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(500);
 
     if (error) {
       toast.error("Failed to load campaigns");
@@ -161,22 +253,29 @@ export default function CampaignsPage() {
   const fetchCreateFormData = useCallback(async () => {
     const supabase = createClient();
 
-    // Fetch phone numbers available for this agent
+    // Fetch phone numbers scoped via RLS (defense-in-depth)
     const { data: phones } = await supabase
       .from("phone_numbers")
-      .select("id, phone_number");
+      .select("id, number")
+      .limit(100);
 
     if (phones) {
       setPhoneNumbers(phones);
     }
 
     // Fetch first 5 leads for preview + total count
-    const { data: previewLeads, count } = await supabase
+    let leadsQuery = supabase
       .from("leads")
       .select("id, phone, name", { count: "exact" })
       .eq("agent_id", agentId)
       .order("created_at", { ascending: false })
       .limit(5);
+
+    if (leadsTagFilter !== "all" && leadsTagFilter !== "untagged") {
+      leadsQuery = leadsQuery.contains("tags", [leadsTagFilter]);
+    }
+
+    const { data: previewLeads, count } = await leadsQuery;
 
     if (previewLeads) {
       setLeadsPreview(previewLeads);
@@ -199,13 +298,37 @@ export default function CampaignsPage() {
       });
       setLeadTags(Array.from(tagSet).sort());
     }
-  }, [agentId]);
+  }, [agentId, leadsTagFilter]);
 
   useEffect(() => {
     if (createOpen) {
       fetchCreateFormData();
     }
   }, [createOpen, fetchCreateFormData]);
+
+  // Re-fetch leads preview when tag filter changes and dialog is open
+  useEffect(() => {
+    if (!createOpen || leadsSource !== "existing") return;
+    const supabase = createClient();
+
+    let leadsQuery = supabase
+      .from("leads")
+      .select("id, phone, name", { count: "exact" })
+      .eq("agent_id", agentId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    if (leadsTagFilter !== "all" && leadsTagFilter !== "untagged") {
+      leadsQuery = leadsQuery.contains("tags", [leadsTagFilter]);
+    }
+
+    leadsQuery.then(({ data, count }) => {
+      if (data) {
+        setLeadsPreview(data);
+        setLeadsPreviewTotal(count ?? data.length);
+      }
+    });
+  }, [leadsTagFilter, createOpen, leadsSource, agentId]);
 
   function toggleCallingDay(dayId: string) {
     setCallingDays((prev) =>
@@ -229,64 +352,184 @@ export default function CampaignsPage() {
     setRetryIntervalHours(4);
     setCallingRate(5);
     setCallingRateMinutes(1);
+    setCsvLeads([]);
+    setCsvFileName(null);
+  }
+
+  function handleCsvFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) {
+      toast.error("Please upload a CSV file");
+      return;
+    }
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const parsed = parseCampaignCSV(text);
+      if (parsed.length === 0) {
+        toast.error("No valid leads found. Make sure your CSV has a 'phone' column.");
+        setCsvLeads([]);
+        return;
+      }
+      setCsvLeads(parsed);
+      toast.success(`${parsed.length} lead${parsed.length > 1 ? "s" : ""} found in CSV`);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   }
 
   const handleCreateCampaign = async () => {
     if (!campaignName.trim()) return;
     setCreating(true);
 
-    const supabase = createClient();
+    try {
+      // If CSV upload, first import leads via API
+      let totalLeadsCount = leadsPreviewTotal;
+      if (leadsSource === "upload" && csvLeads.length > 0) {
+        const importRes = await fetch("/api/leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_id: agentId,
+            leads: csvLeads.map((l) => ({
+              phone: l.phone,
+              name: l.name || null,
+              tags: [],
+              dynamic_vars: {},
+            })),
+          }),
+        });
+        if (!importRes.ok) {
+          toast.error("Failed to import CSV leads");
+          setCreating(false);
+          return;
+        }
+        totalLeadsCount = csvLeads.length;
+      }
 
-    // Get user's organization_id
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setCreating(false);
-      return;
-    }
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setCreating(false);
+        return;
+      }
 
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single();
+      const { data: userData } = await supabase
+        .from("users")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single();
 
-    if (!userData) {
-      setCreating(false);
-      return;
-    }
+      if (!userData) {
+        setCreating(false);
+        return;
+      }
 
-    const { error } = await supabase.from("campaigns").insert({
-      organization_id: userData.organization_id,
-      agent_id: agentId,
-      name: campaignName.trim(),
-      status: "draft",
-      start_date: startDate || null,
-      calling_days: callingDays,
-      calling_hours_start: callingHoursStart,
-      calling_hours_end: callingHoursEnd,
-      timezone_mode: timezoneMode,
-      timezone: timezoneMode === "fixed" ? timezone : null,
-      retry_attempts: retryAttempts,
-      retry_interval_hours: retryIntervalHours,
-      calling_rate: callingRate,
-      calling_rate_minutes: callingRateMinutes,
-      phone_number_ids: selectedPhoneNumberIds,
-      cycle_numbers: cycleNumbers,
-      leads_source: leadsSource,
-      leads_tag_filter: leadsTagFilter === "all" ? null : leadsTagFilter,
-      total_leads: 0,
-      completed_leads: 0,
-    });
+      const { error } = await supabase.from("campaigns").insert({
+        organization_id: userData.organization_id,
+        agent_id: agentId,
+        name: campaignName.trim(),
+        status: "draft",
+        start_date: startDate || null,
+        calling_days: callingDays,
+        calling_hours_start: callingHoursStart,
+        calling_hours_end: callingHoursEnd,
+        timezone_mode: timezoneMode,
+        timezone: timezoneMode === "fixed" ? timezone : null,
+        retry_attempts: retryAttempts,
+        retry_interval_hours: retryIntervalHours,
+        calling_rate: callingRate,
+        calling_rate_minutes: callingRateMinutes,
+        phone_number_ids: selectedPhoneNumberIds,
+        cycle_numbers: cycleNumbers,
+        leads_source: leadsSource,
+        leads_tag_filter: leadsTagFilter === "all" ? null : leadsTagFilter,
+        total_leads: totalLeadsCount,
+        completed_leads: 0,
+      });
 
-    if (error) {
-      toast.error("Failed to create campaign");
-    } else {
-      setCreateOpen(false);
-      resetForm();
-      fetchCampaigns();
+      if (error) {
+        toast.error("Failed to create campaign");
+      } else {
+        toast.success("Campaign created successfully!");
+        setCreateOpen(false);
+        resetForm();
+        fetchCampaigns();
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.");
     }
     setCreating(false);
   };
+
+  async function handleDeleteCampaign(campaign: CampaignRow) {
+    if (campaign.status === "active") {
+      toast.error("Cannot delete an active campaign. Pause it first.");
+      return;
+    }
+    if (!window.confirm(`Delete campaign "${campaign.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to delete campaign");
+      }
+      setCampaigns((prev) => prev.filter((c) => c.id !== campaign.id));
+      toast.success("Campaign deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete campaign");
+    }
+  }
+
+  async function handleStatusChange(campaign: CampaignRow, newStatus: string) {
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to update campaign");
+      }
+      const updated = await res.json();
+      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      toast.success(`Campaign ${newStatus}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update campaign");
+    }
+  }
+
+  function openEditCampaign(campaign: CampaignRow) {
+    setEditingCampaign(campaign);
+    setEditName(campaign.name);
+  }
+
+  async function handleSaveEditCampaign() {
+    if (!editingCampaign) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/campaigns/${editingCampaign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to update campaign");
+      }
+      const updated = await res.json();
+      setCampaigns((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      setEditingCampaign(null);
+      toast.success("Campaign updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update campaign");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   const filtered = campaigns.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -382,9 +625,34 @@ export default function CampaignsPage() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <div className="border-2 border-dashed border-border rounded-lg p-4 text-center">
-                      <Upload className="w-6 h-6 text-muted-foreground mx-auto mb-1" />
-                      <p className="text-xs text-muted-foreground">Upload CSV</p>
+                    <div>
+                      <input
+                        ref={csvInputRef}
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={handleCsvFileSelect}
+                      />
+                      <div
+                        className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                        onClick={() => csvInputRef.current?.click()}
+                      >
+                        {csvFileName ? (
+                          <>
+                            <CheckCircle2 className="w-6 h-6 text-green-500 mx-auto mb-1" />
+                            <p className="text-xs font-medium">{csvFileName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {csvLeads.length} lead{csvLeads.length !== 1 ? "s" : ""} found
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-6 h-6 text-muted-foreground mx-auto mb-1" />
+                            <p className="text-xs text-muted-foreground">Click to upload CSV</p>
+                            <p className="text-[10px] text-muted-foreground">Requires a &quot;phone&quot; column</p>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -400,12 +668,12 @@ export default function CampaignsPage() {
                     onValueChange={(val) => setSelectedPhoneNumberIds([val])}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select outbound number(s)" />
+                      <SelectValue placeholder="Select outbound number" />
                     </SelectTrigger>
                     <SelectContent>
                       {phoneNumbers.map((pn) => (
                         <SelectItem key={pn.id} value={pn.id}>
-                          {pn.phone_number}
+                          {pn.number}
                         </SelectItem>
                       ))}
                       {phoneNumbers.length === 0 && (
@@ -549,16 +817,26 @@ export default function CampaignsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {leadsPreview.map((lead) => (
-                        <TableRow key={lead.id}>
-                          <TableCell className="text-xs font-mono">{lead.phone}</TableCell>
-                          <TableCell className="text-xs">{lead.name || "\u2014"}</TableCell>
-                        </TableRow>
-                      ))}
-                      {leadsPreview.length === 0 && (
+                      {leadsSource === "upload" && csvLeads.length > 0 ? (
+                        csvLeads.slice(0, 5).map((lead, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell className="text-xs font-mono">{lead.phone}</TableCell>
+                            <TableCell className="text-xs">{lead.name || "\u2014"}</TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        leadsPreview.map((lead) => (
+                          <TableRow key={lead.id}>
+                            <TableCell className="text-xs font-mono">{lead.phone}</TableCell>
+                            <TableCell className="text-xs">{lead.name || "\u2014"}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                      {((leadsSource === "upload" && csvLeads.length === 0) ||
+                        (leadsSource === "existing" && leadsPreview.length === 0)) && (
                         <TableRow>
                           <TableCell colSpan={2} className="text-xs text-muted-foreground text-center py-4">
-                            No leads found for this agent
+                            {leadsSource === "upload" ? "Upload a CSV to preview leads" : "No leads found for this agent"}
                           </TableCell>
                         </TableRow>
                       )}
@@ -566,7 +844,9 @@ export default function CampaignsPage() {
                   </Table>
                   <div className="p-2 border-t text-center">
                     <p className="text-xs text-muted-foreground">
-                      Showing {leadsPreview.length} of {leadsPreviewTotal} leads
+                      {leadsSource === "upload"
+                        ? `${csvLeads.length} leads from CSV`
+                        : `Showing ${leadsPreview.length} of ${leadsPreviewTotal} leads`}
                     </p>
                   </div>
                 </div>
@@ -636,6 +916,7 @@ export default function CampaignsPage() {
                     <TableHead>Leads</TableHead>
                     <TableHead>Start Date</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -675,6 +956,39 @@ export default function CampaignsPage() {
                       <TableCell className="text-sm text-muted-foreground">
                         {formatDate(campaign.created_at)}
                       </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditCampaign(campaign)}>
+                              <Pencil className="w-3.5 h-3.5 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            {campaign.status === "active" ? (
+                              <DropdownMenuItem onClick={() => handleStatusChange(campaign, "paused")}>
+                                <Pause className="w-3.5 h-3.5 mr-2" />
+                                Pause
+                              </DropdownMenuItem>
+                            ) : campaign.status === "paused" || campaign.status === "draft" ? (
+                              <DropdownMenuItem onClick={() => handleStatusChange(campaign, "active")}>
+                                <Play className="w-3.5 h-3.5 mr-2" />
+                                {campaign.status === "draft" ? "Activate" : "Resume"}
+                              </DropdownMenuItem>
+                            ) : null}
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => handleDeleteCampaign(campaign)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                     );
                   })}
@@ -695,6 +1009,32 @@ export default function CampaignsPage() {
           )}
         </>
       )}
+
+      {/* Edit Campaign Dialog */}
+      <Dialog open={!!editingCampaign} onOpenChange={(open) => { if (!open) setEditingCampaign(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Campaign</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Campaign Name</Label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Campaign name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingCampaign(null)}>Cancel</Button>
+            <Button onClick={handleSaveEditCampaign} disabled={editSaving || !editName.trim()}>
+              {editSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
     </FeatureGate>
   );
