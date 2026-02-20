@@ -102,12 +102,12 @@ export function ZapierConnectionCard({ clientId }: ZapierConnectionCardProps) {
         ) : (
           <>
             <p className="text-sm text-muted-foreground">
-              Generate an API key to connect your account with Zapier. This allows
-              you to create automated workflows triggered by call events.
+              Zapier integration is coming soon. You&apos;ll be able to create
+              automated workflows triggered by call events.
             </p>
-            <Button onClick={generateApiKey} className="gap-2">
+            <Button disabled className="gap-2">
               <Zap className="h-4 w-4" />
-              Generate API Key
+              Coming Soon
             </Button>
           </>
         )}

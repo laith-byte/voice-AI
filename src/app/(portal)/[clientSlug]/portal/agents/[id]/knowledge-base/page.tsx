@@ -146,7 +146,11 @@ export default function KnowledgeBasePage() {
       setSourceUrl("");
       setSourceFile(null);
       setSourceType("text");
-      toast.success("Knowledge base source added!");
+      if (newSource.warning) {
+        toast.warning(newSource.warning);
+      } else {
+        toast.success("Knowledge base source added!");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to add source.");
     } finally {
@@ -275,6 +279,11 @@ export default function KnowledgeBasePage() {
                       accept=".pdf,.txt,.doc,.docx,.csv"
                       onChange={(e) => {
                         const f = e.target.files?.[0] || null;
+                        if (f && f.size > 10 * 1024 * 1024) {
+                          toast.error("File size exceeds 10MB limit");
+                          e.target.value = "";
+                          return;
+                        }
                         setSourceFile(f);
                         if (f && !sourceName.trim()) {
                           setSourceName(f.name);
@@ -364,7 +373,7 @@ export default function KnowledgeBasePage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                     onClick={() => handleDelete(source.id)}
                     disabled={deleting === source.id}
                   >

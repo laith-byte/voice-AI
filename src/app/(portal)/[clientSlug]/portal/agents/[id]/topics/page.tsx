@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { FeatureGate } from "@/components/portal/feature-gate";
 import { createClient } from "@/lib/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, Tags, MessageSquare, Loader2 } from "lucide-react";
+import { Plus, Search, Tags, Loader2, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
@@ -99,6 +99,18 @@ export default function TopicsPage() {
       fetchTopics();
     }
     setCreating(false);
+  };
+
+  const handleDeleteTopic = async (topicId: string) => {
+    if (!window.confirm("Are you sure you want to delete this topic?")) return;
+    const supabase = createClient();
+    const { error } = await supabase.from("topics").delete().eq("id", topicId);
+    if (error) {
+      toast.error("Failed to delete topic");
+    } else {
+      toast.success("Topic deleted");
+      fetchTopics();
+    }
   };
 
   const filteredTopics = topics.filter(
@@ -215,6 +227,7 @@ export default function TopicsPage() {
                   <TableHead>Topic</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Created</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -231,6 +244,11 @@ export default function TopicsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {formatDate(topic.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteTopic(topic.id)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

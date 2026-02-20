@@ -449,11 +449,16 @@ export default function ConversationFlowsPage() {
 
     setDeploying(true);
     try {
-      await fetch(`/api/conversation-flows/${editingFlow.id}`, {
+      const patchRes = await fetch(`/api/conversation-flows/${editingFlow.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: flowName, agent_id: flowAgentId || null, nodes }),
       });
+      if (!patchRes.ok) {
+        toast.error("Failed to save flow changes");
+        setDeploying(false);
+        return;
+      }
 
       const res = await fetch(`/api/conversation-flows/${editingFlow.id}`, {
         method: "POST",
@@ -586,7 +591,7 @@ export default function ConversationFlowsPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 gap-1 text-xs text-red-600 hover:text-red-700"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(flow.id); }}
+                          onClick={(e) => { e.stopPropagation(); if (window.confirm("Are you sure you want to delete this flow?")) handleDelete(flow.id); }}
                         >
                           <Trash2 className="h-3 w-3" />
                           Delete

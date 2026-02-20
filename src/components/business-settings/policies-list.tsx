@@ -44,6 +44,7 @@ export function PoliciesList({ clientId }: PoliciesListProps) {
   }, [fetchPolicies]);
 
   async function handleDelete(id: string) {
+    if (!window.confirm("Are you sure you want to delete this policy?")) return;
     try {
       const res = await fetch(apiUrl(`/policies/${id}`, clientId), {
         method: "DELETE",

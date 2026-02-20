@@ -89,7 +89,6 @@ import {
   RETELL_INFRA_COST,
   TELEPHONY_COST,
   ADDON_COSTS,
-  COST_COMPONENT_LABELS,
 } from "@/lib/retell-costs";
 
 interface Agent {
@@ -498,10 +497,9 @@ export default function AgentSettingsPage() {
       const cs = data.call_settings;
       if (cs) {
         setVoicemailDetection(cs.voicemail_detection ?? false);
-        if (cs.voicemail_option?.action) {
-          const va = cs.voicemail_option.action;
-          setVoicemailAction(va.type ?? "hangup");
-          setVoicemailText(va.text ?? "");
+        if (cs.voicemail_option) {
+          setVoicemailAction(cs.voicemail_option.type ?? "hangup");
+          setVoicemailText(cs.voicemail_option.voicemail_message ?? cs.voicemail_option.prompt ?? cs.voicemail_option.static_text ?? "");
         } else {
           setVoicemailAction("hangup");
           setVoicemailText("");
@@ -866,21 +864,28 @@ export default function AgentSettingsPage() {
     };
   }, [agentId]);
 
-  // Save agent name to Supabase
+  // Save agent name to Supabase + publish config
   const handleSave = async () => {
     setSaving(true);
     const supabase = createClient();
-    const { error } = await supabase
-      .from("agents")
-      .update({ name: agentName })
-      .eq("id", agentId);
 
-    if (error) {
-      toast.error("Failed to save changes");
-    } else {
-      toast.success("Changes saved");
+    // Save name if changed
+    if (agentName && agentName !== agent?.name) {
+      const { error } = await supabase
+        .from("agents")
+        .update({ name: agentName })
+        .eq("id", agentId);
+
+      if (error) {
+        toast.error("Failed to save name");
+        setSaving(false);
+        return;
+      }
       setAgent((prev) => (prev ? { ...prev, name: agentName } : prev));
     }
+
+    // Also publish config
+    await handlePublish();
     setSaving(false);
   };
 
@@ -1015,9 +1020,11 @@ export default function AgentSettingsPage() {
       let voicemailOption: Record<string, unknown> | null = null;
       if (voicemailDetection) {
         if (voicemailAction === "hangup") {
-          voicemailOption = { action: { type: "hangup" } };
+          voicemailOption = { type: "hangup" };
+        } else if (voicemailAction === "leave_voicemail_message") {
+          voicemailOption = { type: "leave_voicemail_message", voicemail_message: voicemailText };
         } else {
-          voicemailOption = { action: { type: voicemailAction, text: voicemailText } };
+          voicemailOption = { type: voicemailAction, voicemail_message: voicemailText };
         }
       }
       // Build DTMF options
@@ -1054,7 +1061,7 @@ export default function AgentSettingsPage() {
       }
 
       toast.success("Agent configuration published");
-      setHasUnpublishedChanges(true);
+      setHasUnpublishedChanges(false);
     } catch (err) {
       console.error("Failed to publish agent config:", err);
       toast.error(
@@ -1065,8 +1072,20 @@ export default function AgentSettingsPage() {
     }
   };
 
-  const handleNameBlur = () => {
+  const handleNameBlur = async () => {
     setIsEditingName(false);
+    if (agentName && agentName !== agent?.name) {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("agents")
+        .update({ name: agentName })
+        .eq("id", agentId);
+      if (error) {
+        toast.error("Failed to save name");
+      } else {
+        setAgent((prev) => (prev ? { ...prev, name: agentName } : prev));
+      }
+    }
   };
 
   const [newToolType, setNewToolType] = useState("custom");
@@ -3718,7 +3737,11 @@ export default function AgentSettingsPage() {
                     </Label>
                   </div>
                   {autoTaggingEnabled && (
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toast.info("Auto-tagging will run on the next call")}
+                    >
                       <Zap className="w-3.5 h-3.5 mr-1.5" />
                       Manual Trigger
                     </Button>

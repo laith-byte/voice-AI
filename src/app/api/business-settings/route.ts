@@ -57,6 +57,9 @@ export async function PATCH(request: NextRequest) {
     "description", "industry", "greeting_message", "after_hours_message",
     "voicemail_message", "hold_message", "transfer_message",
     "business_hours", "logo_url", "primary_color", "language",
+    "after_hours_behavior", "unanswerable_behavior", "escalation_phone",
+    "max_call_duration_minutes", "post_call_email", "post_call_log",
+    "post_call_text",
   ];
   const safeUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of ALLOWED_FIELDS) {

@@ -339,8 +339,9 @@ export default function PortalBillingPage() {
       if (!res.ok) throw new Error("Failed to fetch billing");
       const json = await res.json();
       setData(json);
-    } catch {
-      // Billing data not available
+    } catch (err) {
+      console.error("Billing fetch error:", err);
+      toast.error("Failed to load billing information");
     } finally {
       setLoading(false);
     }
@@ -357,7 +358,11 @@ export default function PortalBillingPage() {
       const json = await res.json();
       if (json.url) {
         window.location.href = json.url;
+      } else {
+        toast.error(json.error || "Unable to open billing portal");
       }
+    } catch {
+      toast.error("Failed to open billing portal. Please try again.");
     } finally {
       setPortalLoading(false);
     }
@@ -696,7 +701,7 @@ export default function PortalBillingPage() {
                       <span className="text-sm font-medium">
                         {ca.plan_addons.addon_type === "recurring"
                           ? `$${(ca.plan_addons.monthly_price || 0) * ca.quantity}/mo`
-                          : `$${ca.plan_addons.one_time_price}`}
+                          : `$${(ca.plan_addons.one_time_price || 0) * ca.quantity}`}
                       </span>
                     </div>
                   </div>
@@ -779,11 +784,7 @@ export default function PortalBillingPage() {
                             <span className="text-muted-foreground">/mo</span>
                           </>
                         )}
-                        {!isCustom && plan.yearly_price && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            or ${plan.yearly_price.toLocaleString()}/year (save ~20%)
-                          </p>
-                        )}
+                        {/* Yearly pricing hidden until billing period selection is implemented */}
                       </div>
 
                       {/* Usage stats */}

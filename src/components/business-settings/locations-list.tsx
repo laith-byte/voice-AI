@@ -66,6 +66,7 @@ export function LocationsList({ clientId }: LocationsListProps) {
   }, [fetchLocations]);
 
   async function handleDelete(id: string) {
+    if (!window.confirm("Are you sure you want to delete this location?")) return;
     try {
       const res = await fetch(apiUrl(`/locations/${id}`, clientId), {
         method: "DELETE",

@@ -292,7 +292,7 @@ export default function AiAnalysisPage() {
                 </div>
               </div>
               {autoTaggingEnabled && (
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => toast.info("Manual trigger coming soon. Auto-tagging runs automatically after new conversations.")}>
                   <Zap className="w-3.5 h-3.5 mr-1.5" />
                   Manual Trigger
                 </Button>

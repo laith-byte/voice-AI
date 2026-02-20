@@ -83,7 +83,7 @@ export async function POST(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_llm_id, retell_api_key_encrypted, organization_id")
+    .select("retell_agent_id, retell_llm_id, retell_api_key_encrypted, organization_id, platform")
     .eq("id", id)
     .single();
 
@@ -126,7 +126,11 @@ export async function POST(
     if (target.webhook_url !== undefined) agentPayload.webhook_url = target.webhook_url;
 
     if (Object.keys(agentPayload).length > 0) {
-      await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
+      const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
+      const updateEndpoint = isChat
+        ? `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`
+        : `https://api.retellai.com/update-agent/${agent.retell_agent_id}`;
+      await fetch(updateEndpoint, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,

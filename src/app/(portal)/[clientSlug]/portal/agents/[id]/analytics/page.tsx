@@ -77,8 +77,9 @@ export default function AnalyticsPage() {
         setLoading(false);
         return;
       }
-      const start = new Date(customStart);
-      const end = new Date(customEnd);
+      let start = new Date(customStart);
+      let end = new Date(customEnd);
+      if (end < start) { const tmp = start; start = end; end = tmp; }
       end.setHours(23, 59, 59, 999);
       // Fetch a previous period of equal length for comparison
       const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
@@ -467,7 +468,7 @@ export default function AnalyticsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                      {isChat ? "Total Messages" : "Total Call Minutes"}
+                      {isChat ? "Total Session Minutes" : "Total Call Minutes"}
                     </p>
                     <div className="flex items-baseline gap-2.5 mt-2">
                       <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{currentMinutes}</span>
@@ -540,7 +541,7 @@ export default function AnalyticsPage() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Average Duration</p>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{isChat ? "Avg. Session Time" : "Average Duration"}</p>
                     <div className="flex items-baseline gap-2.5 mt-2">
                       <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{formatAvgDuration(currentAvgDuration)}</span>
                       {previousAvgDuration > 0 && (
@@ -562,7 +563,7 @@ export default function AnalyticsPage() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Unique Callers</p>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{isChat ? "Unique Users" : "Unique Callers"}</p>
                     <div className="flex items-baseline gap-2.5 mt-2">
                       <span className="text-4xl font-extrabold tracking-tight" style={{ fontFeatureSettings: '"tnum"' }}>{currentUnique}</span>
                       {previousUnique > 0 && (
@@ -647,7 +648,7 @@ export default function AnalyticsPage() {
             <Card className="animate-fade-in-up glass-card rounded-xl">
               <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
                 <CardTitle className="text-lg font-semibold tracking-tight">Duration Distribution</CardTitle>
-                <p className="text-sm text-muted-foreground/70">How long calls typically last</p>
+                <p className="text-sm text-muted-foreground/70">{isChat ? "How long sessions typically last" : "How long calls typically last"}</p>
               </CardHeader>
               <CardContent>
                 <div className="h-[280px]">
@@ -726,8 +727,8 @@ export default function AnalyticsPage() {
           {/* Call Activity Heatmap */}
           <Card className="animate-fade-in-up glass-card rounded-xl">
             <CardHeader className="border-b border-border/50 bg-gradient-to-b from-muted/30 to-transparent">
-              <CardTitle className="text-lg font-semibold tracking-tight">Call Activity</CardTitle>
-              <p className="text-sm text-muted-foreground/70">When your agent receives calls — based on actual call data for this period</p>
+              <CardTitle className="text-lg font-semibold tracking-tight">{isChat ? "Chat Activity" : "Call Activity"}</CardTitle>
+              <p className="text-sm text-muted-foreground/70">{isChat ? "When your agent receives messages" : "When your agent receives calls"} — based on actual data for this period</p>
             </CardHeader>
             <CardContent className="pt-4">
               {currentLogs.length > 0 ? (

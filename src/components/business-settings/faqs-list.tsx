@@ -41,6 +41,7 @@ export function FaqsList({ clientId }: FaqsListProps) {
   }, [fetchFaqs]);
 
   async function handleDelete(id: string) {
+    if (!window.confirm("Are you sure you want to delete this FAQ?")) return;
     try {
       const res = await fetch(apiUrl(`/faqs/${id}`, clientId), {
         method: "DELETE",

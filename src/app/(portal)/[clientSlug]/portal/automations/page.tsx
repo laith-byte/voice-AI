@@ -173,14 +173,14 @@ export default function PortalAutomationsPage() {
       // Clean up URL params
       const url = new URL(window.location.href);
       url.searchParams.delete("connected");
-      window.history.replaceState({}, "", url.pathname);
+      window.history.replaceState({}, "", url.toString());
     }
 
     if (oauthError) {
       toast.error(`OAuth connection failed: ${oauthError}`);
       const url = new URL(window.location.href);
       url.searchParams.delete("oauth_error");
-      window.history.replaceState({}, "", url.pathname);
+      window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams, fetchConnections]);
 
@@ -374,7 +374,7 @@ export default function PortalAutomationsPage() {
                 <RecipeCard
                   key={recipe.id}
                   recipe={recipe}
-                  onSetup={() => atRecipeLimit ? undefined : setSetupRecipe(recipe)}
+                  onSetup={() => atRecipeLimit ? toast.error("Recipe limit reached. Upgrade your plan for more automations.") : setSetupRecipe(recipe)}
                 />
               ))}
             </div>

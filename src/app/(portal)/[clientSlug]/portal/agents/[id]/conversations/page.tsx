@@ -28,7 +28,6 @@ import {
   CheckCircle2,
   XCircle,
   ArrowDownToLine,
-  Loader2,
   MessageSquare,
   X,
   ChevronLeft,
@@ -496,7 +495,7 @@ export default function ConversationsPage() {
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Search conversations..."
+                  placeholder="Search by caller, ID, or phone..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8 h-8 text-sm"
@@ -547,6 +546,22 @@ export default function ConversationsPage() {
                 </div>
               )}
             </ScrollArea>
+            {/* Card view pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-3 py-2 border-t">
+                <span className="text-xs text-muted-foreground">
+                  {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredConversations.length)} of {filteredConversations.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Center Panel - Transcript */}

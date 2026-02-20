@@ -117,12 +117,12 @@ export default function AgentConfigPage() {
   const [llmId, setLlmId] = useState<string | null>(null);
   const [language, setLanguage] = useState("en-US");
   const [systemPrompt, setSystemPrompt] = useState("");
-  const [llmModel, setLlmModel] = useState("gpt-4o");
+  const [llmModel, setLlmModel] = useState("gpt-4.1");
   const [voice, setVoice] = useState("Hailey");
   const [firstMessage, setFirstMessage] = useState("");
 
   // Voice controls
-  const [voiceModel, setVoiceModel] = useState("eleven_turbo_v2");
+  const [voiceModel, setVoiceModel] = useState<string | null>(null);
   const [voiceSpeed, setVoiceSpeed] = useState([1.0]);
   const [voiceTemperature, setVoiceTemperature] = useState([1.0]);
   const [voiceVolume, setVoiceVolume] = useState([1.0]);
@@ -164,8 +164,8 @@ export default function AgentConfigPage() {
   const [pronunciationEntries, setPronunciationEntries] = useState<{ word: string; pronunciation: string }[]>([]);
 
   // Transcription state
-  const [denoisingMode, setDenoisingMode] = useState("aggressive");
-  const [transcriptionMode, setTranscriptionMode] = useState("default");
+  const [denoisingMode, setDenoisingMode] = useState("noise-cancellation");
+  const [transcriptionMode, setTranscriptionMode] = useState("fast");
   const [vocabulary, setVocabulary] = useState("");
   const [boostedKeywords, setBoostedKeywords] = useState("");
 
@@ -202,6 +202,7 @@ export default function AgentConfigPage() {
   // KB config state
   const [kbTopK, setKbTopK] = useState("5");
   const [kbFilterScore, setKbFilterScore] = useState("0.7");
+  const [knowledgeBaseIds, setKnowledgeBaseIds] = useState<string[]>([]);
 
   // MCPs state
   const [mcpServers, setMcpServers] = useState<
@@ -288,7 +289,7 @@ export default function AgentConfigPage() {
       setLlmId(data.llm_id ?? null);
       setLanguage(data.language ?? "en-US");
       setSystemPrompt(data.system_prompt ?? "");
-      setLlmModel(data.llm_model ?? "gpt-4o");
+      setLlmModel(data.llm_model ?? "gpt-4.1");
       setVoice(data.voice ?? "Hailey");
       setFirstMessage(data.first_message ?? "");
 
@@ -306,6 +307,9 @@ export default function AgentConfigPage() {
       if (data.kb_config) {
         setKbTopK(String(data.kb_config.top_k ?? 5));
         setKbFilterScore(String(data.kb_config.filter_score ?? 0.7));
+      }
+      if (Array.isArray(data.knowledge_base_ids)) {
+        setKnowledgeBaseIds(data.knowledge_base_ids);
       }
 
       // Functions — preserve all fields from Retell (type, parameters, etc.)
@@ -341,7 +345,7 @@ export default function AgentConfigPage() {
           setPronunciationEntries(
             ss.pronunciation.map((p: Record<string, string>) => ({
               word: p.word ?? "",
-              pronunciation: p.alphabet === "ipa" ? p.phoneme ?? "" : p.pronunciation ?? "",
+              pronunciation: p.phoneme ?? p.pronunciation ?? "",
             }))
           );
         }
@@ -350,8 +354,8 @@ export default function AgentConfigPage() {
       // Realtime transcription
       const rt = data.realtime_transcription;
       if (rt) {
-        setDenoisingMode(rt.denoising_mode ?? "aggressive");
-        setTranscriptionMode(rt.transcription_mode ?? "default");
+        setDenoisingMode(rt.denoising_mode ?? "noise-cancellation");
+        setTranscriptionMode(rt.transcription_mode ?? "fast");
         if (Array.isArray(rt.vocabulary_specialization)) {
           setVocabulary(rt.vocabulary_specialization.join(", "));
         } else {
@@ -375,8 +379,8 @@ export default function AgentConfigPage() {
         setKeypadInput(cs.keypad_input_detection ?? false);
         if (cs.dtmf_options) {
           setDtmfDigitLimit(cs.dtmf_options.digit_limit != null ? String(cs.dtmf_options.digit_limit) : "");
-          setDtmfTerminationKey(cs.dtmf_options.end_character ?? "");
-          setDtmfTimeout(cs.dtmf_options.inter_digit_timeout_ms != null ? String(cs.dtmf_options.inter_digit_timeout_ms) : "");
+          setDtmfTerminationKey(cs.dtmf_options.termination_key ?? cs.dtmf_options.end_character ?? "");
+          setDtmfTimeout(cs.dtmf_options.timeout_ms != null ? String(cs.dtmf_options.timeout_ms / 1000) : "5");
         }
         setSilenceTimeout(
           cs.end_call_after_silence != null
@@ -390,11 +394,11 @@ export default function AgentConfigPage() {
         );
         setPauseBeforeSpeaking(
           cs.begin_message_delay != null
-            ? String(cs.begin_message_delay)
+            ? String(cs.begin_message_delay / 1000)
             : "0.4"
         );
         setRingDuration(
-          cs.ring_duration != null ? String(cs.ring_duration) : "15"
+          cs.ring_duration != null ? String(cs.ring_duration / 1000) : "15"
         );
       }
 
@@ -468,7 +472,7 @@ export default function AgentConfigPage() {
     setSaving(true);
 
     const parsedBoostedKeywords = boostedKeywords.split(",").map((s) => s.trim()).filter(Boolean);
-    const parsedVocabulary = vocabulary.split(",").map((s) => s.trim()).filter(Boolean);
+    const parsedVocabulary = vocabulary.trim();
     const parsedFallbackVoiceIds = fallbackVoiceIds.split(",").map((s) => s.trim()).filter(Boolean);
 
     let parsedDynamicVars: Record<string, string> | undefined;
@@ -506,15 +510,13 @@ export default function AgentConfigPage() {
     }
 
     // Build dtmf_options for payload
-    let dtmfOptions = null;
+    let dtmfOptions: Record<string, unknown> | null = null;
     if (keypadInput) {
-      dtmfOptions: {
-        const opts: Record<string, unknown> = {};
-        if (dtmfDigitLimit) opts.digit_limit = parseInt(dtmfDigitLimit);
-        if (dtmfTerminationKey) opts.end_character = dtmfTerminationKey;
-        if (dtmfTimeout) opts.inter_digit_timeout_ms = parseInt(dtmfTimeout);
-        if (Object.keys(opts).length > 0) dtmfOptions = opts;
-      }
+      const opts: Record<string, unknown> = {};
+      if (dtmfDigitLimit) opts.digit_limit = parseInt(dtmfDigitLimit);
+      if (dtmfTerminationKey) opts.termination_key = dtmfTerminationKey;
+      opts.timeout_ms = (parseFloat(dtmfTimeout) || 5) * 1000;
+      if (Object.keys(opts).length > 0) dtmfOptions = opts;
     }
 
     const payload: Record<string, unknown> = {
@@ -534,6 +536,7 @@ export default function AgentConfigPage() {
         top_k: parseInt(kbTopK) || 5,
         filter_score: parseFloat(kbFilterScore) || 0.7,
       },
+      ...(knowledgeBaseIds.length > 0 ? { knowledge_base_ids: knowledgeBaseIds } : {}),
       functions: functions.map(({ id, name, description, ...rest }) => ({
         ...rest,
         id,
@@ -553,7 +556,7 @@ export default function AgentConfigPage() {
         ...(reminderMaxCount ? { reminder_max_count: parseInt(reminderMaxCount) } : {}),
         pronunciation: pronunciationEntries
           .filter((p) => p.word && p.pronunciation)
-          .map((p) => ({ word: p.word, pronunciation: p.pronunciation, alphabet: "ipa" })),
+          .map((p) => ({ word: p.word, phoneme: p.pronunciation, alphabet: "ipa" })),
       },
       realtime_transcription: {
         denoising_mode: denoisingMode,
@@ -568,8 +571,8 @@ export default function AgentConfigPage() {
         ...(dtmfOptions && { dtmf_options: dtmfOptions }),
         end_call_after_silence: parseFloat(silenceTimeout) * 1000,
         max_call_duration: parseFloat(maxDuration) * 1000,
-        begin_message_delay: parseFloat(pauseBeforeSpeaking),
-        ring_duration: parseFloat(ringDuration),
+        begin_message_delay: parseFloat(pauseBeforeSpeaking) * 1000,
+        ring_duration: parseFloat(ringDuration) * 1000,
       },
       post_call_analysis: {
         model: postCallModel,
@@ -816,11 +819,12 @@ export default function AgentConfigPage() {
           {/* Voice Model */}
           <div>
             <Label className="text-sm font-medium text-[#111827] mb-1.5 block">Voice Model</Label>
-            <Select value={voiceModel} onValueChange={setVoiceModel}>
+            <Select value={voiceModel ?? "auto"} onValueChange={(v) => setVoiceModel(v === "auto" ? null : v)}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="auto">Auto (Default)</SelectItem>
                 <SelectItem value="eleven_turbo_v2">Eleven Turbo v2</SelectItem>
                 <SelectItem value="eleven_turbo_v2_5">Eleven Turbo v2.5</SelectItem>
                 <SelectItem value="eleven_flash_v2">Eleven Flash v2</SelectItem>
@@ -1153,10 +1157,12 @@ export default function AgentConfigPage() {
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="off">Off</SelectItem>
-                  <SelectItem value="office">Office</SelectItem>
-                  <SelectItem value="cafe">Cafe</SelectItem>
-                  <SelectItem value="restaurant">Restaurant</SelectItem>
-                  <SelectItem value="nature">Nature</SelectItem>
+                  <SelectItem value="coffee-shop">Coffee Shop</SelectItem>
+                  <SelectItem value="convention-hall">Convention Hall</SelectItem>
+                  <SelectItem value="summer-outdoor">Summer Outdoor</SelectItem>
+                  <SelectItem value="mountain-outdoor">Mountain Outdoor</SelectItem>
+                  <SelectItem value="static-noise">Static Noise</SelectItem>
+                  <SelectItem value="call-center">Call Center</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1227,10 +1233,8 @@ export default function AgentConfigPage() {
               <Select value={denoisingMode} onValueChange={setDenoisingMode}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto">Auto</SelectItem>
-                  <SelectItem value="aggressive">Aggressive</SelectItem>
+                  <SelectItem value="noise-cancellation">Noise Cancellation</SelectItem>
                   <SelectItem value="noise-and-background-speech-cancellation">Noise + Background Speech</SelectItem>
-                  <SelectItem value="off">Off</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1239,9 +1243,8 @@ export default function AgentConfigPage() {
               <Select value={transcriptionMode} onValueChange={setTranscriptionMode}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Default</SelectItem>
-                  <SelectItem value="speed">Speed</SelectItem>
-                  <SelectItem value="quality">Quality</SelectItem>
+                  <SelectItem value="fast">Fast</SelectItem>
+                  <SelectItem value="accurate">Accurate</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -46,6 +46,7 @@ export function ServicesList({ clientId }: ServicesListProps) {
   }, [fetchServices]);
 
   async function handleDelete(id: string) {
+    if (!window.confirm("Are you sure you want to delete this service?")) return;
     try {
       const res = await fetch(apiUrl(`/services/${id}`, clientId), {
         method: "DELETE",
