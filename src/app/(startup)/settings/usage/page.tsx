@@ -5,12 +5,14 @@ import {
   DollarSign,
   Clock,
   TrendingUp,
+  TrendingDown,
   Database,
   Phone,
   BarChart3,
   Calendar,
   Loader2,
   PhoneCall,
+  Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,14 @@ interface CallLog {
   agent_id: string | null;
 }
 
+interface ForecastData {
+  current_spend: number;
+  daily_average: number;
+  projected_month_end: number;
+  days_remaining: number;
+  trend: "increasing" | "stable" | "decreasing";
+}
+
 export default function SettingsUsagePage() {
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -60,6 +70,10 @@ export default function SettingsUsagePage() {
   // Agent costs
   const [agentCosts, setAgentCosts] = useState<Record<string, AgentCostBreakdown>>({});
   const [costsLoading, setCostsLoading] = useState(true);
+
+  // Forecast
+  const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(true);
 
   // Fetch agent costs on mount
   useEffect(() => {
@@ -82,6 +96,24 @@ export default function SettingsUsagePage() {
       }
     }
     fetchAgentCosts();
+  }, []);
+
+  // Fetch cost forecast on mount
+  useEffect(() => {
+    async function fetchForecast() {
+      try {
+        const res = await fetch("/api/usage/forecast");
+        if (res.ok) {
+          const data = await res.json();
+          setForecast(data);
+        }
+      } catch {
+        // Forecast is optional
+      } finally {
+        setForecastLoading(false);
+      }
+    }
+    fetchForecast();
   }, []);
 
   const fetchUsageData = useCallback(async () => {
@@ -535,6 +567,71 @@ export default function SettingsUsagePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cost Forecast */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-[#6b7280]" />
+            Cost Forecast
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {forecastLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-[#6b7280]" />
+            </div>
+          ) : forecast && forecast.current_spend > 0 ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 rounded-lg bg-gray-50 border border-[#e5e7eb]">
+                  <DollarSign className="h-4 w-4 mx-auto text-[#6b7280] mb-1" />
+                  <p className="text-lg font-semibold text-[#111827]">${forecast.current_spend.toFixed(2)}</p>
+                  <p className="text-xs text-[#6b7280]">spent this month</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-gray-50 border border-[#e5e7eb]">
+                  <Activity className="h-4 w-4 mx-auto text-[#6b7280] mb-1" />
+                  <p className="text-lg font-semibold text-[#111827]">${forecast.daily_average.toFixed(2)}</p>
+                  <p className="text-xs text-[#6b7280]">daily average</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-gray-50 border border-[#e5e7eb]">
+                  <TrendingUp className="h-4 w-4 mx-auto text-[#6b7280] mb-1" />
+                  <p className="text-lg font-semibold text-[#111827]">${forecast.projected_month_end.toFixed(2)}</p>
+                  <p className="text-xs text-[#6b7280]">projected month-end</p>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-gray-50 border border-[#e5e7eb]">
+                  <Calendar className="h-4 w-4 mx-auto text-[#6b7280] mb-1" />
+                  <p className="text-lg font-semibold text-[#111827]">{forecast.days_remaining}</p>
+                  <p className="text-xs text-[#6b7280]">days remaining</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {forecast.trend === "increasing" ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-full">
+                    <TrendingUp className="h-3 w-3" /> Increasing
+                  </span>
+                ) : forecast.trend === "decreasing" ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                    <TrendingDown className="h-3 w-3" /> Decreasing
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-[#6b7280] bg-gray-100 px-2 py-1 rounded-full">
+                    <Activity className="h-3 w-3" /> Stable
+                  </span>
+                )}
+                <span className="text-xs text-[#6b7280]">Daily spend trend over the last 30 days</span>
+              </div>
+            </div>
+          ) : (
+            <div className="h-24 bg-gray-50 rounded-lg flex items-center justify-center border border-[#e5e7eb]">
+              <div className="text-center">
+                <TrendingUp className="h-6 w-6 text-[#e5e7eb] mx-auto mb-1" />
+                <p className="text-sm text-[#6b7280]">No usage data for forecasting</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Phone Numbers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

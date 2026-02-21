@@ -10,6 +10,8 @@ import { ActiveAutomationCard } from "@/components/automations/active-automation
 import { usePlanAccess } from "@/hooks/use-plan-access";
 import { UpgradeBanner } from "@/components/portal/upgrade-banner";
 import { ZapierConnectionCard } from "@/components/portal/zapier-connection-card";
+import { MakeConnectionCard } from "@/components/portal/make-connection-card";
+import { N8nConnectionCard } from "@/components/portal/n8n-connection-card";
 import { Lock } from "lucide-react";
 
 interface Recipe {
@@ -71,6 +73,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   slack: "Slack",
   hubspot: "HubSpot",
   quickbooks: "QuickBooks",
+  salesforce: "Salesforce",
+  gohighlevel: "GoHighLevel",
 };
 
 // Map recipe categories/names to plan access fields
@@ -85,6 +89,8 @@ const RECIPE_PLAN_GATES: Record<string, string> = {
   slack_notification: "slack_integration",
   crm: "crm_integration",
   hubspot: "crm_integration",
+  salesforce: "crm_integration",
+  gohighlevel: "crm_integration",
   webhook: "webhook_forwarding",
   webhook_forwarding: "webhook_forwarding",
 };
@@ -436,8 +442,10 @@ function PortalAutomationsContent() {
             <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
               Integrations
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <ZapierConnectionCard clientId={clientId} />
+              <MakeConnectionCard clientId={clientId} />
+              <N8nConnectionCard clientId={clientId} />
             </div>
           </section>
         )}

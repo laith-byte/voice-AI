@@ -159,6 +159,36 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // For Salesforce, extract instance_url from token response
+    if (provider === "salesforce") {
+      providerMetadata = {
+        instance_url: tokenData.instance_url,
+      };
+      // Fetch user identity
+      const idRes = await fetch(tokenData.id, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (idRes.ok) {
+        const idInfo = await idRes.json();
+        providerEmail = idInfo.email || null;
+        providerMetadata = {
+          ...providerMetadata,
+          user_id: idInfo.user_id,
+          organization_id: idInfo.organization_id,
+          display_name: idInfo.display_name,
+        };
+      }
+    }
+
+    // For GoHighLevel, extract location info from token response
+    if (provider === "gohighlevel") {
+      providerMetadata = {
+        location_id: tokenData.locationId || null,
+        company_id: tokenData.companyId || null,
+        user_type: tokenData.userType || null,
+      };
+    }
+
     // For Calendly, fetch user info
     if (provider === "calendly") {
       const calendlyInfoRes = await fetch(
@@ -203,7 +233,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Register Retell tools if applicable (non-blocking)
-    if (provider === "google" || provider === "hubspot" || provider === "calendly") {
+    if (["google", "hubspot", "calendly", "salesforce", "gohighlevel"].includes(provider)) {
       registerAgentTools(clientId, provider).catch((err) =>
         console.error("Failed to register Retell tools:", err)
       );

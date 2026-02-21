@@ -700,3 +700,16 @@ export interface ConversationFlow {
   created_at: string;
   updated_at: string;
 }
+
+// --- Usage Alerts ---
+
+export interface UsageAlertSetting {
+  id: string;
+  client_id: string;
+  alert_type: "minutes_threshold" | "cost_threshold" | "calls_threshold";
+  threshold_value: number;
+  threshold_percent: number | null;
+  is_enabled: boolean;
+  last_triggered_at: string | null;
+  created_at: string;
+}

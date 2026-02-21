@@ -51,6 +51,8 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  ArrowUpDown,
+  RefreshCw,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -63,6 +65,10 @@ interface LeadRow {
   name: string | null;
   tags: string[];
   dynamic_vars: Record<string, unknown> | null;
+  score: number;
+  score_breakdown: Record<string, { points: number; label: string }> | null;
+  qualification: string;
+  last_scored_at: string | null;
   created_at: string;
 }
 
@@ -176,6 +182,8 @@ export default function LeadsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [qualificationFilter, setQualificationFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"created_at" | "score">("created_at");
   const [importOpen, setImportOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [itemsPerPage, setItemsPerPage] = useState(25);
@@ -239,14 +247,22 @@ export default function LeadsPage() {
     return Array.from(keySet).sort().slice(0, 5);
   }, [leads]);
 
-  const filteredLeads = useMemo(() => leads.filter((lead) => {
-    const matchesSearch =
-      lead.phone.includes(searchQuery) ||
-      (lead.name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
-    const matchesTags =
-      selectedTags.length === 0 || selectedTags.some((tag) => lead.tags?.includes(tag));
-    return matchesSearch && matchesTags;
-  }), [leads, searchQuery, selectedTags]);
+  const filteredLeads = useMemo(() => {
+    const filtered = leads.filter((lead) => {
+      const matchesSearch =
+        lead.phone.includes(searchQuery) ||
+        (lead.name?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+      const matchesTags =
+        selectedTags.length === 0 || selectedTags.some((tag) => lead.tags?.includes(tag));
+      const matchesQualification =
+        qualificationFilter === "all" || lead.qualification === qualificationFilter;
+      return matchesSearch && matchesTags && matchesQualification;
+    });
+    if (sortBy === "score") {
+      filtered.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+    }
+    return filtered;
+  }, [leads, searchQuery, selectedTags, qualificationFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / itemsPerPage));
   const paginatedLeads = filteredLeads.slice(
@@ -255,7 +271,7 @@ export default function LeadsPage() {
   );
 
   // Reset page when filters change
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedTags, itemsPerPage]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedTags, qualificationFilter, sortBy, itemsPerPage]);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
@@ -562,6 +578,42 @@ export default function LeadsPage() {
     }
   }
 
+  async function handleRescoreLead(leadId: string) {
+    try {
+      const res = await fetch(`/api/leads/${leadId}/score`, { method: "POST" });
+      if (!res.ok) {
+        throw new Error("Failed to rescore lead");
+      }
+      const result = await res.json();
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === leadId
+            ? { ...l, score: result.score, qualification: result.qualification, score_breakdown: result.breakdown, last_scored_at: new Date().toISOString() }
+            : l
+        )
+      );
+      toast.success("Lead rescored successfully");
+    } catch {
+      toast.error("Failed to rescore lead");
+    }
+  }
+
+  function qualificationBadge(q: string, score: number) {
+    const config: Record<string, { color: string; label: string }> = {
+      qualified: { color: "bg-green-100 text-green-800 border-green-200", label: "Qualified" },
+      hot: { color: "bg-orange-100 text-orange-800 border-orange-200", label: "Hot" },
+      warm: { color: "bg-yellow-100 text-yellow-800 border-yellow-200", label: "Warm" },
+      cold: { color: "bg-blue-100 text-blue-800 border-blue-200", label: "Cold" },
+      unscored: { color: "bg-gray-100 text-gray-500 border-gray-200", label: "Unscored" },
+    };
+    const c = config[q] || config.unscored;
+    return (
+      <Badge variant="outline" className={`text-xs ${c.color}`}>
+        {c.label} {q !== "unscored" && <span className="ml-1 font-mono">{score}</span>}
+      </Badge>
+    );
+  }
+
   return (
     <FeatureGate feature="leads">
     <div className="p-6 space-y-6">
@@ -719,16 +771,40 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      {/* Search + Tag Filters */}
+      {/* Search + Tag Filters + Qualification + Sort */}
       <div className="space-y-3">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by phone or name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 rounded-xl shadow-none focus:shadow-sm focus:ring-2 focus:ring-primary/20 transition-all"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by phone or name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 rounded-xl shadow-none focus:shadow-sm focus:ring-2 focus:ring-primary/20 transition-all"
+            />
+          </div>
+          <Select value={qualificationFilter} onValueChange={setQualificationFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Qualification" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Leads</SelectItem>
+              <SelectItem value="qualified">Qualified</SelectItem>
+              <SelectItem value="hot">Hot</SelectItem>
+              <SelectItem value="warm">Warm</SelectItem>
+              <SelectItem value="cold">Cold</SelectItem>
+              <SelectItem value="unscored">Unscored</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortBy(sortBy === "score" ? "created_at" : "score")}
+            className="gap-1.5"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            {sortBy === "score" ? "Score" : "Date"}
+          </Button>
         </div>
         <div className="flex flex-wrap gap-2">
           {allTags.map((tag) => (
@@ -773,6 +849,7 @@ export default function LeadsPage() {
                 <TableRow>
                   <TableHead>Phone</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Score</TableHead>
                   <TableHead>Tags</TableHead>
                   {dynamicVarKeys.map((k) => (
                     <TableHead key={k} className="capitalize">{k}</TableHead>
@@ -785,6 +862,13 @@ export default function LeadsPage() {
                   <TableRow key={lead.id} className="premium-row border-border/50">
                     <TableCell className="font-mono text-sm">{lead.phone}</TableCell>
                     <TableCell className="font-medium">{lead.name || "\u2014"}</TableCell>
+                    <TableCell>
+                      <div
+                        title={lead.score_breakdown ? Object.values(lead.score_breakdown).map((v) => `${v.label}: +${v.points}`).join("\n") : "No score data"}
+                      >
+                        {qualificationBadge(lead.qualification || "unscored", lead.score ?? 0)}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
                         {(lead.tags || []).map((tag) => (
@@ -813,6 +897,10 @@ export default function LeadsPage() {
                             <Pencil className="w-3.5 h-3.5 mr-2" />
                             Edit
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleRescoreLead(lead.id)}>
+                            <RefreshCw className="w-3.5 h-3.5 mr-2" />
+                            Rescore
+                          </DropdownMenuItem>
                           <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteLead(lead.id)}>
                             <Trash2 className="w-3.5 h-3.5 mr-2" />
                             Delete
@@ -824,7 +912,7 @@ export default function LeadsPage() {
                 ))}
                 {filteredLeads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3 + dynamicVarKeys.length + 1} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={4 + dynamicVarKeys.length + 1} className="text-center py-8 text-muted-foreground">
                       {searchQuery || selectedTags.length > 0
                         ? "No leads match your current filters"
                         : "No leads yet. Import leads to get started."}

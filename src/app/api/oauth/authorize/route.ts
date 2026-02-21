@@ -48,6 +48,10 @@ export async function GET(request: NextRequest) {
     params.set("prompt", "consent");
   }
 
+  if (provider === "salesforce") {
+    params.set("prompt", "login consent");
+  }
+
   const authUrl = `${config.authUrl}?${params.toString()}`;
   return NextResponse.redirect(authUrl);
 }

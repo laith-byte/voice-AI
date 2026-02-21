@@ -4,6 +4,8 @@ import { executeHubSpot } from "@/lib/oauth/executors/hubspot";
 import { executeNotion } from "@/lib/oauth/executors/notion";
 import { executeTwilioSms } from "@/lib/oauth/executors/twilio-sms";
 import { executeQuickBooks } from "@/lib/oauth/executors/quickbooks";
+import { executeSalesforce } from "@/lib/oauth/executors/salesforce";
+import { executeGoHighLevel } from "@/lib/oauth/executors/gohighlevel";
 
 export async function executeNativeRecipe(
   provider: string,
@@ -30,6 +32,10 @@ export async function executeNativeRecipe(
       return executeTwilioSms(callLog as never, clientId, config);
     case "quickbooks":
       return executeQuickBooks(callLog as never, clientId, config);
+    case "salesforce":
+      return executeSalesforce(callLog as never, clientId, config);
+    case "gohighlevel":
+      return executeGoHighLevel(callLog as never, clientId, config);
     default:
       throw new Error(`Unknown native provider: ${provider}`);
   }

@@ -4,7 +4,10 @@ import { executePostCallActions } from "@/lib/post-call-actions";
 import { executeRecipes } from "@/lib/automation-recipes";
 import { redactTranscript, redactText } from "@/lib/pii-redaction";
 import { dispatchZapierEvent } from "@/lib/zapier";
+import { dispatchMakeEvent } from "@/lib/make";
+import { dispatchN8nEvent } from "@/lib/n8n";
 import { sendEmail } from "@/lib/resend";
+import { scoreLeadFromCall } from "@/lib/lead-scoring";
 import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
@@ -222,7 +225,33 @@ export async function POST(request: NextRequest) {
           dispatchZapierEvent(clientId, "call.completed", callLogRow).catch((err) =>
             console.error("Zapier dispatch error:", err)
           ),
+          dispatchMakeEvent(clientId, "call.completed", callLogRow).catch((err) =>
+            console.error("Make dispatch error:", err)
+          ),
+          dispatchN8nEvent(clientId, "call.completed", callLogRow).catch((err) =>
+            console.error("n8n dispatch error:", err)
+          ),
         ]);
+
+        // Score any matching lead after call log is saved
+        try {
+          const callerPhone = callLogRow.from_number || callLogRow.to_number;
+          if (callerPhone && callLogRow.agent_id) {
+            const { data: matchingLead } = await supabase
+              .from("leads")
+              .select("id")
+              .eq("agent_id", callLogRow.agent_id)
+              .or(`phone.eq.${callerPhone}`)
+              .limit(1)
+              .single();
+
+            if (matchingLead) {
+              await scoreLeadFromCall(matchingLead.id, callLogRow, clientId);
+            }
+          }
+        } catch (err) {
+          console.error("Lead scoring error:", err);
+        }
       }
     }
 

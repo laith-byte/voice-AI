@@ -188,6 +188,64 @@ export const HUBSPOT_TOOLS = [
   },
 ];
 
+export const SALESFORCE_TOOLS = [
+  {
+    type: "custom",
+    name: "lookup_caller_salesforce",
+    description:
+      "Look up a caller's information in Salesforce by their phone number. Use this at the start of the call to personalize the conversation.",
+    url: `${APP_URL}/api/tools/salesforce/lookup`,
+    method: "POST",
+    speak_during_execution: false,
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        caller_phone_number: {
+          type: "string",
+          description: "The caller's phone number in E.164 format",
+        },
+      },
+      required: ["caller_phone_number"],
+    },
+    response_variables: {
+      caller_found: "$.found",
+      caller_name: "$.caller_name",
+      caller_company: "$.company",
+    },
+  },
+];
+
+export const GOHIGHLEVEL_TOOLS = [
+  {
+    type: "custom",
+    name: "lookup_caller_gohighlevel",
+    description:
+      "Look up a caller's information in GoHighLevel by their phone number. Use this at the start of the call to personalize the conversation.",
+    url: `${APP_URL}/api/tools/gohighlevel/lookup`,
+    method: "POST",
+    speak_during_execution: false,
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        caller_phone_number: {
+          type: "string",
+          description: "The caller's phone number in E.164 format",
+        },
+      },
+      required: ["caller_phone_number"],
+    },
+    response_variables: {
+      caller_found: "$.found",
+      caller_name: "$.caller_name",
+      caller_company: "$.company",
+    },
+  },
+];
+
 async function getRetellApiKeyForClient(
   clientId: string
 ): Promise<{ apiKey: string; retellAgentId: string } | null> {
@@ -304,6 +362,14 @@ export async function registerAgentTools(
     newTools = addAuthHeaders(
       injectClientId(CALENDLY_TOOLS as unknown as Record<string, unknown>[], clientId)
     );
+  } else if (provider === "salesforce") {
+    newTools = addAuthHeaders(
+      injectClientId(SALESFORCE_TOOLS as unknown as Record<string, unknown>[], clientId)
+    );
+  } else if (provider === "gohighlevel") {
+    newTools = addAuthHeaders(
+      injectClientId(GOHIGHLEVEL_TOOLS as unknown as Record<string, unknown>[], clientId)
+    );
   }
 
   // Filter out any existing tools with the same names
@@ -380,6 +446,10 @@ export async function unregisterAgentTools(
     toolNamesToRemove = HUBSPOT_TOOLS.map((t) => t.name);
   } else if (provider === "calendly") {
     toolNamesToRemove = CALENDLY_TOOLS.map((t) => t.name);
+  } else if (provider === "salesforce") {
+    toolNamesToRemove = SALESFORCE_TOOLS.map((t) => t.name);
+  } else if (provider === "gohighlevel") {
+    toolNamesToRemove = GOHIGHLEVEL_TOOLS.map((t) => t.name);
   }
 
   const removeSet = new Set(toolNamesToRemove);

@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 
-type Provider = "retell" | "elevenlabs" | "vapi" | "openai";
+type Provider = "retell" | "elevenlabs" | "vapi" | "openai" | "salesforce" | "gohighlevel";
 
 interface IntegrationRow {
   id: string;
@@ -57,9 +57,21 @@ const PROVIDER_META: Record<
     icon: "O",
     color: "bg-gray-800 text-white",
   },
+  salesforce: {
+    name: "Salesforce",
+    description: "CRM platform for contact and lead management",
+    icon: "SF",
+    color: "bg-sky-100 text-sky-600",
+  },
+  gohighlevel: {
+    name: "GoHighLevel",
+    description: "All-in-one CRM and marketing automation",
+    icon: "GH",
+    color: "bg-orange-100 text-orange-600",
+  },
 };
 
-const ALL_PROVIDERS: Provider[] = ["retell", "elevenlabs", "vapi", "openai"];
+const ALL_PROVIDERS: Provider[] = ["retell", "elevenlabs", "vapi", "openai", "salesforce", "gohighlevel"];
 
 export default function SettingsIntegrationsPage() {
   const [loading, setLoading] = useState(true);

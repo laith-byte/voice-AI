@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +37,11 @@ import {
   Minus,
   ChevronRight,
   Info,
+  Bell,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  DollarSign,
 } from "lucide-react";
 import {
   CLIENT_COST_CATEGORIES,
@@ -45,7 +52,16 @@ import {
   ADDON_COSTS,
 } from "@/lib/retell-costs";
 import { toast } from "sonner";
-import type { ClientPlan, PlanAddon } from "@/types";
+import type { ClientPlan, PlanAddon, UsageAlertSetting } from "@/types";
+
+interface ForecastData {
+  current_spend: number;
+  daily_average: number;
+  projected_month_end: number;
+  days_remaining: number;
+  trend: "increasing" | "stable" | "decreasing";
+  daily_costs: { date: string; cost: number }[];
+}
 
 interface Subscription {
   id: string;
@@ -327,11 +343,81 @@ function PlanComparisonDialog({
   );
 }
 
+function AlertRow({
+  alertType,
+  label,
+  description,
+  unit,
+  defaultValue,
+  defaultPercent,
+  setting,
+  saving,
+  onSave,
+}: {
+  alertType: string;
+  label: string;
+  description: string;
+  unit: string;
+  defaultValue: number;
+  defaultPercent: number | null;
+  setting: UsageAlertSetting | undefined;
+  saving: boolean;
+  onSave: (alertType: string, value: number, percent: number | null, enabled: boolean) => void;
+}) {
+  const isEnabled = setting?.is_enabled ?? false;
+  const currentValue = setting?.threshold_value ?? defaultValue;
+
+  return (
+    <div className="flex items-center justify-between gap-4 p-3 rounded-lg border">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium">{label}</p>
+          {saving && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+        </div>
+        <p className="text-xs text-muted-foreground">{description}</p>
+        {isEnabled && (
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              type="number"
+              className="w-28 h-7 text-xs"
+              defaultValue={currentValue}
+              min={0}
+              onBlur={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val >= 0 && val !== currentValue) {
+                  onSave(alertType, val, defaultPercent, true);
+                }
+              }}
+            />
+            <span className="text-xs text-muted-foreground">{unit}</span>
+          </div>
+        )}
+      </div>
+      <Switch
+        checked={isEnabled}
+        disabled={saving}
+        onCheckedChange={(checked) => {
+          onSave(alertType, currentValue, defaultPercent, checked);
+        }}
+      />
+    </div>
+  );
+}
+
 export default function PortalBillingPage() {
   const [data, setData] = useState<BillingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
+  // Usage alerts state
+  const [alerts, setAlerts] = useState<UsageAlertSetting[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [alertSaving, setAlertSaving] = useState<string | null>(null);
+
+  // Forecast state
+  const [forecast, setForecast] = useState<ForecastData | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(true);
 
   const fetchBilling = useCallback(async () => {
     try {
@@ -347,9 +433,39 @@ export default function PortalBillingPage() {
     }
   }, []);
 
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/usage/alerts");
+      if (res.ok) {
+        const json = await res.json();
+        setAlerts(json.alerts || []);
+      }
+    } catch {
+      // Alerts are optional, fail silently
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, []);
+
+  const fetchForecast = useCallback(async () => {
+    try {
+      const res = await fetch("/api/usage/forecast");
+      if (res.ok) {
+        const json = await res.json();
+        setForecast(json);
+      }
+    } catch {
+      // Forecast is optional, fail silently
+    } finally {
+      setForecastLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchBilling();
-  }, [fetchBilling]);
+    fetchAlerts();
+    fetchForecast();
+  }, [fetchBilling, fetchAlerts, fetchForecast]);
 
   async function openBillingPortal() {
     setPortalLoading(true);
@@ -392,6 +508,45 @@ export default function PortalBillingPage() {
     } finally {
       setCheckoutLoading(null);
     }
+  }
+
+  async function saveAlert(alertType: string, thresholdValue: number, thresholdPercent: number | null, isEnabled: boolean) {
+    setAlertSaving(alertType);
+    try {
+      const res = await fetch("/api/usage/alerts", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alert_type: alertType,
+          threshold_value: thresholdValue,
+          threshold_percent: thresholdPercent,
+          is_enabled: isEnabled,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setAlerts((prev) => {
+          const existing = prev.findIndex((a) => a.alert_type === alertType);
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = json.alert;
+            return updated;
+          }
+          return [...prev, json.alert];
+        });
+        toast.success("Alert preference saved");
+      } else {
+        toast.error("Failed to save alert preference");
+      }
+    } catch {
+      toast.error("Failed to save alert preference");
+    } finally {
+      setAlertSaving(null);
+    }
+  }
+
+  function getAlertSetting(alertType: string): UsageAlertSetting | undefined {
+    return alerts.find((a) => a.alert_type === alertType);
   }
 
   if (loading) {
@@ -901,6 +1056,133 @@ export default function PortalBillingPage() {
             </div>
           </div>
         )}
+
+        {/* Cost Forecast */}
+        <Card className="overflow-hidden animate-fade-in-up glass-card">
+          <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-md bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <h3 className="font-semibold text-sm">Cost Forecast</h3>
+            </div>
+          </div>
+          <CardContent className="p-4">
+            {forecastLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : forecast ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                    <DollarSign className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-lg font-bold">${forecast.current_spend.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">spent this month</p>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                    <Activity className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-lg font-bold">${forecast.daily_average.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">daily average</p>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                    <TrendingUp className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-lg font-bold">${forecast.projected_month_end.toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">projected month-end</p>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-slate-50 dark:bg-slate-900/30">
+                    <Calendar className="w-4 h-4 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-lg font-bold">{forecast.days_remaining}</p>
+                    <p className="text-xs text-muted-foreground">days remaining</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 px-1">
+                  {forecast.trend === "increasing" ? (
+                    <Badge variant="destructive" className="text-xs gap-1">
+                      <TrendingUp className="w-3 h-3" /> Increasing
+                    </Badge>
+                  ) : forecast.trend === "decreasing" ? (
+                    <Badge variant="secondary" className="text-xs gap-1">
+                      <TrendingDown className="w-3 h-3" /> Decreasing
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs gap-1">
+                      <Activity className="w-3 h-3" /> Stable
+                    </Badge>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    Daily spend trend over the last 30 days
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No usage data available yet. Cost forecasts will appear once you have call activity.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Usage Alerts */}
+        <Card className="overflow-hidden animate-fade-in-up glass-card">
+          <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-md bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
+                <Bell className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h3 className="font-semibold text-sm">Usage Alerts</h3>
+            </div>
+          </div>
+          <CardContent className="p-4">
+            {alertsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Get notified by email when your usage approaches or exceeds these thresholds.
+                </p>
+                {/* Minutes alert */}
+                <AlertRow
+                  alertType="minutes_threshold"
+                  label="Minutes Usage"
+                  description="Alert when call minutes reach a threshold"
+                  unit="minutes"
+                  defaultValue={500}
+                  defaultPercent={80}
+                  setting={getAlertSetting("minutes_threshold")}
+                  saving={alertSaving === "minutes_threshold"}
+                  onSave={saveAlert}
+                />
+                {/* Cost alert */}
+                <AlertRow
+                  alertType="cost_threshold"
+                  label="Cost Threshold"
+                  description="Alert when estimated cost exceeds a dollar amount"
+                  unit="$"
+                  defaultValue={100}
+                  defaultPercent={null}
+                  setting={getAlertSetting("cost_threshold")}
+                  saving={alertSaving === "cost_threshold"}
+                  onSave={saveAlert}
+                />
+                {/* Calls alert */}
+                <AlertRow
+                  alertType="calls_threshold"
+                  label="Call Count"
+                  description="Alert when total calls exceed a number"
+                  unit="calls"
+                  defaultValue={200}
+                  defaultPercent={null}
+                  setting={getAlertSetting("calls_threshold")}
+                  saving={alertSaving === "calls_threshold"}
+                  onSave={saveAlert}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Custom / Enterprise CTA */}
         <Card className="overflow-hidden animate-fade-in-up glass-card">

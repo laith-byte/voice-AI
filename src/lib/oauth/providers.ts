@@ -58,6 +58,29 @@ const PROVIDERS: Record<string, () => OAuthProviderConfig> = {
     clientId: process.env.QUICKBOOKS_CLIENT_ID!,
     clientSecret: process.env.QUICKBOOKS_CLIENT_SECRET!,
   }),
+
+  salesforce: () => ({
+    authUrl: "https://login.salesforce.com/services/oauth2/authorize",
+    tokenUrl: "https://login.salesforce.com/services/oauth2/token",
+    revokeUrl: "https://login.salesforce.com/services/oauth2/revoke",
+    scopes: ["api", "refresh_token", "id"],
+    clientId: process.env.SALESFORCE_CLIENT_ID!,
+    clientSecret: process.env.SALESFORCE_CLIENT_SECRET!,
+  }),
+
+  gohighlevel: () => ({
+    authUrl: "https://marketplace.gohighlevel.com/oauth/chooselocation",
+    tokenUrl: "https://services.leadconnectorhq.com/oauth/token",
+    scopes: [
+      "contacts.readonly",
+      "contacts.write",
+      "opportunities.readonly",
+      "opportunities.write",
+      "locations.readonly",
+    ],
+    clientId: process.env.GHL_CLIENT_ID!,
+    clientSecret: process.env.GHL_CLIENT_SECRET!,
+  }),
 };
 
 export function getProviderConfig(provider: string): OAuthProviderConfig {
