@@ -54,6 +54,7 @@ export default function AgentDetailLayout({
   const tabs = [
     { label: "Overview", href: `/agents/${id}/overview` },
     { label: "Agent Config", href: `/agents/${id}/agent-config` },
+    { label: "Prompt Tree", href: `/agents/${id}/prompt-tree` },
     { label: "Widget", href: `/agents/${id}/widget` },
     { label: "AI Analysis", href: `/agents/${id}/ai-analysis` },
     { label: "Campaigns", href: `/agents/${id}/campaigns` },
