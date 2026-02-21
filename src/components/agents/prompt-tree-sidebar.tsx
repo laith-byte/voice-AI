@@ -1,19 +1,28 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   X,
   Trash2,
   Plus,
+  Pencil,
+  Phone,
+  PhoneForwarded,
+  ArrowRightLeft,
+  Hash,
+  Calendar,
+  MessageCircle,
+  Braces,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -21,10 +30,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import type {
   PromptTreeNodeData,
+  BeginTagNodeData,
   ConversationNodeData,
+  EndNodeData,
   TransferCallNodeData,
   FunctionNodeData,
   SMSNodeData,
@@ -32,31 +49,31 @@ import type {
   BranchNodeData,
   AgentSwapNodeData,
   RetellEdge,
+  ConversationFlowTool,
+  ConversationFlowCustomTool,
 } from "@/lib/prompt-tree-types";
+
+// The sidebar is never shown for begin_tag nodes
+type SidebarNodeData = Exclude<PromptTreeNodeData, BeginTagNodeData>;
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
 interface PromptTreeSidebarProps {
   nodeId: string;
-  nodeData: PromptTreeNodeData;
+  nodeData: SidebarNodeData;
   allNodes: Array<{ id: string; name: string }>;
+  startNodeId: string | null;
+  tools: ConversationFlowTool[];
   onUpdateNodeData: (nodeId: string, data: Partial<PromptTreeNodeData>) => void;
   onDeleteNode: (nodeId: string) => void;
+  onSetStartNode: (nodeId: string) => void;
+  onUpdateTools: (tools: ConversationFlowTool[]) => void;
+  onAddTool: (type: string) => void;
+  onEditTool: (toolIndex: number) => void;
   onClose: () => void;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-const NODE_TYPE_LABELS: Record<string, string> = {
-  conversation: "Conversation",
-  end: "End Call",
-  transfer_call: "Transfer Call",
-  function: "Function",
-  sms: "Send SMS",
-  press_digit: "Press Digit",
-  branch: "Branch",
-  agent_swap: "Agent Swap",
-};
 
 function makeEdgeId() {
   return `edge_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -64,6 +81,51 @@ function makeEdgeId() {
 
 function makeConditionId() {
   return `cond_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const TOOL_TYPE_OPTIONS = [
+  { type: "end_call", label: "End Call", icon: Phone },
+  { type: "transfer_call", label: "Call Transfer", icon: PhoneForwarded },
+  { type: "agent_swap", label: "Agent Transfer", icon: ArrowRightLeft },
+  { type: "press_digit", label: "Press Digit (IVR Navigation)", icon: Hash },
+  {
+    type: "check_availability_cal",
+    label: "Check Calendar Availability (Cal.com)",
+    icon: Calendar,
+  },
+  {
+    type: "book_appointment_cal",
+    label: "Book on the Calendar (Cal.com)",
+    icon: Calendar,
+  },
+  { type: "send_sms", label: "Send SMS", icon: MessageCircle },
+  { type: "extract_dynamic_variable", label: "Extract Variable", icon: Braces },
+  { type: "custom", label: "Custom Function", icon: Settings },
+] as const;
+
+function getToolDisplayIcon(tool: ConversationFlowTool) {
+  switch (tool.type) {
+    case "custom":
+      return Settings;
+    case "check_availability_cal":
+      return Calendar;
+    case "book_appointment_cal":
+      return Calendar;
+    case "end_call":
+      return Phone;
+    case "transfer_call":
+      return PhoneForwarded;
+    case "agent_swap":
+      return ArrowRightLeft;
+    case "press_digit":
+      return Hash;
+    case "send_sms":
+      return MessageCircle;
+    case "extract_dynamic_variable":
+      return Braces;
+    default:
+      return Settings;
+  }
 }
 
 // ─── Sub-sections ───────────────────────────────────────────────────────────
@@ -82,12 +144,13 @@ function EdgeListSection({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
-        </Label>
+        </span>
         <Button
           variant="ghost"
-          size="xs"
+          size="sm"
+          className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700"
           onClick={() =>
             onChange([
               ...edges,
@@ -103,11 +166,15 @@ function EdgeListSection({
         </Button>
       </div>
       {edges.map((edge, i) => (
-        <div key={edge.id} className="space-y-2 rounded-md border p-3">
+        <div
+          key={edge.id}
+          className="space-y-2 rounded-lg border border-gray-200 bg-gray-50/50 p-3"
+        >
           <div className="flex items-start gap-2">
             <div className="flex-1 space-y-2">
               <Input
-                placeholder="Condition..."
+                placeholder="Transition condition..."
+                className="bg-white text-sm"
                 value={
                   edge.transition_condition.type === "prompt"
                     ? edge.transition_condition.prompt
@@ -136,7 +203,7 @@ function EdgeListSection({
                   onChange(updated);
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full bg-white text-sm">
                   <SelectValue placeholder="Destination node..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -150,10 +217,11 @@ function EdgeListSection({
             </div>
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon"
+              className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={() => onChange(edges.filter((_, j) => j !== i))}
             >
-              <Trash2 className="size-3" />
+              <Trash2 className="size-3.5" />
             </Button>
           </div>
         </div>
@@ -182,11 +250,12 @@ function SingleEdgeSection({
   };
   return (
     <div className="space-y-2">
-      <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
-      </Label>
+      </span>
       <Input
         placeholder="Condition..."
+        className="bg-white text-sm"
         value={
           current.transition_condition.type === "prompt"
             ? current.transition_condition.prompt
@@ -205,7 +274,7 @@ function SingleEdgeSection({
           onChange({ ...current, destination_node_id: val || undefined })
         }
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger className="w-full bg-white text-sm">
           <SelectValue placeholder="Destination node..." />
         </SelectTrigger>
         <SelectContent>
@@ -220,48 +289,151 @@ function SingleEdgeSection({
   );
 }
 
-// ─── Node-type specific editors ─────────────────────────────────────────────
+// ─── Tools Section ──────────────────────────────────────────────────────────
 
-function ConversationEditor({
-  nodeId,
-  data,
-  allNodes,
-  onUpdate,
+function ToolsSection({
+  tools,
+  onUpdateTools,
+  onAddTool,
+  onEditTool,
 }: {
-  nodeId: string;
-  data: ConversationNodeData;
-  allNodes: Array<{ id: string; name: string }>;
-  onUpdate: (patch: Partial<ConversationNodeData>) => void;
+  tools: ConversationFlowTool[];
+  onUpdateTools: (tools: ConversationFlowTool[]) => void;
+  onAddTool: (type: string) => void;
+  onEditTool: (toolIndex: number) => void;
 }) {
   return (
-    <div className="space-y-4">
-      {/* Instruction */}
-      <div className="space-y-2">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Instruction
-        </Label>
-        <Select
-          value={data.instruction.type}
-          onValueChange={(val) =>
-            onUpdate({
-              instruction: {
-                ...data.instruction,
-                type: val as "prompt" | "static_text",
-              },
-            })
-          }
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-foreground">
+          Tools (Optional)
+        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700"
+            >
+              <Plus className="size-3" />
+              Add
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-72">
+            {TOOL_TYPE_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              return (
+                <DropdownMenuItem
+                  key={option.type}
+                  onClick={() => onAddTool(option.type)}
+                  className="gap-2.5 py-2"
+                >
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="text-sm">{option.label}</span>
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Enable this state with capabilities such as calendar bookings, call
+        termination, or your own custom functions.
+      </p>
+      {tools.length > 0 && (
+        <div className="space-y-1">
+          {tools.map((tool, index) => {
+            const Icon = getToolDisplayIcon(tool);
+            return (
+              <div
+                key={`tool-${index}`}
+                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2"
+              >
+                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate text-sm text-foreground">
+                  {tool.name || "Unnamed tool"}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => onEditTool(index)}
+                >
+                  <Pencil className="size-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    const updated = tools.filter((_, j) => j !== index);
+                    onUpdateTools(updated);
+                  }}
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MCPs Section ───────────────────────────────────────────────────────────
+
+function MCPsSection() {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-foreground">
+          MCPs (Optional)
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700"
         >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="prompt">Prompt</SelectItem>
-            <SelectItem value="static_text">Static Text</SelectItem>
-          </SelectContent>
-        </Select>
+          <Plus className="size-3" />
+          Add
+        </Button>
+      </div>
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Connect Model Context Protocol servers to extend this state with
+        external data sources and tools.
+      </p>
+    </div>
+  );
+}
+
+// ─── Conversation Editor ────────────────────────────────────────────────────
+
+function ConversationEditor({
+  data,
+  allNodes,
+  tools,
+  onUpdate,
+  onUpdateTools,
+  onAddTool,
+  onEditTool,
+}: {
+  data: ConversationNodeData;
+  allNodes: Array<{ id: string; name: string }>;
+  tools: ConversationFlowTool[];
+  onUpdate: (patch: Partial<ConversationNodeData>) => void;
+  onUpdateTools: (tools: ConversationFlowTool[]) => void;
+  onAddTool: (type: string) => void;
+  onEditTool: (toolIndex: number) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {/* Prompt */}
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">Prompt</span>
         <Textarea
-          placeholder="Enter instruction text..."
-          className="min-h-32"
+          placeholder="Enter your prompt instructions here..."
+          className="min-h-[200px] resize-y bg-white text-sm leading-relaxed"
           value={data.instruction.text}
           onChange={(e) =>
             onUpdate({
@@ -273,82 +445,174 @@ function ConversationEditor({
 
       <Separator />
 
-      {/* Transitions */}
-      <EdgeListSection
-        edges={data.edges ?? []}
-        allNodes={allNodes}
-        onChange={(edges) => onUpdate({ edges })}
-        label="Transitions"
+      {/* Tools */}
+      <ToolsSection
+        tools={tools}
+        onUpdateTools={onUpdateTools}
+        onAddTool={onAddTool}
+        onEditTool={onEditTool}
       />
 
       <Separator />
 
-      {/* Settings */}
-      <div className="space-y-3">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Settings
-        </Label>
-        <div className="space-y-2">
-          <Label className="text-xs">Model</Label>
-          <Select
-            value={data.model_choice?.model ?? ""}
-            onValueChange={(val) =>
-              onUpdate({
-                model_choice: val
-                  ? {
-                      model: val as NonNullable<ConversationNodeData["model_choice"]>["model"],
-                      type: "cascading" as const,
-                    }
-                  : undefined,
-              })
+      {/* MCPs */}
+      <MCPsSection />
+
+      <Separator />
+
+      {/* Enable State Interruption Sensitivity */}
+      <div className="flex items-start gap-3">
+        <Checkbox
+          id="interruption-sensitivity"
+          checked={data.interruption_sensitivity !== undefined}
+          onCheckedChange={(checked) => {
+            if (checked) {
+              onUpdate({ interruption_sensitivity: 0.5 });
+            } else {
+              onUpdate({ interruption_sensitivity: undefined });
             }
+          }}
+        />
+        <div className="space-y-1">
+          <label
+            htmlFor="interruption-sensitivity"
+            className="text-sm font-medium leading-none text-foreground"
           >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Default" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="gpt-4.1">gpt-4.1</SelectItem>
-              <SelectItem value="gpt-4.1-mini">gpt-4.1-mini</SelectItem>
-              <SelectItem value="gpt-4.1-nano">gpt-4.1-nano</SelectItem>
-              <SelectItem value="claude-4.5-sonnet">claude-4.5-sonnet</SelectItem>
-              <SelectItem value="claude-4.5-haiku">claude-4.5-haiku</SelectItem>
-              <SelectItem value="gemini-2.5-flash">gemini-2.5-flash</SelectItem>
-              <SelectItem value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</SelectItem>
-            </SelectContent>
-          </Select>
+            Enable State Interruption Sensitivity
+          </label>
+          {data.interruption_sensitivity !== undefined && (
+            <Input
+              type="number"
+              min={0}
+              max={1}
+              step={0.1}
+              className="mt-2 w-24 bg-white text-sm"
+              value={data.interruption_sensitivity}
+              onChange={(e) =>
+                onUpdate({
+                  interruption_sensitivity: e.target.value
+                    ? Number(e.target.value)
+                    : undefined,
+                })
+              }
+            />
+          )}
         </div>
-        <div className="space-y-2">
-          <Label className="text-xs">Interruption Sensitivity</Label>
-          <Input
-            type="number"
-            min={0}
-            max={1}
-            step={0.1}
-            placeholder="Default"
-            value={data.interruption_sensitivity ?? ""}
-            onChange={(e) =>
-              onUpdate({
-                interruption_sensitivity: e.target.value
-                  ? Number(e.target.value)
-                  : undefined,
-              })
-            }
+      </div>
+
+      {/* Responsiveness */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Responsiveness</span>
+          <span className="text-xs text-muted-foreground">{data.responsiveness ?? "Default"}</span>
+        </div>
+        <Input
+          type="number"
+          min={0}
+          max={1}
+          step={0.1}
+          placeholder="0-1 (default)"
+          className="bg-white text-sm"
+          value={data.responsiveness ?? ""}
+          onChange={(e) =>
+            onUpdate({
+              responsiveness: e.target.value ? Number(e.target.value) : undefined,
+            })
+          }
+        />
+        <p className="text-xs text-muted-foreground">Controls how quickly the agent responds (0 = slower, 1 = faster).</p>
+      </div>
+
+      {/* Voice Speed */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-foreground">Voice Speed</span>
+          <span className="text-xs text-muted-foreground">{data.voice_speed ?? "Default"}</span>
+        </div>
+        <Input
+          type="number"
+          min={0.5}
+          max={2}
+          step={0.1}
+          placeholder="0.5-2 (default 1)"
+          className="bg-white text-sm"
+          value={data.voice_speed ?? ""}
+          onChange={(e) =>
+            onUpdate({
+              voice_speed: e.target.value ? Number(e.target.value) : undefined,
+            })
+          }
+        />
+        <p className="text-xs text-muted-foreground">Speaking speed of the agent (0.5 = half speed, 2 = double speed).</p>
+      </div>
+
+      {/* Transitions */}
+      {(data.edges?.length ?? 0) > 0 && (
+        <>
+          <Separator />
+          <EdgeListSection
+            edges={data.edges ?? []}
+            allNodes={allNodes}
+            onChange={(edges) => onUpdate({ edges })}
+            label="Transitions"
           />
-        </div>
+        </>
+      )}
+      {(data.edges?.length ?? 0) === 0 && (
+        <>
+          <Separator />
+          <EdgeListSection
+            edges={[]}
+            allNodes={allNodes}
+            onChange={(edges) => onUpdate({ edges })}
+            label="Transitions"
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── End Editor ─────────────────────────────────────────────────────────────
+
+function EndEditor({
+  data,
+  onUpdate,
+}: {
+  data: EndNodeData;
+  onUpdate: (patch: Partial<EndNodeData>) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">End Call Message (Optional)</span>
+        <Textarea
+          placeholder="Optional message to say before ending the call..."
+          className="min-h-24 bg-white text-sm"
+          value={data.instruction?.text ?? ""}
+          onChange={(e) =>
+            onUpdate({
+              instruction: e.target.value
+                ? { text: e.target.value, type: "prompt" }
+                : undefined,
+            })
+          }
+        />
+      </div>
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">Speak During Execution</span>
+        <Switch
+          checked={data.speak_during_execution ?? false}
+          onCheckedChange={(checked) =>
+            onUpdate({ speak_during_execution: !!checked })
+          }
+        />
       </div>
     </div>
   );
 }
 
-function EndEditor() {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-dashed p-4">
-      <p className="text-sm text-muted-foreground">
-        This node ends the call. No additional configuration needed.
-      </p>
-    </div>
-  );
-}
+// ─── Transfer Call Editor ───────────────────────────────────────────────────
 
 function TransferCallEditor({
   data,
@@ -360,13 +624,14 @@ function TransferCallEditor({
   onUpdate: (patch: Partial<TransferCallNodeData>) => void;
 }) {
   const destType = data.transfer_destination.type;
+  const transferType = data.transfer_option.type;
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Transfer Destination */}
       <div className="space-y-2">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-sm font-semibold text-foreground">
           Transfer Destination
-        </Label>
+        </span>
         <Select
           value={destType}
           onValueChange={(val) => {
@@ -381,7 +646,7 @@ function TransferCallEditor({
             }
           }}
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full bg-white text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -392,6 +657,7 @@ function TransferCallEditor({
         {destType === "predefined" && (
           <Input
             placeholder="Phone number..."
+            className="bg-white text-sm"
             value={
               data.transfer_destination.type === "predefined"
                 ? data.transfer_destination.number
@@ -410,6 +676,7 @@ function TransferCallEditor({
         {destType === "inferred" && (
           <Textarea
             placeholder="Prompt to infer transfer destination..."
+            className="min-h-20 bg-white text-sm"
             value={
               data.transfer_destination.type === "inferred"
                 ? data.transfer_destination.prompt
@@ -431,11 +698,11 @@ function TransferCallEditor({
 
       {/* Transfer Mode */}
       <div className="space-y-2">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-sm font-semibold text-foreground">
           Transfer Mode
-        </Label>
+        </span>
         <Select
-          value={data.transfer_option.type}
+          value={transferType}
           onValueChange={(val) =>
             onUpdate({
               transfer_option: {
@@ -447,7 +714,7 @@ function TransferCallEditor({
             })
           }
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full bg-white text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -458,6 +725,167 @@ function TransferCallEditor({
             </SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Show Transferee as Caller */}
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">Show Transferee as Caller</span>
+        <Switch
+          checked={data.transfer_option.show_transferee_as_caller ?? false}
+          onCheckedChange={(checked) =>
+            onUpdate({
+              transfer_option: {
+                ...data.transfer_option,
+                show_transferee_as_caller: !!checked,
+              },
+            })
+          }
+        />
+      </div>
+
+      {/* Ignore E.164 Validation */}
+      <div className="flex items-start gap-3">
+        <Checkbox
+          id="ignore-e164"
+          checked={data.ignore_e164_validation ?? false}
+          onCheckedChange={(checked) =>
+            onUpdate({ ignore_e164_validation: !!checked })
+          }
+        />
+        <label
+          htmlFor="ignore-e164"
+          className="text-sm font-medium leading-none text-foreground"
+        >
+          Ignore E.164 Validation
+        </label>
+      </div>
+
+      {/* Warm transfer specific options */}
+      {transferType === "warm_transfer" && (
+        <>
+          <div className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">
+              Agent Detection Timeout (ms)
+            </span>
+            <Input
+              type="number"
+              placeholder="e.g. 30000"
+              className="bg-white text-sm"
+              value={
+                data.transfer_option.type === "warm_transfer"
+                  ? (data.transfer_option.agent_detection_timeout_ms ?? "")
+                  : ""
+              }
+              onChange={(e) =>
+                onUpdate({
+                  transfer_option: {
+                    ...data.transfer_option,
+                    type: "warm_transfer",
+                    agent_detection_timeout_ms: e.target.value
+                      ? Number(e.target.value)
+                      : undefined,
+                  },
+                })
+              }
+            />
+          </div>
+          <div className="space-y-2">
+            <span className="text-sm font-semibold text-foreground">
+              On Hold Music
+            </span>
+            <Select
+              value={
+                data.transfer_option.type === "warm_transfer"
+                  ? (data.transfer_option.on_hold_music ?? "none")
+                  : "none"
+              }
+              onValueChange={(val) =>
+                onUpdate({
+                  transfer_option: {
+                    ...data.transfer_option,
+                    type: "warm_transfer",
+                    on_hold_music: val as "none" | "relaxing_sound" | "uplifting_beats" | "ringtone",
+                  },
+                })
+              }
+            >
+              <SelectTrigger className="w-full bg-white text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="relaxing_sound">Relaxing Sound</SelectItem>
+                <SelectItem value="uplifting_beats">Uplifting Beats</SelectItem>
+                <SelectItem value="ringtone">Ringtone</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      )}
+
+      {/* Agentic warm transfer on hold music */}
+      {transferType === "agentic_warm_transfer" && (
+        <div className="space-y-2">
+          <span className="text-sm font-semibold text-foreground">
+            On Hold Music
+          </span>
+          <Select
+            value={
+              data.transfer_option.type === "agentic_warm_transfer"
+                ? (data.transfer_option.on_hold_music ?? "none")
+                : "none"
+            }
+            onValueChange={(val) =>
+              onUpdate({
+                transfer_option: {
+                  ...data.transfer_option,
+                  type: "agentic_warm_transfer",
+                  on_hold_music: val as "none" | "relaxing_sound" | "uplifting_beats" | "ringtone",
+                },
+              })
+            }
+          >
+            <SelectTrigger className="w-full bg-white text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="relaxing_sound">Relaxing Sound</SelectItem>
+              <SelectItem value="uplifting_beats">Uplifting Beats</SelectItem>
+              <SelectItem value="ringtone">Ringtone</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Speak During Execution */}
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">Speak During Execution</span>
+        <Switch
+          checked={data.speak_during_execution ?? false}
+          onCheckedChange={(checked) =>
+            onUpdate({ speak_during_execution: !!checked })
+          }
+        />
+      </div>
+
+      {/* Instruction */}
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">
+          Instruction (Optional)
+        </span>
+        <Textarea
+          placeholder="Optional instruction text..."
+          className="min-h-20 bg-white text-sm"
+          value={data.instruction?.text ?? ""}
+          onChange={(e) =>
+            onUpdate({
+              instruction: e.target.value
+                ? { text: e.target.value, type: "prompt" }
+                : undefined,
+            })
+          }
+        />
       </div>
 
       <Separator />
@@ -473,6 +901,8 @@ function TransferCallEditor({
   );
 }
 
+// ─── Function Editor ────────────────────────────────────────────────────────
+
 function FunctionEditor({
   data,
   allNodes,
@@ -483,24 +913,25 @@ function FunctionEditor({
   onUpdate: (patch: Partial<FunctionNodeData>) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-2">
-        <Label className="text-xs">Tool ID</Label>
+        <span className="text-sm font-semibold text-foreground">Tool ID</span>
         <Input
           placeholder="tool_id..."
+          className="bg-white text-sm"
           value={data.tool_id}
           onChange={(e) => onUpdate({ tool_id: e.target.value })}
         />
       </div>
       <div className="space-y-2">
-        <Label className="text-xs">Tool Type</Label>
+        <span className="text-sm font-semibold text-foreground">Tool Type</span>
         <Select
           value={data.tool_type}
           onValueChange={(val) =>
             onUpdate({ tool_type: val as "local" | "shared" })
           }
         >
-          <SelectTrigger className="w-full">
+          <SelectTrigger className="w-full bg-white text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -509,8 +940,8 @@ function FunctionEditor({
           </SelectContent>
         </Select>
       </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">Wait for Result</Label>
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">Wait for Result</span>
         <Switch
           checked={data.wait_for_result}
           onCheckedChange={(checked) =>
@@ -518,8 +949,10 @@ function FunctionEditor({
           }
         />
       </div>
-      <div className="flex items-center justify-between">
-        <Label className="text-xs">Speak During Execution</Label>
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">
+          Speak During Execution
+        </span>
         <Switch
           checked={data.speak_during_execution ?? false}
           onCheckedChange={(checked) =>
@@ -530,9 +963,12 @@ function FunctionEditor({
 
       {/* Optional instruction */}
       <div className="space-y-2">
-        <Label className="text-xs">Instruction (optional)</Label>
+        <span className="text-sm font-semibold text-foreground">
+          Instruction (optional)
+        </span>
         <Textarea
           placeholder="Instruction text..."
+          className="min-h-20 bg-white text-sm"
           value={data.instruction?.text ?? ""}
           onChange={(e) =>
             onUpdate({
@@ -559,6 +995,8 @@ function FunctionEditor({
   );
 }
 
+// ─── SMS Editor ─────────────────────────────────────────────────────────────
+
 function SMSEditor({
   data,
   allNodes,
@@ -569,12 +1007,14 @@ function SMSEditor({
   onUpdate: (patch: Partial<SMSNodeData>) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-2">
-        <Label className="text-xs">SMS Content</Label>
+        <span className="text-sm font-semibold text-foreground">
+          SMS Content
+        </span>
         <Textarea
           placeholder="Message content..."
-          className="min-h-24"
+          className="min-h-24 bg-white text-sm"
           value={data.sms_content}
           onChange={(e) => onUpdate({ sms_content: e.target.value })}
         />
@@ -601,6 +1041,8 @@ function SMSEditor({
   );
 }
 
+// ─── Press Digit Editor ─────────────────────────────────────────────────────
+
 function PressDigitEditor({
   data,
   allNodes,
@@ -611,12 +1053,14 @@ function PressDigitEditor({
   onUpdate: (patch: Partial<PressDigitNodeData>) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-2">
-        <Label className="text-xs">Instruction</Label>
+        <span className="text-sm font-semibold text-foreground">
+          Instruction
+        </span>
         <Textarea
           placeholder="Instruction text..."
-          className="min-h-24"
+          className="min-h-24 bg-white text-sm"
           value={data.instruction.text}
           onChange={(e) =>
             onUpdate({
@@ -626,10 +1070,13 @@ function PressDigitEditor({
         />
       </div>
       <div className="space-y-2">
-        <Label className="text-xs">Delay (ms)</Label>
+        <span className="text-sm font-semibold text-foreground">
+          Delay (ms)
+        </span>
         <Input
           type="number"
           placeholder="e.g. 1000"
+          className="bg-white text-sm"
           value={data.delay_ms ?? ""}
           onChange={(e) =>
             onUpdate({
@@ -651,6 +1098,8 @@ function PressDigitEditor({
   );
 }
 
+// ─── Branch Editor ──────────────────────────────────────────────────────────
+
 function BranchEditor({
   data,
   allNodes,
@@ -662,15 +1111,16 @@ function BranchEditor({
 }) {
   const conditions = data.conditions ?? [];
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Conditions
-          </Label>
+          </span>
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
+            className="h-7 gap-1 text-xs text-emerald-600 hover:text-emerald-700"
             onClick={() =>
               onUpdate({
                 conditions: [
@@ -688,11 +1138,15 @@ function BranchEditor({
           </Button>
         </div>
         {conditions.map((cond, i) => (
-          <div key={cond.id} className="space-y-2 rounded-md border p-3">
+          <div
+            key={cond.id}
+            className="space-y-2 rounded-lg border border-gray-200 bg-gray-50/50 p-3"
+          >
             <div className="flex items-start gap-2">
               <div className="flex-1 space-y-2">
                 <Input
                   placeholder="Condition..."
+                  className="bg-white text-sm"
                   value={
                     cond.condition.type === "prompt"
                       ? cond.condition.prompt
@@ -718,7 +1172,7 @@ function BranchEditor({
                     onUpdate({ conditions: updated });
                   }}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger className="w-full bg-white text-sm">
                     <SelectValue placeholder="Destination node..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -732,22 +1186,21 @@ function BranchEditor({
               </div>
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon"
+                className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={() =>
                   onUpdate({
                     conditions: conditions.filter((_, j) => j !== i),
                   })
                 }
               >
-                <Trash2 className="size-3" />
+                <Trash2 className="size-3.5" />
               </Button>
             </div>
           </div>
         ))}
         {conditions.length === 0 && (
-          <p className="text-xs text-muted-foreground">
-            No conditions yet.
-          </p>
+          <p className="text-xs text-muted-foreground">No conditions yet.</p>
         )}
       </div>
 
@@ -764,6 +1217,8 @@ function BranchEditor({
   );
 }
 
+// ─── Agent Swap Editor ──────────────────────────────────────────────────────
+
 function AgentSwapEditor({
   data,
   allNodes,
@@ -774,13 +1229,114 @@ function AgentSwapEditor({
   onUpdate: (patch: Partial<AgentSwapNodeData>) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-2">
-        <Label className="text-xs">Agent ID</Label>
+        <span className="text-sm font-semibold text-foreground">Agent ID</span>
         <Input
           placeholder="agent_id..."
+          className="bg-white text-sm"
           value={data.agent_id}
           onChange={(e) => onUpdate({ agent_id: e.target.value })}
+        />
+      </div>
+
+      {/* Agent Version */}
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">Agent Version</span>
+        <Input
+          type="number"
+          placeholder="Version number (optional)"
+          className="bg-white text-sm"
+          value={data.agent_version ?? ""}
+          onChange={(e) =>
+            onUpdate({
+              agent_version: e.target.value ? Number(e.target.value) : undefined,
+            })
+          }
+        />
+      </div>
+
+      {/* Post-Call Analysis Setting */}
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">Post-Call Analysis Setting</span>
+        <Select
+          value={data.post_call_analysis_setting ?? "both_agents"}
+          onValueChange={(val) =>
+            onUpdate({
+              post_call_analysis_setting: val as "both_agents" | "only_destination_agent",
+            })
+          }
+        >
+          <SelectTrigger className="w-full bg-white text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="both_agents">Both Agents</SelectItem>
+            <SelectItem value="only_destination_agent">Only Destination Agent</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Webhook Setting */}
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">Webhook Setting</span>
+        <Select
+          value={data.webhook_setting ?? "both_agents"}
+          onValueChange={(val) =>
+            onUpdate({
+              webhook_setting: val as "both_agents" | "only_destination_agent" | "only_source_agent",
+            })
+          }
+        >
+          <SelectTrigger className="w-full bg-white text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="both_agents">Both Agents</SelectItem>
+            <SelectItem value="only_destination_agent">Only Destination Agent</SelectItem>
+            <SelectItem value="only_source_agent">Only Source Agent</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Keep Current Voice */}
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">Keep Current Voice</span>
+        <Switch
+          checked={data.keep_current_voice ?? false}
+          onCheckedChange={(checked) =>
+            onUpdate({ keep_current_voice: !!checked })
+          }
+        />
+      </div>
+
+      {/* Speak During Execution */}
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2.5">
+        <span className="text-sm text-foreground">Speak During Execution</span>
+        <Switch
+          checked={data.speak_during_execution ?? false}
+          onCheckedChange={(checked) =>
+            onUpdate({ speak_during_execution: !!checked })
+          }
+        />
+      </div>
+
+      {/* Instruction */}
+      <div className="space-y-2">
+        <span className="text-sm font-semibold text-foreground">
+          Instruction (Optional)
+        </span>
+        <Textarea
+          placeholder="Optional instruction text..."
+          className="min-h-20 bg-white text-sm"
+          value={data.instruction?.text ?? ""}
+          onChange={(e) =>
+            onUpdate({
+              instruction: e.target.value
+                ? { text: e.target.value, type: "prompt" }
+                : undefined,
+            })
+          }
         />
       </div>
 
@@ -802,101 +1358,180 @@ export function PromptTreeSidebar({
   nodeId,
   nodeData,
   allNodes,
+  startNodeId,
+  tools,
   onUpdateNodeData,
   onDeleteNode,
+  onSetStartNode,
+  onUpdateTools,
+  onAddTool,
+  onEditTool,
   onClose,
 }: PromptTreeSidebarProps) {
+  const [isEditingName, setIsEditingName] = useState(false);
+
   const handleUpdate = useCallback(
     (patch: Partial<PromptTreeNodeData>) => {
       onUpdateNodeData(nodeId, patch);
     },
-    [nodeId, onUpdateNodeData]
+    [nodeId, onUpdateNodeData],
   );
 
+  const isStartNode = startNodeId === nodeId;
+
   return (
-    <div className="flex h-full w-96 flex-col border-l bg-background">
+    <div className="flex h-full w-[400px] flex-col overflow-hidden border-l border-gray-200 bg-white">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <div className="flex-1 space-y-1">
-          <Input
-            className="h-7 text-sm font-semibold"
-            value={nodeData.name}
-            onChange={(e) => handleUpdate({ name: e.target.value })}
-          />
-          <Badge variant="secondary" className="text-[10px]">
-            {NODE_TYPE_LABELS[nodeData.type] ?? nodeData.type}
-          </Badge>
+      <div className="border-b border-gray-200 px-5 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {isEditingName ? (
+              <Input
+                className="h-8 text-base font-semibold"
+                value={nodeData.name}
+                autoFocus
+                onChange={(e) => handleUpdate({ name: e.target.value })}
+                onBlur={() => setIsEditingName(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setIsEditingName(false);
+                }}
+              />
+            ) : (
+              <button
+                className="group flex min-w-0 items-center gap-1.5"
+                onClick={() => setIsEditingName(true)}
+              >
+                <h2 className="truncate text-base font-semibold text-foreground">
+                  {nodeData.name}
+                </h2>
+                <Pencil className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+              </button>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground hover:text-destructive"
+              onClick={() => onDeleteNode(nodeId)}
+              title="Delete node"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground hover:text-foreground"
+              onClick={onClose}
+              title="Close sidebar"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={() => onDeleteNode(nodeId)}
-          title="Delete node"
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={onClose}
-          title="Close sidebar"
-        >
-          <X className="size-3.5" />
-        </Button>
+
+        {/* Set as starting state link */}
+        {!isStartNode && (
+          <button
+            className="mt-2 text-sm font-medium text-emerald-600 hover:text-emerald-700 hover:underline"
+            onClick={() => onSetStartNode(nodeId)}
+          >
+            Set as a starting state
+          </button>
+        )}
+        {isStartNode && (
+          <span className="mt-2 inline-block text-xs font-medium text-emerald-600">
+            Starting state
+          </span>
+        )}
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
-        <div className="space-y-4 p-4">
+      <ScrollArea className="flex-1 overflow-hidden">
+        <div className="px-5 py-5">
           {nodeData.type === "conversation" && (
             <ConversationEditor
-              nodeId={nodeId}
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<ConversationNodeData>) => void}
+              tools={tools}
+              onUpdate={
+                handleUpdate as (
+                  patch: Partial<ConversationNodeData>,
+                ) => void
+              }
+              onUpdateTools={onUpdateTools}
+              onAddTool={onAddTool}
+              onEditTool={onEditTool}
             />
           )}
-          {nodeData.type === "end" && <EndEditor />}
+          {nodeData.type === "end" && (
+            <EndEditor
+              data={nodeData}
+              onUpdate={handleUpdate as (patch: Partial<EndNodeData>) => void}
+            />
+          )}
           {nodeData.type === "transfer_call" && (
             <TransferCallEditor
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<TransferCallNodeData>) => void}
+              onUpdate={
+                handleUpdate as (
+                  patch: Partial<TransferCallNodeData>,
+                ) => void
+              }
             />
           )}
           {nodeData.type === "function" && (
             <FunctionEditor
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<FunctionNodeData>) => void}
+              onUpdate={
+                handleUpdate as (
+                  patch: Partial<FunctionNodeData>,
+                ) => void
+              }
             />
           )}
           {nodeData.type === "sms" && (
             <SMSEditor
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<SMSNodeData>) => void}
+              onUpdate={
+                handleUpdate as (patch: Partial<SMSNodeData>) => void
+              }
             />
           )}
           {nodeData.type === "press_digit" && (
             <PressDigitEditor
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<PressDigitNodeData>) => void}
+              onUpdate={
+                handleUpdate as (
+                  patch: Partial<PressDigitNodeData>,
+                ) => void
+              }
             />
           )}
           {nodeData.type === "branch" && (
             <BranchEditor
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<BranchNodeData>) => void}
+              onUpdate={
+                handleUpdate as (
+                  patch: Partial<BranchNodeData>,
+                ) => void
+              }
             />
           )}
           {nodeData.type === "agent_swap" && (
             <AgentSwapEditor
               data={nodeData}
               allNodes={allNodes}
-              onUpdate={handleUpdate as (patch: Partial<AgentSwapNodeData>) => void}
+              onUpdate={
+                handleUpdate as (
+                  patch: Partial<AgentSwapNodeData>,
+                ) => void
+              }
             />
           )}
         </div>

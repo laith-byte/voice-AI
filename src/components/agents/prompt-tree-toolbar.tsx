@@ -5,6 +5,7 @@ import {
   Plus,
   Save,
   Loader2,
+  Check,
   MessageSquare,
   PhoneOff,
   PhoneForwarded,
@@ -48,6 +49,8 @@ interface PromptTreeToolbarProps {
   onAddNode: (type: PromptTreeNodeType) => void;
   onSave: () => void;
   saving: boolean;
+  lastSavedAt: Date | null;
+  hasUnsavedChanges: boolean;
   globalPrompt: string | null;
   onGlobalPromptChange: (prompt: string | null) => void;
   modelChoice: ModelChoice | undefined;
@@ -62,25 +65,26 @@ const NODE_TYPE_MENU_ITEMS: Array<{
   type: PromptTreeNodeType;
   label: string;
   icon: React.ElementType;
+  color: string;
 }> = [
-  { type: "conversation", label: "Conversation", icon: MessageSquare },
-  { type: "end", label: "End Call", icon: PhoneOff },
-  { type: "transfer_call", label: "Transfer Call", icon: PhoneForwarded },
-  { type: "function", label: "Function", icon: Wrench },
-  { type: "sms", label: "Send SMS", icon: MessageCircle },
-  { type: "press_digit", label: "Press Digit", icon: Hash },
-  { type: "branch", label: "Branch", icon: GitBranch },
-  { type: "agent_swap", label: "Agent Swap", icon: ArrowRightLeft },
+  { type: "conversation", label: "Conversation", icon: MessageSquare, color: "text-blue-600" },
+  { type: "end", label: "End Call", icon: PhoneOff, color: "text-red-600" },
+  { type: "transfer_call", label: "Transfer Call", icon: PhoneForwarded, color: "text-orange-600" },
+  { type: "function", label: "Function", icon: Wrench, color: "text-purple-600" },
+  { type: "sms", label: "Send SMS", icon: MessageCircle, color: "text-emerald-600" },
+  { type: "press_digit", label: "Press Digit", icon: Hash, color: "text-indigo-600" },
+  { type: "branch", label: "Branch", icon: GitBranch, color: "text-amber-600" },
+  { type: "agent_swap", label: "Agent Swap", icon: ArrowRightLeft, color: "text-teal-600" },
 ];
 
 const MODEL_OPTIONS: Array<{ value: ModelChoice["model"]; label: string }> = [
-  { value: "gpt-4.1", label: "gpt-4.1" },
-  { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
-  { value: "gpt-4.1-nano", label: "gpt-4.1-nano" },
-  { value: "claude-4.5-sonnet", label: "claude-4.5-sonnet" },
-  { value: "claude-4.5-haiku", label: "claude-4.5-haiku" },
-  { value: "gemini-2.5-flash", label: "gemini-2.5-flash" },
-  { value: "gemini-2.5-flash-lite", label: "gemini-2.5-flash-lite" },
+  { value: "gpt-4.1", label: "GPT-4.1" },
+  { value: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+  { value: "gpt-4.1-nano", label: "GPT-4.1 Nano" },
+  { value: "claude-4.5-sonnet", label: "Claude 4.5 Sonnet" },
+  { value: "claude-4.5-haiku", label: "Claude 4.5 Haiku" },
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
 ];
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -89,6 +93,8 @@ export function PromptTreeToolbar({
   onAddNode,
   onSave,
   saving,
+  lastSavedAt,
+  hasUnsavedChanges,
   globalPrompt,
   onGlobalPromptChange,
   modelChoice,
@@ -102,22 +108,23 @@ export function PromptTreeToolbar({
   );
 
   return (
-    <div className="flex items-center gap-2 border-b bg-background px-4 py-2">
+    <div className="flex items-center gap-2 border-b bg-white px-4 py-2.5">
       {/* Add Node */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="gap-1.5">
             <Plus className="size-4" />
             Add Node
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
+        <DropdownMenuContent align="start" className="w-48">
           {NODE_TYPE_MENU_ITEMS.map((item) => (
             <DropdownMenuItem
               key={item.type}
               onClick={() => onAddNode(item.type)}
+              className="gap-2.5"
             >
-              <item.icon className="size-4" />
+              <item.icon className={`size-4 ${item.color}`} />
               {item.label}
             </DropdownMenuItem>
           ))}
@@ -125,19 +132,36 @@ export function PromptTreeToolbar({
       </DropdownMenu>
 
       {/* Save */}
-      <Button size="sm" onClick={onSave} disabled={saving}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onSave}
+        disabled={saving}
+        className="gap-1.5"
+      >
         {saving ? (
           <>
             <Loader2 className="size-4 animate-spin" />
-            Saving...
+            Saving…
           </>
-        ) : (
+        ) : hasUnsavedChanges ? (
           <>
             <Save className="size-4" />
             Save
           </>
+        ) : (
+          <>
+            <Check className="size-4 text-green-600" />
+            Saved
+          </>
         )}
       </Button>
+
+      {lastSavedAt && !hasUnsavedChanges && !saving && (
+        <span className="text-[11px] text-gray-400">
+          {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      )}
 
       {/* Spacer */}
       <div className="flex-1" />
@@ -153,7 +177,7 @@ export function PromptTreeToolbar({
         }}
       >
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" className="gap-1.5">
             <Globe className="size-4" />
             Global Prompt
           </Button>
@@ -198,12 +222,13 @@ export function PromptTreeToolbar({
         value={modelChoice?.model ?? "gpt-4.1"}
         onValueChange={(val) =>
           onModelChoiceChange({
+            ...modelChoice,
             model: val as ModelChoice["model"],
             type: "cascading",
           })
         }
       >
-        <SelectTrigger size="sm" className="w-44">
+        <SelectTrigger size="sm" className="w-48">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -216,23 +241,27 @@ export function PromptTreeToolbar({
       </Select>
 
       {/* Start Speaker Toggle */}
-      <div className="flex items-center rounded-md border">
-        <Button
-          variant={startSpeaker === "agent" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-r-none"
+      <div className="flex items-center rounded-lg border bg-gray-50 p-0.5">
+        <button
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+            startSpeaker === "agent"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
           onClick={() => onStartSpeakerChange("agent")}
         >
           Agent First
-        </Button>
-        <Button
-          variant={startSpeaker === "user" ? "default" : "ghost"}
-          size="sm"
-          className="rounded-l-none"
+        </button>
+        <button
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+            startSpeaker === "user"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
           onClick={() => onStartSpeakerChange("user")}
         >
           User First
-        </Button>
+        </button>
       </div>
     </div>
   );
