@@ -76,6 +76,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { PrototypeCallDialog } from "@/components/agents/prototype-call-dialog";
+import { PromptTreeEditor } from "@/components/agents/prompt-tree-editor";
 import { useRetellCall } from "@/hooks/use-retell-call";
 
 import { useDashboardTheme } from "@/components/portal/dashboard-theme-provider";
@@ -1308,6 +1309,7 @@ export default function AgentSettingsPage() {
           <TabsTrigger value="config" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">Agent Config</TabsTrigger>
           <TabsTrigger value="widget" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">Widget</TabsTrigger>
           <TabsTrigger value="ai-analysis" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">AI Analysis</TabsTrigger>
+          <TabsTrigger value="prompt-tree" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">Prompt Tree</TabsTrigger>
         </TabsList>
 
         {/* Per-Minute Cost Indicator */}
@@ -3797,6 +3799,10 @@ export default function AgentSettingsPage() {
               )}
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="prompt-tree" className="mt-6">
+          <PromptTreeEditor agentId={agentId} />
         </TabsContent>
       </Tabs>
 
