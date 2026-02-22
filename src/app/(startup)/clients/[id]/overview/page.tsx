@@ -42,11 +42,53 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Save, Plus, Trash2, Loader2, ExternalLink, RotateCcw, Sparkles, Eye, CheckCircle2, Clock } from "lucide-react";
+import { Save, Plus, Trash2, Loader2, ExternalLink, RotateCcw, Sparkles, Eye, CheckCircle2, Clock, CircleDot, Circle, GitBranch } from "lucide-react";
 import type { Client } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import { OnboardingTutorial } from "@/components/onboarding/onboarding-tutorial";
 import { toast } from "sonner";
+
+interface OnboardingRecord {
+  client_id: string;
+  current_step: number;
+  status: string;
+  agent_type: string | null;
+  conversation_flow_deployed: boolean | null;
+  test_call_completed: boolean | null;
+  vertical_template_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const VOICE_STEP_LABELS = [
+  "Template",
+  "Business Info",
+  "Settings",
+  "Call Rules",
+  "Conversation Flow",
+  "Test Call",
+  "Go Live",
+];
+
+const CHAT_STEP_LABELS = [
+  "Template",
+  "Business Info",
+  "Settings",
+  "Chat Settings",
+  "Conversation Flow",
+  "Test Chat",
+  "Go Live",
+];
+
+const SMS_STEP_LABELS = [
+  "Template",
+  "Business Info",
+  "Settings",
+  "SMS Settings",
+  "Conversation Flow",
+  "Test SMS",
+  "Go Live",
+];
 
 interface Member {
   id: string;
@@ -95,6 +137,7 @@ export default function ClientOverviewPage() {
     role: "client_member" as Member["role"],
   });
   const [previewOnboarding, setPreviewOnboarding] = useState(false);
+  const [onboarding, setOnboarding] = useState<OnboardingRecord | null>(null);
 
   const fetchClient = useCallback(async () => {
     const supabase = createClient();
@@ -122,15 +165,28 @@ export default function ClientOverviewPage() {
     }
   }, [id]);
 
+  const fetchOnboarding = useCallback(async () => {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("client_onboarding")
+      .select("client_id, current_step, status, agent_type, conversation_flow_deployed, test_call_completed, vertical_template_id, created_at, updated_at")
+      .eq("client_id", id)
+      .single();
+
+    if (data && !error) {
+      setOnboarding(data as OnboardingRecord);
+    }
+  }, [id]);
+
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      await Promise.all([fetchClient(), fetchMembers()]);
+      await Promise.all([fetchClient(), fetchMembers(), fetchOnboarding()]);
       setLoading(false);
     }
 
     loadData();
-  }, [fetchClient, fetchMembers]);
+  }, [fetchClient, fetchMembers, fetchOnboarding]);
 
   const handleSave = async () => {
     if (!client) return;
@@ -272,6 +328,100 @@ export default function ClientOverviewPage() {
             </div>
           </div>
         </CardContent>
+      </Card>
+
+      {/* Agent Onboarding Progress */}
+      <Card className="rounded-lg">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <GitBranch className="w-5 h-5 text-muted-foreground" />
+              <div>
+                <CardTitle className="text-base">Agent Onboarding</CardTitle>
+                <p className="text-sm text-[#6b7280] mt-0.5">
+                  {!onboarding
+                    ? "This client has not started agent setup yet."
+                    : onboarding.status === "completed" || onboarding.current_step >= 8
+                    ? "Onboarding completed"
+                    : `Step ${onboarding.current_step} of 7 — ${(onboarding.agent_type === "sms" ? SMS_STEP_LABELS : onboarding.agent_type === "chat" ? CHAT_STEP_LABELS : VOICE_STEP_LABELS)[onboarding.current_step - 1] || "In Progress"}`}
+                </p>
+              </div>
+            </div>
+            {onboarding && (
+              <Badge
+                variant="outline"
+                className={
+                  onboarding.status === "completed" || onboarding.current_step >= 8
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-blue-50 text-blue-700 border-blue-200"
+                }
+              >
+                {onboarding.status === "completed" || onboarding.current_step >= 8 ? "Completed" : "In Progress"}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        {onboarding && (
+          <CardContent>
+            {/* Step progress */}
+            <div className="space-y-1.5">
+              {(onboarding.agent_type === "sms"
+                ? SMS_STEP_LABELS
+                : onboarding.agent_type === "chat"
+                ? CHAT_STEP_LABELS
+                : VOICE_STEP_LABELS
+              ).map((label, i) => {
+                const stepNum = i + 1;
+                const isCompleted = stepNum < onboarding.current_step;
+                const isCurrent = stepNum === onboarding.current_step && onboarding.status !== "completed" && onboarding.current_step < 8;
+
+                return (
+                  <div key={stepNum} className="flex items-center gap-3 py-1">
+                    {isCompleted ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
+                    ) : isCurrent ? (
+                      <CircleDot className="w-4 h-4 text-blue-600 shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-gray-300 shrink-0" />
+                    )}
+                    <span
+                      className={`text-sm ${
+                        isCompleted
+                          ? "text-[#6b7280] line-through"
+                          : isCurrent
+                          ? "text-[#111827] font-medium"
+                          : "text-[#9ca3af]"
+                      }`}
+                    >
+                      {label}
+                    </span>
+
+                    {/* Milestones */}
+                    {stepNum === 5 && onboarding.conversation_flow_deployed && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs ml-auto">
+                        Flow Deployed
+                      </Badge>
+                    )}
+                    {stepNum === 6 && onboarding.test_call_completed && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs ml-auto">
+                        Test Passed
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Summary row */}
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t text-xs text-[#6b7280]">
+              {onboarding.agent_type && (
+                <span>Type: <span className="font-medium text-[#111827] capitalize">{onboarding.agent_type}</span></span>
+              )}
+              <span>Started: {new Date(onboarding.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+              <span>Updated: {new Date(onboarding.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       {/* Client Info Form */}

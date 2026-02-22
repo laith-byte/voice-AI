@@ -32,9 +32,42 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Plus, Users, Loader2 } from "lucide-react";
+import { Search, Plus, Users, Loader2, CircleDot, CheckCircle2, Circle } from "lucide-react";
 import { toast } from "sonner";
 import type { Client } from "@/types/database";
+
+interface OnboardingRecord {
+  client_id: string;
+  current_step: number;
+  status: string;
+}
+
+function OnboardingBadge({ onboarding }: { onboarding?: OnboardingRecord }) {
+  if (!onboarding) {
+    return (
+      <Badge variant="outline" className="bg-gray-50 text-gray-500 border-gray-200 gap-1">
+        <Circle className="w-3 h-3" />
+        Not Started
+      </Badge>
+    );
+  }
+
+  if (onboarding.status === "completed" || onboarding.current_step >= 8) {
+    return (
+      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1">
+        <CheckCircle2 className="w-3 h-3" />
+        Completed
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 gap-1">
+      <CircleDot className="w-3 h-3" />
+      Step {onboarding.current_step} of 7
+    </Badge>
+  );
+}
 
 type ClientStatus = "active" | "inactive" | "suspended";
 
@@ -71,6 +104,7 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [clients, setClients] = useState<(Client & { agentCount: number })[]>([]);
+  const [onboardingMap, setOnboardingMap] = useState<Map<string, OnboardingRecord>>(new Map());
   const [newClient, setNewClient] = useState({
     name: "",
     slug: "",
@@ -80,20 +114,34 @@ export default function ClientsPage() {
 
   const fetchClients = useCallback(async () => {
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from("clients")
-      .select("*, agents(id)")
-      .order("created_at", { ascending: false });
+    const [clientsResult, onboardingResult] = await Promise.all([
+      supabase
+        .from("clients")
+        .select("*, agents(id)")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("client_onboarding")
+        .select("client_id, current_step, status"),
+    ]);
 
-    if (error) {
+    if (clientsResult.error) {
       toast.error("Failed to load clients");
-    } else if (data) {
+    } else if (clientsResult.data) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setClients(data.map((c: any) => ({
+      setClients(clientsResult.data.map((c: any) => ({
         ...c,
         agentCount: c.agents?.length || 0,
       })));
     }
+
+    if (onboardingResult.data) {
+      const map = new Map<string, OnboardingRecord>();
+      for (const o of onboardingResult.data) {
+        map.set(o.client_id, o as OnboardingRecord);
+      }
+      setOnboardingMap(map);
+    }
+
     setLoading(false);
   }, []);
 
@@ -314,6 +362,7 @@ export default function ClientsPage() {
                 <TableRow>
                   <TableHead className="pl-6">Client Name</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Onboarding</TableHead>
                   <TableHead>Agents</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
@@ -330,6 +379,9 @@ export default function ClientsPage() {
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={client.status as ClientStatus} />
+                    </TableCell>
+                    <TableCell>
+                      <OnboardingBadge onboarding={onboardingMap.get(client.id)} />
                     </TableCell>
                     <TableCell className="text-[#6b7280]">
                       {client.agentCount}

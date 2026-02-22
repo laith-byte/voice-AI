@@ -43,6 +43,8 @@ export default function DashboardHomePage() {
   const [totalClients, setTotalClients] = useState(0);
   const [totalAgents, setTotalAgents] = useState(0);
   const [totalCalls, setTotalCalls] = useState(0);
+  const [onboardingInProgress, setOnboardingInProgress] = useState(0);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(0);
 
   // Setup checklist state
   const [retellConnected, setRetellConnected] = useState(false);
@@ -80,6 +82,7 @@ export default function DashboardHomePage() {
         callLogsResult,
         integrationsResult,
         stripeResult,
+        onboardingResult,
       ] = await Promise.all([
         // Organization custom_domain
         supabase
@@ -122,6 +125,10 @@ export default function DashboardHomePage() {
           .select("id")
           .eq("organization_id", orgId)
           .limit(1),
+        // Client onboarding stats
+        supabase
+          .from("client_onboarding")
+          .select("status, current_step"),
       ]);
 
       // Domain
@@ -146,6 +153,16 @@ export default function DashboardHomePage() {
       setHasClients(clientCount > 0);
       setRetellConnected((integrationsResult.data?.length ?? 0) > 0);
       setStripeConnected((stripeResult.data?.length ?? 0) > 0);
+
+      // Onboarding stats
+      if (onboardingResult.data) {
+        const completed = onboardingResult.data.filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (o: any) => o.status === "completed" || o.current_step >= 8
+        ).length;
+        setOnboardingCompleted(completed);
+        setOnboardingInProgress(onboardingResult.data.length - completed);
+      }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
       setError(true);
@@ -256,7 +273,7 @@ export default function DashboardHomePage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -299,6 +316,26 @@ export default function DashboardHomePage() {
                   <p className="text-xs text-[#6b7280]">Total Calls</p>
                   <p className="text-xl font-semibold text-[#111827]">
                     {totalCalls.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <Zap className="h-5 w-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-[#6b7280]">Onboarding</p>
+                  <p className="text-xl font-semibold text-[#111827]">
+                    {onboardingInProgress > 0 ? (
+                      <span>{onboardingInProgress} <span className="text-xs font-normal text-[#6b7280]">active</span></span>
+                    ) : (
+                      <span>{onboardingCompleted} <span className="text-xs font-normal text-[#6b7280]">done</span></span>
+                    )}
                   </p>
                 </div>
               </div>
