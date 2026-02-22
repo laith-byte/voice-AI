@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { FeatureGate } from "@/components/portal/feature-gate";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +62,8 @@ import {
   History,
   BookOpen,
   Undo2,
+  GitBranch,
+  ArrowRight,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -76,7 +79,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { PrototypeCallDialog } from "@/components/agents/prototype-call-dialog";
-import { PromptTreeEditor } from "@/components/agents/prompt-tree-editor";
 import { useRetellCall } from "@/hooks/use-retell-call";
 
 import { useDashboardTheme } from "@/components/portal/dashboard-theme-provider";
@@ -160,6 +162,7 @@ interface VoiceOption {
 export default function AgentSettingsPage() {
   const params = useParams();
   const agentId = params.id as string;
+  const clientSlug = params.clientSlug as string;
   const { planAccess } = usePlanAccess();
 
   const [agent, setAgent] = useState<Agent | null>(null);
@@ -1309,7 +1312,6 @@ export default function AgentSettingsPage() {
           <TabsTrigger value="config" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">Agent Config</TabsTrigger>
           <TabsTrigger value="widget" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">Widget</TabsTrigger>
           <TabsTrigger value="ai-analysis" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">AI Analysis</TabsTrigger>
-          <TabsTrigger value="prompt-tree" className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:rounded-none rounded-none px-4 py-2">Prompt Tree</TabsTrigger>
         </TabsList>
 
         {/* Per-Minute Cost Indicator */}
@@ -1674,6 +1676,31 @@ export default function AgentSettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Edit Prompt Tree CTA */}
+              <Link href={`/${clientSlug}/portal/agents/${agentId}/prompt-tree`} className="block mt-4">
+                <div className="relative overflow-hidden rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-500 via-blue-500 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/10 transition-all hover:shadow-xl hover:shadow-indigo-500/20 hover:scale-[1.01] group cursor-pointer">
+                  <div className="relative overflow-hidden rounded-[15px] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-cyan-50/95 backdrop-blur-xl p-6">
+                    {/* Decorative background elements */}
+                    <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-200/40 to-blue-200/40 blur-2xl" />
+                    <div className="absolute -left-4 -bottom-4 h-20 w-20 rounded-full bg-gradient-to-tr from-cyan-200/30 to-blue-200/30 blur-2xl" />
+                    <div className="absolute right-12 bottom-2 h-8 w-8 rounded-full bg-indigo-300/20 blur-lg" />
+
+                    <div className="relative flex items-center gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-md shadow-indigo-500/30 group-hover:shadow-lg group-hover:shadow-indigo-500/40 transition-all">
+                        <GitBranch className="h-7 w-7" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-bold text-gray-900 tracking-tight">Edit Prompt Tree</h3>
+                        <p className="text-sm text-gray-600 mt-0.5">Design branching conversation flows with states, transitions, and tools</p>
+                      </div>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/80 text-indigo-500 shadow-sm group-hover:bg-indigo-500 group-hover:text-white group-hover:shadow-md transition-all duration-200">
+                        <ArrowRight className="h-5 w-5 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Link>
 
               <div className="flex gap-3">
                 <Button
@@ -3801,9 +3828,6 @@ export default function AgentSettingsPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="prompt-tree" className="mt-6">
-          <PromptTreeEditor agentId={agentId} />
-        </TabsContent>
       </Tabs>
 
       <PrototypeCallDialog

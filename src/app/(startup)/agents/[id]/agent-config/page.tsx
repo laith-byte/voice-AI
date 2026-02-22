@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   ChevronDown,
   ChevronRight,
@@ -11,6 +12,8 @@ import {
   Sparkles,
   RotateCcw,
   Undo2,
+  GitBranch,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -873,6 +876,31 @@ export default function AgentConfigPage() {
               className="text-sm"
             />
           </div>
+
+          {/* Edit Prompt Tree CTA */}
+          <Link href={`/agents/${agentId}/prompt-tree`} className="block mt-4">
+            <div className="relative overflow-hidden rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-500 via-blue-500 to-cyan-400 p-[1px] shadow-lg shadow-indigo-500/10 transition-all hover:shadow-xl hover:shadow-indigo-500/20 hover:scale-[1.01] group cursor-pointer">
+              <div className="relative overflow-hidden rounded-[15px] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-cyan-50/95 backdrop-blur-xl p-6">
+                {/* Decorative background elements */}
+                <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-200/40 to-blue-200/40 blur-2xl" />
+                <div className="absolute -left-4 -bottom-4 h-20 w-20 rounded-full bg-gradient-to-tr from-cyan-200/30 to-blue-200/30 blur-2xl" />
+                <div className="absolute right-12 bottom-2 h-8 w-8 rounded-full bg-indigo-300/20 blur-lg" />
+
+                <div className="relative flex items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-md shadow-indigo-500/30 group-hover:shadow-lg group-hover:shadow-indigo-500/40 transition-all">
+                    <GitBranch className="h-7 w-7" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base font-bold text-gray-900 tracking-tight">Edit Prompt Tree</h3>
+                    <p className="text-sm text-gray-600 mt-0.5">Design branching conversation flows with states, transitions, and tools</p>
+                  </div>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/80 text-indigo-500 shadow-sm group-hover:bg-indigo-500 group-hover:text-white group-hover:shadow-md transition-all duration-200">
+                    <ArrowRight className="h-5 w-5 group-hover:translate-x-0.5 transition-transform" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* RIGHT SIDE - Collapsible Panels */}

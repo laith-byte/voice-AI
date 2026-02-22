@@ -25,8 +25,6 @@ import {
   Sparkles,
   BookOpen,
   GitBranch,
-  Code,
-  BrainCircuit,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -72,8 +70,6 @@ const agentNavItems = [
   { label: "Knowledge Base", href: "knowledge-base", icon: BookOpen, featureKey: "knowledge_base" },
   { label: "Leads", href: "leads", icon: UserPlus, featureKey: "leads" },
   { label: "Campaigns", href: "campaigns", icon: Megaphone, featureKey: "campaigns" },
-  { label: "Widget", href: "widget", icon: Code },
-  { label: "AI Analysis", href: "ai-analysis", icon: BrainCircuit },
   { label: "Agent Settings", href: "agent-settings", icon: Settings, featureKey: "agent_settings" },
 ];
 
@@ -211,7 +207,7 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
 
   // Filter agent nav items based on client_access permissions
   const filteredAgentNavItems = agentNavItems.filter((item) => {
-    // If no featureKey, always show (e.g. Widget, AI Analysis)
+    // If no featureKey, always show
     if (!item.featureKey) return true;
     // If allowedFeatures hasn't loaded yet or is null (no records), show all
     if (allowedFeatures === null) return true;
