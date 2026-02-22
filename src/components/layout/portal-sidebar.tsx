@@ -345,7 +345,7 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
       <div className="p-3 border-t border-white/[0.06]">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
+            <button suppressHydrationWarning className="flex items-center gap-2.5 w-full p-2 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
               <Avatar className="w-8 h-8 ring-2 ring-transparent group-hover:ring-primary/20 transition-all duration-200">
                 <AvatarFallback className="bg-primary/20 text-primary-foreground text-xs font-medium">
                   {userInitials || "U"}
