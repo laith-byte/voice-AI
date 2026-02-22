@@ -132,6 +132,7 @@ export interface PhoneNumber {
   agent_id: string | null;
   number: string;
   retell_number_id: string | null;
+  twilio_sid: string | null;
   type: string;
   caller_id_name: string | null;
   caller_id_verified: boolean;

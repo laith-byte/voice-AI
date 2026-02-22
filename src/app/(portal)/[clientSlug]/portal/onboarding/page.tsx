@@ -176,7 +176,7 @@ export default function OnboardingWizardPage() {
   const [flowGenerated, setFlowGenerated] = useState(false);
 
   // Step 7 state (Go Live)
-  const [phoneOption, setPhoneOption] = useState("temporary");
+  const [assignedPhoneNumber, setAssignedPhoneNumber] = useState<string | null>(null);
   const [goingLive, setGoingLive] = useState(false);
   const [deployingFlow, setDeployingFlow] = useState(false);
   const [flowDeployed, setFlowDeployed] = useState(false);
@@ -238,6 +238,17 @@ export default function OnboardingWizardPage() {
             .maybeSingle();
           if (agentRow?.id) {
             setChatAgentId(agentRow.id);
+          }
+
+          // Fetch assigned phone number for Go Live step
+          const { data: phoneRow } = await supabaseInner
+            .from("phone_numbers")
+            .select("number")
+            .eq("client_id", statusData.client_id)
+            .limit(1)
+            .maybeSingle();
+          if (phoneRow?.number) {
+            setAssignedPhoneNumber(phoneRow.number);
           }
         }
       }
@@ -590,7 +601,7 @@ export default function OnboardingWizardPage() {
         ? { chat_widget_deployed: true }
         : agentType === "sms"
         ? { sms_phone_configured: true, phone_number: smsPhoneNumber }
-        : { phone_option: phoneOption };
+        : {};
       const res = await fetch("/api/onboarding/go-live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2565,97 +2576,36 @@ export default function OnboardingWizardPage() {
               ) : (
                 <Card className="glass-card">
                   <CardContent className="p-6">
-                    <h3 className="font-semibold text-sm mb-1">
-                      Choose a phone number
-                    </h3>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      Select how you&apos;d like callers to reach your AI agent.
-                    </p>
-                    <RadioGroup
-                      value={phoneOption}
-                      onValueChange={setPhoneOption}
-                      className="space-y-3"
-                    >
-                      <label
-                        htmlFor="phone-temp"
-                        className={cn(
-                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          phoneOption === "temporary"
-                            ? "border-primary bg-primary/[0.03]"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <RadioGroupItem
-                          value="temporary"
-                          id="phone-temp"
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">
-                              Use our temporary number
-                            </span>
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] bg-green-50 text-green-700 border-0"
-                            >
-                              Free for 7 days
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Get started right away with a temporary number. Upgrade
-                            anytime.
+                    {assignedPhoneNumber ? (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                          <Phone className="w-5 h-5 text-green-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-sm">
+                            Your phone number
+                          </h3>
+                          <p className="text-sm font-mono text-foreground">
+                            {assignedPhoneNumber}
                           </p>
                         </div>
-                      </label>
-                      <label
-                        htmlFor="phone-new"
-                        className={cn(
-                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          phoneOption === "purchase"
-                            ? "border-primary bg-primary/[0.03]"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <RadioGroupItem
-                          value="purchase"
-                          id="phone-new"
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">
-                            Purchase a new number
-                          </span>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Get a dedicated phone number for $2/mo.
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                          <Phone className="w-5 h-5 text-blue-500" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-sm">
+                            Phone number
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            Your phone number will be configured by your team.
+                            You can proceed to go live.
                           </p>
                         </div>
-                      </label>
-                      <label
-                        htmlFor="phone-port"
-                        className={cn(
-                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          phoneOption === "port"
-                            ? "border-primary bg-primary/[0.03]"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <RadioGroupItem
-                          value="port"
-                          id="phone-port"
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">
-                            Port an existing number
-                          </span>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Transfer your current business number. Takes 2-5
-                            business days.
-                          </p>
-                        </div>
-                      </label>
-                    </RadioGroup>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
