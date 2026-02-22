@@ -30,6 +30,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 
 interface AgentRow {
@@ -105,6 +115,9 @@ export default function PortalAgentsPage() {
 
   // Recent activity
   const [recentCalls, setRecentCalls] = useState<RecentCall[]>([]);
+
+  // Delete agent dialog
+  const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
 
   // Onboarding status
   const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
@@ -246,6 +259,7 @@ export default function PortalAgentsPage() {
     setLoading(false);
     } catch (err) {
       console.error("Dashboard fetch error:", err);
+      toast.error("Failed to load dashboard data");
       setLoading(false);
     }
   }, []);
@@ -626,8 +640,7 @@ export default function PortalAgentsPage() {
                         <div>
                           <h3 className="font-semibold text-[15px]">{agent.name}</h3>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <div className="w-2 h-2 rounded-full bg-green-500 status-dot-active" />
-                            <span className="text-xs text-muted-foreground capitalize">active</span>
+                            <span className="text-xs text-muted-foreground capitalize">{agent.platform === "retell_chat" ? "Chat" : agent.platform === "retell" ? "Voice" : agent.platform}</span>
                           </div>
                         </div>
                       </div>
@@ -642,20 +655,7 @@ export default function PortalAgentsPage() {
                             router.push(`/${clientSlug}/portal/agents/${agent.id}/agent-settings`);
                           }}>Edit</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toast.info("Agent duplication coming soon.")}>Duplicate</DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600" onClick={async () => {
-                            if (!window.confirm(`Permanently delete agent "${agent.name}" and all its data?`)) return;
-                            try {
-                              const res = await fetch(`/api/agents/${agent.id}`, { method: "DELETE" });
-                              if (!res.ok) {
-                                const err = await res.json().catch(() => null);
-                                throw new Error(err?.error ?? "Failed to delete agent");
-                              }
-                              toast.success("Agent deleted");
-                              fetchData();
-                            } catch (err) {
-                              toast.error(err instanceof Error ? err.message : "Failed to delete agent");
-                            }
-                          }}>Delete</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => setAgentToDelete(agent.id)}>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -695,6 +695,40 @@ export default function PortalAgentsPage() {
           </div>
         </>
       )}
+      <AlertDialog open={!!agentToDelete} onOpenChange={(open) => !open && setAgentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The agent and all its data will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={async () => {
+                const id = agentToDelete;
+                setAgentToDelete(null);
+                if (!id) return;
+                try {
+                  const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => null);
+                    throw new Error(err?.error ?? "Failed to delete agent");
+                  }
+                  toast.success("Agent deleted");
+                  fetchData();
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Failed to delete agent");
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

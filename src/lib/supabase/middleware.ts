@@ -79,7 +79,7 @@ export async function updateSession(request: NextRequest) {
   // Public routes
   const publicRoutes = [
     "/login", "/signup", "/setup-account", "/forgot-password", "/reset-password", "/auth/callback",
-    "/pricing", "/features", "/about", "/contact", "/industries",
+    "/pricing", "/features", "/about", "/contact", "/industries", "/privacy", "/terms",
   ];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
@@ -99,7 +99,7 @@ export async function updateSession(request: NextRequest) {
     const isClientUser = userRole === "client_admin" || userRole === "client_member";
 
     // These routes should be accessible to everyone (auth and unauth) — no auto-redirect
-    const noRedirectRoutes = ["/pricing", "/features", "/about", "/contact", "/industries", "/login", "/signup", "/setup-account", "/forgot-password", "/reset-password"];
+    const noRedirectRoutes = ["/pricing", "/features", "/about", "/contact", "/industries", "/privacy", "/terms", "/login", "/signup", "/setup-account", "/forgot-password", "/reset-password"];
     const isMarketingRoute = pathname === "/" || noRedirectRoutes.some((p) => pathname.startsWith(p));
 
     // Redirect authenticated users away from login / auth routes (but NOT marketing pages)
@@ -132,6 +132,7 @@ export async function updateSession(request: NextRequest) {
           const url = request.nextUrl.clone();
           // Rewrite /portal/... to /<slug>/portal/...
           url.pathname = `/${slug}${pathname}`;
+          url.search = request.nextUrl.search;
           return NextResponse.redirect(url);
         }
       }
@@ -151,6 +152,15 @@ export async function updateSession(request: NextRequest) {
         url.pathname = slug ? `/${slug}/portal` : "/login";
         return NextResponse.redirect(url);
       }
+    }
+
+    // Block client users from admin routes
+    const adminRoutes = ["/agents", "/clients", "/settings", "/billing", "/saas", "/automations", "/workflows"];
+    if (isClientUser && adminRoutes.some((r) => pathname.startsWith(r))) {
+      const slug = await getClientSlug(supabase, user.id);
+      const url = request.nextUrl.clone();
+      url.pathname = slug ? `/${slug}/portal` : "/login";
+      return NextResponse.redirect(url);
     }
 
     // Slug-based portal paths: /<slug>/portal/...

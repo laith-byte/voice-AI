@@ -31,6 +31,16 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Plus, Bot, Unlink, Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -72,6 +82,7 @@ export default function AssignedAgentsPage() {
   const [unassigningId, setUnassigningId] = useState<string | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [agentToUnassign, setAgentToUnassign] = useState<string | null>(null);
 
   const fetchAgents = useCallback(async () => {
     const supabase = createClient();
@@ -311,7 +322,7 @@ export default function AssignedAgentsPage() {
                         variant="outline"
                         size="sm"
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                        onClick={() => handleUnassign(agent.id)}
+                        onClick={() => setAgentToUnassign(agent.id)}
                         disabled={unassigningId === agent.id}
                       >
                         {unassigningId === agent.id ? (
@@ -344,6 +355,32 @@ export default function AssignedAgentsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Unassign Agent Confirmation */}
+      <AlertDialog open={!!agentToUnassign} onOpenChange={(open) => !open && setAgentToUnassign(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unassign Agent</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the agent assignment from this client. The agent will no longer be accessible from their portal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (agentToUnassign) {
+                  handleUnassign(agentToUnassign);
+                  setAgentToUnassign(null);
+                }
+              }}
+            >
+              Unassign
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

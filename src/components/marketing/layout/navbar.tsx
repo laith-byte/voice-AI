@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ const navLinks = [
 ];
 
 export function Navbar() {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -99,7 +101,7 @@ export function Navbar() {
                 </AnimatePresence>
               </div>
               {navLinks.map((link) => (
-                <Link key={link.href} href={link.href} className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-navy-900">{link.label}</Link>
+                <Link key={link.href} href={link.href} className={cn("rounded-lg px-4 py-2 text-sm font-medium transition-colors", pathname === link.href ? "text-navy-900" : "text-gray-600 hover:text-navy-900")}>{link.label}</Link>
               ))}
             </div>
 
@@ -149,7 +151,7 @@ export function Navbar() {
                 </div>
                 {navLinks.map((link) => (
                   <Link key={link.href} href={link.href} onClick={() => setMobileOpen(false)}
-                    className="rounded-lg px-3 py-3 text-base font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                    className={cn("rounded-lg px-3 py-3 text-base font-medium transition-colors hover:bg-gray-50", pathname === link.href ? "text-navy-900 bg-gray-50" : "text-gray-700")}
                   >{link.label}</Link>
                 ))}
                 <div className="my-4 h-px bg-gray-100" />

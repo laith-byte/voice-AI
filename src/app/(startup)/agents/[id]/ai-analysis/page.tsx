@@ -9,6 +9,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { AiAnalysisConfig, Topic } from "@/types/database";
@@ -51,6 +61,7 @@ export default function AiAnalysisPage() {
   const [newTopicName, setNewTopicName] = useState("");
   const [newTopicDescription, setNewTopicDescription] = useState("");
   const [showAddTopic, setShowAddTopic] = useState(false);
+  const [topicToRemove, setTopicToRemove] = useState<string | null>(null);
 
   // Fetch config and topics on mount
   useEffect(() => {
@@ -506,7 +517,7 @@ export default function AiAnalysisPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => removeTopic(topic.id)}
+                        onClick={() => setTopicToRemove(topic.id)}
                         className="text-[#6b7280] hover:text-red-600 transition-colors"
                         title="Delete topic"
                       >
@@ -527,6 +538,32 @@ export default function AiAnalysisPage() {
           </div>
         )}
       </section>
+
+      {/* Remove Topic Confirmation */}
+      <AlertDialog open={!!topicToRemove} onOpenChange={(open) => !open && setTopicToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Topic</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the topic from analysis tracking.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (topicToRemove) {
+                  removeTopic(topicToRemove);
+                  setTopicToRemove(null);
+                }
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

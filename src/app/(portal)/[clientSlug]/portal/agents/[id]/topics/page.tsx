@@ -12,11 +12,22 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -59,6 +70,7 @@ export default function TopicsPage() {
   const [topics, setTopics] = useState<TopicRow[]>([]);
   const [newTopicName, setNewTopicName] = useState("");
   const [newTopicDescription, setNewTopicDescription] = useState("");
+  const [topicToDelete, setTopicToDelete] = useState<string | null>(null);
 
   const fetchTopics = useCallback(async () => {
     const supabase = createClient();
@@ -101,16 +113,21 @@ export default function TopicsPage() {
     setCreating(false);
   };
 
-  const handleDeleteTopic = async (topicId: string) => {
-    if (!window.confirm("Are you sure you want to delete this topic?")) return;
+  const handleDeleteTopic = (topicId: string) => {
+    setTopicToDelete(topicId);
+  };
+
+  const confirmDeleteTopic = async () => {
+    if (!topicToDelete) return;
     const supabase = createClient();
-    const { error } = await supabase.from("topics").delete().eq("id", topicId);
+    const { error } = await supabase.from("topics").delete().eq("id", topicToDelete);
     if (error) {
       toast.error("Failed to delete topic");
     } else {
       toast.success("Topic deleted");
       fetchTopics();
     }
+    setTopicToDelete(null);
   };
 
   const filteredTopics = topics.filter(
@@ -145,6 +162,7 @@ export default function TopicsPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add Topic</DialogTitle>
+              <DialogDescription>Add a new topic for this agent to track.</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
@@ -254,7 +272,7 @@ export default function TopicsPage() {
                 ))}
                 {filteredTopics.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-12">
+                    <TableCell colSpan={4} className="text-center py-12">
                       <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 empty-state-circle">
                         <Tags className="w-7 h-7 text-muted-foreground/60" />
                       </div>
@@ -273,6 +291,23 @@ export default function TopicsPage() {
           </CardContent>
         </Card>
       )}
+      {/* Delete Topic AlertDialog */}
+      <AlertDialog open={!!topicToDelete} onOpenChange={(open) => { if (!open) setTopicToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Topic</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the topic.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteTopic} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
     </FeatureGate>
   );

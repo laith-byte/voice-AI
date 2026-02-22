@@ -16,6 +16,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 
 type Provider = "retell" | "elevenlabs" | "vapi" | "openai" | "salesforce" | "gohighlevel";
@@ -82,6 +92,7 @@ export default function SettingsIntegrationsPage() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [integrationToDisconnect, setIntegrationToDisconnect] = useState<string | null>(null);
 
   const fetchIntegrations = useCallback(async () => {
     const supabase = createClient();
@@ -244,7 +255,7 @@ export default function SettingsIntegrationsPage() {
                         variant="outline"
                         size="sm"
                         className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                        onClick={() => handleDisconnect(integration.id)}
+                        onClick={() => setIntegrationToDisconnect(integration.id)}
                         disabled={disconnecting === integration.id}
                       >
                         {disconnecting === integration.id ? (
@@ -321,6 +332,32 @@ export default function SettingsIntegrationsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Disconnect Integration Confirmation */}
+      <AlertDialog open={!!integrationToDisconnect} onOpenChange={(open) => !open && setIntegrationToDisconnect(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Integration</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will disconnect the integration. You can reconnect it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (integrationToDisconnect) {
+                  handleDisconnect(integrationToDisconnect);
+                  setIntegrationToDisconnect(null);
+                }
+              }}
+            >
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

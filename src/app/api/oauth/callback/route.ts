@@ -239,9 +239,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Look up the client slug so we can redirect directly to /<slug>/portal/...
+    // instead of /portal/... which would cause a double-redirect via middleware
+    let finalRedirectPath = redirectPath;
+    try {
+      const { data: clientRow } = await supabase
+        .from("clients")
+        .select("slug")
+        .eq("id", clientId)
+        .single();
+      if (clientRow?.slug) {
+        // Replace /portal/... with /<slug>/portal/...
+        finalRedirectPath = redirectPath.startsWith("/portal")
+          ? `/${clientRow.slug}${redirectPath}`
+          : redirectPath;
+      }
+    } catch {
+      // Slug lookup failed — fall back to original redirectPath (middleware will handle it)
+    }
+
     // Redirect back to the automations page with success indicator
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}${redirectPath}?connected=${provider}`
+      `${process.env.NEXT_PUBLIC_APP_URL}${finalRedirectPath}?connected=${provider}`
     );
   } catch (err) {
     console.error("OAuth callback error:", err);

@@ -18,9 +18,20 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   GitBranch,
   Plus,
@@ -255,6 +266,7 @@ function ConversationFlowsContent() {
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [flowToDelete, setFlowToDelete] = useState<string | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<string>("all");
 
@@ -277,7 +289,7 @@ function ConversationFlowsContent() {
         toast.error("Failed to load flows");
       }
 
-      // Fetch agents scoped to the user's client
+      // Agents fetched via Supabase client with RLS — no dedicated client-facing API endpoint
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -512,6 +524,16 @@ function ConversationFlowsContent() {
     }
   }
 
+  function requestDeleteFlow(flowId: string) {
+    setFlowToDelete(flowId);
+  }
+
+  function confirmDeleteFlow() {
+    if (!flowToDelete) return;
+    handleDelete(flowToDelete);
+    setFlowToDelete(null);
+  }
+
   if (loading) {
     return (
       <div className="p-4 md:p-6">
@@ -528,6 +550,56 @@ function ConversationFlowsContent() {
     templateFilter === "all"
       ? ALL_TEMPLATES
       : ALL_TEMPLATES.filter((t) => t.useCaseKey === templateFilter);
+
+  const renderTemplateCard = (t: FlowTemplate, idx: number) => {
+    const style = INDUSTRY_STYLES[t.industryKey];
+    const IndustryIcon = style?.icon ?? GitBranch;
+    const UseCaseIcon = USE_CASES[t.useCaseKey]?.icon ?? UserCheck;
+    const nodeCount = USE_CASE_NODE_COUNTS[t.useCaseKey] ?? 0;
+    return (
+      <Card
+        key={`${t.industryKey}-${t.useCaseKey}`}
+        className="animate-fade-in-up overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer group focus-within:ring-2 focus-within:ring-primary/50"
+        style={{ animationDelay: `${idx * 50}ms` }}
+        onClick={() => openFromTemplate(t)}
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFromTemplate(t); } }}
+      >
+        <CardContent className="p-4">
+          {/* Icon + labels */}
+          <div className="flex items-start gap-3 mb-3">
+            <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${style?.gradient ?? "from-gray-500 to-gray-600"} flex items-center justify-center shadow-sm transition-transform duration-200 group-hover:scale-110 shrink-0`}>
+              <IndustryIcon className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm leading-tight">{t.industryLabel}</p>
+              <Badge
+                variant="secondary"
+                className={`mt-1 text-[10px] px-1.5 py-0 h-5 ${style?.bg ?? ""} ${style?.text ?? ""} ${style?.border ?? ""} border`}
+              >
+                <UseCaseIcon className="w-3 h-3 mr-1" />
+                {t.useCaseLabel}
+              </Badge>
+            </div>
+          </div>
+          {/* Description */}
+          <p className="text-[11px] text-muted-foreground leading-snug mb-3">
+            {t.useCaseLabel} flow for {t.industryLabel.toLowerCase()}
+          </p>
+          {/* Bottom row */}
+          <div className="flex items-center justify-between pt-2 border-t border-border/50">
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {nodeCount} nodes
+            </span>
+            <span className="flex items-center gap-1 text-xs font-medium text-primary">
+              Use template
+              <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="p-4 md:p-6">
@@ -626,7 +698,7 @@ function ConversationFlowsContent() {
                           variant="ghost"
                           size="sm"
                           className="h-7 gap-1 text-xs text-red-600 hover:text-red-700"
-                          onClick={(e) => { e.stopPropagation(); if (window.confirm("Are you sure you want to delete this flow?")) handleDelete(flow.id); }}
+                          onClick={(e) => { e.stopPropagation(); requestDeleteFlow(flow.id); }}
                         >
                           <Trash2 className="h-3 w-3" />
                           Delete
@@ -709,54 +781,7 @@ function ConversationFlowsContent() {
                       <div className="hidden sm:block h-px flex-1 bg-border" />
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {templates.map((t, idx) => {
-                        const style = INDUSTRY_STYLES[t.industryKey];
-                        const IndustryIcon = style?.icon ?? GitBranch;
-                        const nodeCount = USE_CASE_NODE_COUNTS[t.useCaseKey] ?? 0;
-                        return (
-                          <Card
-                            key={`${t.industryKey}-${t.useCaseKey}`}
-                            className="animate-fade-in-up overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer group focus-within:ring-2 focus-within:ring-primary/50"
-                            style={{ animationDelay: `${idx * 50}ms` }}
-                            onClick={() => openFromTemplate(t)}
-                            tabIndex={0}
-                            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFromTemplate(t); } }}
-                          >
-                            <CardContent className="p-4">
-                              {/* Icon + labels */}
-                              <div className="flex items-start gap-3 mb-3">
-                                <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${style?.gradient ?? "from-gray-500 to-gray-600"} flex items-center justify-center shadow-sm transition-transform duration-200 group-hover:scale-110 shrink-0`}>
-                                  <IndustryIcon className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-sm leading-tight">{t.industryLabel}</p>
-                                  <Badge
-                                    variant="secondary"
-                                    className={`mt-1 text-[10px] px-1.5 py-0 h-5 ${style?.bg ?? ""} ${style?.text ?? ""} ${style?.border ?? ""} border`}
-                                  >
-                                    <UseCaseIcon className="w-3 h-3 mr-1" />
-                                    {t.useCaseLabel}
-                                  </Badge>
-                                </div>
-                              </div>
-                              {/* Description */}
-                              <p className="text-[11px] text-muted-foreground leading-snug mb-3">
-                                {t.useCaseLabel} flow for {t.industryLabel.toLowerCase()}
-                              </p>
-                              {/* Bottom row */}
-                              <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                                <span className="text-[10px] text-muted-foreground font-medium">
-                                  {nodeCount} nodes
-                                </span>
-                                <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                                  Use template
-                                  <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                                </span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
+                      {templates.map((t, idx) => renderTemplateCard(t, idx))}
                     </div>
                   </div>
                 );
@@ -764,55 +789,7 @@ function ConversationFlowsContent() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {filteredTemplates.map((t, idx) => {
-                const style = INDUSTRY_STYLES[t.industryKey];
-                const IndustryIcon = style?.icon ?? GitBranch;
-                const UseCaseIcon = USE_CASES[t.useCaseKey]?.icon ?? UserCheck;
-                const nodeCount = USE_CASE_NODE_COUNTS[t.useCaseKey] ?? 0;
-                return (
-                  <Card
-                    key={`${t.industryKey}-${t.useCaseKey}`}
-                    className="animate-fade-in-up overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer group focus-within:ring-2 focus-within:ring-primary/50"
-                    style={{ animationDelay: `${idx * 50}ms` }}
-                    onClick={() => openFromTemplate(t)}
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFromTemplate(t); } }}
-                  >
-                    <CardContent className="p-4">
-                      {/* Icon + labels */}
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className={`h-10 w-10 rounded-xl bg-gradient-to-br ${style?.gradient ?? "from-gray-500 to-gray-600"} flex items-center justify-center shadow-sm transition-transform duration-200 group-hover:scale-110 shrink-0`}>
-                          <IndustryIcon className="w-5 h-5 text-white" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-sm leading-tight">{t.industryLabel}</p>
-                          <Badge
-                            variant="secondary"
-                            className={`mt-1 text-[10px] px-1.5 py-0 h-5 ${style?.bg ?? ""} ${style?.text ?? ""} ${style?.border ?? ""} border`}
-                          >
-                            <UseCaseIcon className="w-3 h-3 mr-1" />
-                            {t.useCaseLabel}
-                          </Badge>
-                        </div>
-                      </div>
-                      {/* Description */}
-                      <p className="text-[11px] text-muted-foreground leading-snug mb-3">
-                        {t.useCaseLabel} flow for {t.industryLabel.toLowerCase()}
-                      </p>
-                      {/* Bottom row */}
-                      <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                        <span className="text-[10px] text-muted-foreground font-medium">
-                          {nodeCount} nodes
-                        </span>
-                        <span className="flex items-center gap-1 text-xs font-medium text-primary">
-                          Use template
-                          <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-1" />
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+              {filteredTemplates.map((t, idx) => renderTemplateCard(t, idx))}
             </div>
           )}
         </section>
@@ -825,6 +802,7 @@ function ConversationFlowsContent() {
             <DialogTitle>
               {creating ? "Create Flow" : `Edit: ${editingFlow?.name}`}
             </DialogTitle>
+            <DialogDescription>Configure the conversation flow steps.</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 pt-2">
@@ -1149,6 +1127,24 @@ function ConversationFlowsContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Flow AlertDialog */}
+      <AlertDialog open={!!flowToDelete} onOpenChange={(open) => { if (!open) setFlowToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Flow</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The conversation flow will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteFlow} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

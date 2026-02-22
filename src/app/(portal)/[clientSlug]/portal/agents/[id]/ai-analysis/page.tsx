@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { usePlanAccess } from "@/hooks/use-plan-access";
 import { UpgradeBanner } from "@/components/portal/upgrade-banner";
+import { FeatureGate } from "@/components/portal/feature-gate";
 
 interface AiAnalysisConfig {
   id: string;
@@ -167,6 +168,7 @@ export default function AiAnalysisPage() {
   }
 
   return (
+    <FeatureGate feature="ai_analysis">
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -224,14 +226,7 @@ export default function AiAnalysisPage() {
           )}
         </Card>
 
-        {/* Evaluation */}
-        {planAccess && !planAccess.ai_evaluation ? (
-          <UpgradeBanner
-            feature="AI Evaluation"
-            plan="Professional"
-            description="Automatically evaluate whether each conversation was successful."
-          />
-        ) : (
+        {/* Evaluation — page-level FeatureGate already checks ai_evaluation */}
         <Card className="animate-fade-in-up stagger-2 glass-card rounded-xl">
           <CardHeader>
             <div className="flex items-center gap-3">
@@ -266,7 +261,6 @@ export default function AiAnalysisPage() {
             </CardContent>
           )}
         </Card>
-        )}
 
         {/* Auto-Tagging */}
         {planAccess && !planAccess.ai_auto_tagging ? (
@@ -364,5 +358,6 @@ export default function AiAnalysisPage() {
         )}
       </div>
     </div>
+    </FeatureGate>
   );
 }

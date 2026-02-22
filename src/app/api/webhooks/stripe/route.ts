@@ -52,7 +52,8 @@ export async function POST(request: NextRequest) {
     timestamp: new Date().toISOString(),
   }).select("id").single();
 
-  // Handle events
+  // Handle events: checkout.session.completed, customer.subscription.deleted,
+  // customer.subscription.updated, invoice.payment_failed, invoice.paid
   switch (event.type) {
     case "checkout.session.completed": {
       await handleCheckoutCompleted(event.data.object, supabase);

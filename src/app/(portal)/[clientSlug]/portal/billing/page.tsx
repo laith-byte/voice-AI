@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -52,6 +53,7 @@ import {
   ADDON_COSTS,
 } from "@/lib/retell-costs";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ClientPlan, PlanAddon, UsageAlertSetting } from "@/types";
 
 interface ForecastData {
@@ -284,6 +286,7 @@ function PlanComparisonDialog({
         <div className="px-6 pt-6 pb-0 flex-shrink-0">
           <DialogHeader>
             <DialogTitle>Compare Plans</DialogTitle>
+            <DialogDescription>Compare available plan features and pricing.</DialogDescription>
           </DialogHeader>
 
           {/* Sticky plan names row */}
@@ -551,10 +554,14 @@ export default function PortalBillingPage() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6">
-        <div className="flex items-center justify-center min-h-[300px]">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-6 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
         </div>
+        <Skeleton className="h-64" />
       </div>
     );
   }

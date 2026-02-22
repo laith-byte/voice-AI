@@ -30,6 +30,7 @@ export default function PortalBusinessSettingsPage() {
     fetchSharedSettings();
   }, [fetchSharedSettings]);
 
+  {/* Sub-components handle their own loading states independently */}
   return (
     <div className="p-4 md:p-6">
       <div className="max-w-6xl mx-auto space-y-6">

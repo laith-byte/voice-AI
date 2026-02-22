@@ -38,6 +38,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -422,6 +423,7 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Change Password</DialogTitle>
+            <DialogDescription>Enter your current password and choose a new one.</DialogDescription>
           </DialogHeader>
           <ChangePassword onClose={() => setChangePasswordOpen(false)} />
         </DialogContent>
@@ -431,7 +433,7 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Dashboard Color</DialogTitle>
-            <p className="text-sm text-muted-foreground">Applies to your entire portal</p>
+            <DialogDescription>Applies to your entire portal</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="flex flex-wrap gap-2.5">

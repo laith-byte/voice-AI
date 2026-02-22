@@ -25,6 +25,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { ClientPlan } from "@/types/database";
@@ -313,6 +323,7 @@ export default function SaaSPlansPage() {
 
   // Delete
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [planToDelete, setPlanToDelete] = useState<string | null>(null);
 
   const fetchPlans = useCallback(async () => {
     try {
@@ -886,7 +897,7 @@ export default function SaaSPlansPage() {
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0"
-                      onClick={() => handleDeletePlan(plan.id)}
+                      onClick={() => setPlanToDelete(plan.id)}
                       disabled={deleting === plan.id}
                     >
                       {deleting === plan.id ? (
@@ -1027,6 +1038,32 @@ export default function SaaSPlansPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Plan Confirmation */}
+      <AlertDialog open={!!planToDelete} onOpenChange={(open) => !open && setPlanToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Plan</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this plan. Active subscriptions on this plan will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (planToDelete) {
+                  handleDeletePlan(planToDelete);
+                  setPlanToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -184,7 +184,26 @@ export default function WidgetPage() {
     loadConfig();
   }, [loadConfig]);
 
+  const isValidUrl = (url: string) => {
+    if (!url) return true; // empty is OK (optional fields)
+    try { new URL(url); return true; } catch { return false; }
+  };
+
   const handleSave = async () => {
+    // Validate all URL fields before saving
+    const urlFields = [
+      { value: agentImageUrl, label: "Agent image URL" },
+      { value: backgroundImageUrl, label: "Background image URL" },
+      { value: launcherImageUrl, label: "Launcher image URL" },
+      { value: termsOfServiceUrl, label: "Terms of service URL" },
+      { value: privacyPolicyUrl, label: "Privacy policy URL" },
+    ];
+    const invalidFields = urlFields.filter((f) => !isValidUrl(f.value));
+    if (invalidFields.length > 0) {
+      toast.error(`Please enter valid URLs for: ${invalidFields.map((f) => f.label).join(", ")}`);
+      return;
+    }
+
     setSaving(true);
     const supabase = createClient();
 

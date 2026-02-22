@@ -2,6 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Plus, MoreVertical, Bot, Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -50,6 +60,7 @@ export default function SaaSTemplatesPage() {
 
   // Deleting state
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
   const fetchTemplates = useCallback(async () => {
     try {
@@ -240,7 +251,7 @@ export default function SaaSTemplatesPage() {
                     <DropdownMenuItem
                       className="text-red-600"
                       disabled={deleting === template.id}
-                      onClick={() => handleDeleteTemplate(template.id)}
+                      onClick={() => setTemplateToDelete(template.id)}
                     >
                       {deleting === template.id ? "Deleting..." : "Delete"}
                     </DropdownMenuItem>
@@ -388,6 +399,32 @@ export default function SaaSTemplatesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Template Confirmation */}
+      <AlertDialog open={!!templateToDelete} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Template</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this template.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (templateToDelete) {
+                  handleDeleteTemplate(templateToDelete);
+                  setTemplateToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

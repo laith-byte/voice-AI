@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // RETELL_FROM_NUMBER is a Retell-registered number for marketing demo calls (distinct from TWILIO_FROM_NUMBER used for in-call SMS)
     const fromNumber = process.env.RETELL_FROM_NUMBER;
     if (!fromNumber) {
       return NextResponse.json(

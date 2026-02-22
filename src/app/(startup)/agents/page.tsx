@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { toast } from "sonner";
 
 interface AgentRow {
@@ -67,9 +68,16 @@ export default function AgentsPage() {
     fetchAgents();
   }, [fetchAgents]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
+
   const filteredAgents = agents.filter((agent) =>
     agent.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const paginatedAgents = filteredAgents.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => { setCurrentPage(1); }, [search]);
 
   const handleCreateAgent = async () => {
     setCreating(true);
@@ -230,7 +238,7 @@ export default function AgentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {filteredAgents.map((agent) => (
+              {paginatedAgents.map((agent) => (
                 <tr
                   key={agent.id}
                   className="hover:bg-gray-50 transition-colors"
@@ -274,6 +282,12 @@ export default function AgentsPage() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={filteredAgents.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">

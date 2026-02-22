@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
+import { TablePagination } from "@/components/ui/table-pagination";
 
 interface WebhookLogRow {
   id: string;
@@ -117,6 +118,12 @@ export default function SettingsWebhookLogsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
+  const paginatedLogs = logs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => { setCurrentPage(1); }, [dateFilter, agentFilter, eventFilter]);
 
   const successCount = logs.filter((l) => l.import_result === "success").length;
   const successRate = logs.length > 0 ? Math.round((successCount / logs.length) * 100) : 0;
@@ -274,7 +281,7 @@ export default function SettingsWebhookLogsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {logs.map((log) => (
+              {paginatedLogs.map((log) => (
                 <tr
                   key={log.id}
                   className="hover:bg-gray-50 transition-colors"
@@ -315,6 +322,12 @@ export default function SettingsWebhookLogsPage() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={logs.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">

@@ -21,6 +21,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -69,6 +79,7 @@ export default function StartupAutomationsPage() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [saving, setSaving] = useState(false);
+  const [recipeToDelete, setRecipeToDelete] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -326,7 +337,7 @@ export default function StartupAutomationsPage() {
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
-                            onClick={() => handleDeleteRecipe(recipe.id)}
+                            onClick={() => setRecipeToDelete(recipe.id)}
                             className="text-red-600"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
@@ -381,6 +392,32 @@ export default function StartupAutomationsPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Delete Automation Confirmation */}
+      <AlertDialog open={!!recipeToDelete} onOpenChange={(open) => !open && setRecipeToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Automation</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this automation recipe.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (recipeToDelete) {
+                  handleDeleteRecipe(recipeToDelete);
+                  setRecipeToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -28,6 +28,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   Plus,
@@ -61,6 +71,7 @@ export default function KnowledgeBasePage() {
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [sourceToDelete, setSourceToDelete] = useState<string | null>(null);
 
   // Add form state
   const [sourceType, setSourceType] = useState<"text" | "url" | "file">("text");
@@ -374,7 +385,7 @@ export default function KnowledgeBasePage() {
                     variant="ghost"
                     size="sm"
                     className="h-8 w-8 p-0 text-muted-foreground hover:text-red-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-                    onClick={() => handleDelete(source.id)}
+                    onClick={() => setSourceToDelete(source.id)}
                     disabled={deleting === source.id}
                   >
                     {deleting === source.id ? (
@@ -405,6 +416,32 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Source AlertDialog */}
+      <AlertDialog open={!!sourceToDelete} onOpenChange={(open) => { if (!open) setSourceToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Source</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove this knowledge base source and its data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (sourceToDelete) {
+                  handleDelete(sourceToDelete);
+                  setSourceToDelete(null);
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </FeatureGate>
   );
 }

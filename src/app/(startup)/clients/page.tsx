@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Search, Plus, Users, Loader2, CircleDot, CheckCircle2, Circle } from "lucide-react";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { toast } from "sonner";
 import type { Client } from "@/types/database";
 
@@ -149,6 +150,9 @@ export default function ClientsPage() {
     fetchClients();
   }, [fetchClients]);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
+
   const filteredClients = clients.filter((client) => {
     const matchesSearch = client.name
       .toLowerCase()
@@ -157,6 +161,10 @@ export default function ClientsPage() {
       statusFilter === "all" || client.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const paginatedClients = filteredClients.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => { setCurrentPage(1); }, [search, statusFilter]);
 
   const handleCreateClient = async () => {
     setCreating(true);
@@ -368,7 +376,7 @@ export default function ClientsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredClients.map((client) => (
+                {paginatedClients.map((client) => (
                   <TableRow
                     key={client.id}
                     className="cursor-pointer"
@@ -398,6 +406,12 @@ export default function ClientsPage() {
               </TableBody>
             </Table>
             </div>
+            <TablePagination
+              currentPage={currentPage}
+              totalItems={filteredClients.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
           </CardContent>
         </Card>
       ) : (

@@ -13,11 +13,22 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -196,6 +207,9 @@ export default function LeadsPage() {
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Delete state
+  const [leadToDelete, setLeadToDelete] = useState<string | null>(null);
 
   // Edit/delete state
   const [editingLead, setEditingLead] = useState<LeadRow | null>(null);
@@ -532,18 +546,24 @@ export default function LeadsPage() {
     }
   }
 
-  async function handleDeleteLead(leadId: string) {
-    if (!window.confirm("Are you sure you want to delete this lead?")) return;
+  function handleDeleteLead(leadId: string) {
+    setLeadToDelete(leadId);
+  }
+
+  async function confirmDeleteLead() {
+    if (!leadToDelete) return;
     try {
-      const res = await fetch(`/api/leads/${leadId}`, { method: "DELETE" });
+      const res = await fetch(`/api/leads/${leadToDelete}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.error ?? "Failed to delete lead");
       }
-      setLeads((prev) => prev.filter((l) => l.id !== leadId));
+      setLeads((prev) => prev.filter((l) => l.id !== leadToDelete));
       toast.success("Lead deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete lead");
+    } finally {
+      setLeadToDelete(null);
     }
   }
 
@@ -637,6 +657,7 @@ export default function LeadsPage() {
             <DialogContent className="sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Import Leads</DialogTitle>
+                <DialogDescription>Upload leads from a CSV file.</DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-6 py-4">
                 <div className="space-y-4">
@@ -956,6 +977,7 @@ export default function LeadsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Lead Tags</DialogTitle>
+            <DialogDescription>Manage tags for organizing leads.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -992,11 +1014,30 @@ export default function LeadsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Delete Lead AlertDialog */}
+      <AlertDialog open={!!leadToDelete} onOpenChange={(open) => { if (!open) setLeadToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Lead</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove this lead and all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteLead} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Edit Lead Dialog */}
       <Dialog open={!!editingLead} onOpenChange={(open) => { if (!open) setEditingLead(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Lead</DialogTitle>
+            <DialogDescription>Update lead information.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

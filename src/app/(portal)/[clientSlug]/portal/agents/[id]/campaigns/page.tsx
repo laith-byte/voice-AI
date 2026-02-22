@@ -14,11 +14,22 @@ import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -222,6 +233,9 @@ export default function CampaignsPage() {
   const [leadsPreview, setLeadsPreview] = useState<LeadPreviewRow[]>([]);
   const [leadsPreviewTotal, setLeadsPreviewTotal] = useState(0);
   const [leadTags, setLeadTags] = useState<string[]>([]);
+
+  // Delete campaign state
+  const [campaignToDelete, setCampaignToDelete] = useState<CampaignRow | null>(null);
 
   // Edit campaign state
   const [editingCampaign, setEditingCampaign] = useState<CampaignRow | null>(null);
@@ -464,22 +478,28 @@ export default function CampaignsPage() {
     setCreating(false);
   };
 
-  async function handleDeleteCampaign(campaign: CampaignRow) {
+  function handleDeleteCampaign(campaign: CampaignRow) {
     if (campaign.status === "active") {
       toast.error("Cannot delete an active campaign. Pause it first.");
       return;
     }
-    if (!window.confirm(`Delete campaign "${campaign.name}"? This cannot be undone.`)) return;
+    setCampaignToDelete(campaign);
+  }
+
+  async function confirmDeleteCampaign() {
+    if (!campaignToDelete) return;
     try {
-      const res = await fetch(`/api/campaigns/${campaign.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/campaigns/${campaignToDelete.id}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.error ?? "Failed to delete campaign");
       }
-      setCampaigns((prev) => prev.filter((c) => c.id !== campaign.id));
+      setCampaigns((prev) => prev.filter((c) => c.id !== campaignToDelete.id));
       toast.success("Campaign deleted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete campaign");
+    } finally {
+      setCampaignToDelete(null);
     }
   }
 
@@ -567,6 +587,7 @@ export default function CampaignsPage() {
           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create Campaign</DialogTitle>
+              <DialogDescription>Set up a new outbound calling campaign.</DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-5 gap-6 py-4">
               {/* Left side - Form */}
@@ -1010,11 +1031,30 @@ export default function CampaignsPage() {
         </>
       )}
 
+      {/* Delete Campaign AlertDialog */}
+      <AlertDialog open={!!campaignToDelete} onOpenChange={(open) => { if (!open) setCampaignToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Campaign</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The campaign and all its data will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteCampaign} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Edit Campaign Dialog */}
       <Dialog open={!!editingCampaign} onOpenChange={(open) => { if (!open) setEditingCampaign(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Campaign</DialogTitle>
+            <DialogDescription>Modify campaign settings.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

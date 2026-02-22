@@ -102,11 +102,25 @@ export async function POST(request: NextRequest) {
       } else {
         const retellErr = await retellRes.text();
         console.error("Retell import error:", retellErr);
-        warnings.push("Failed to import to Retell");
+        // Rollback: release the Twilio number since Retell import failed
+        try {
+          await client.incomingPhoneNumbers(twilioNumber.sid).remove();
+          warnings.push("Failed to import to Retell — Twilio number was released");
+        } catch (releaseError) {
+          console.error("Failed to release Twilio number after Retell import failure:", releaseError);
+          warnings.push("Failed to import to Retell — Twilio number could not be released (orphaned)");
+        }
       }
     } catch (err) {
       console.error("Retell import error:", err);
-      warnings.push("Failed to import to Retell");
+      // Rollback: release the Twilio number since Retell import failed
+      try {
+        await client.incomingPhoneNumbers(twilioNumber.sid).remove();
+        warnings.push("Failed to import to Retell — Twilio number was released");
+      } catch (releaseError) {
+        console.error("Failed to release Twilio number after Retell import failure:", releaseError);
+        warnings.push("Failed to import to Retell — Twilio number could not be released (orphaned)");
+      }
     }
   }
 

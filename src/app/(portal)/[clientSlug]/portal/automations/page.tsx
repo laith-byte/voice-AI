@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Sparkles, Zap } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { RecipeCard } from "@/components/automations/recipe-card";
 import { RecipeSetupModal } from "@/components/automations/recipe-setup-modal";
@@ -111,7 +112,7 @@ function isRecipeGated(recipeName: string, recipeCategory: string, planAccess: R
 
 export default function PortalAutomationsPage() {
   return (
-    <Suspense fallback={<div className="p-4 md:p-6"><div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div></div>}>
+    <Suspense fallback={<div className="space-y-6 p-6"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div><Skeleton className="h-64" /></div>}>
       <PortalAutomationsContent />
     </Suspense>
   );
@@ -301,10 +302,14 @@ function PortalAutomationsContent() {
 
   if (loading) {
     return (
-      <div className="p-4 md:p-6">
-        <div className="flex items-center justify-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6 p-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
         </div>
+        <Skeleton className="h-64" />
       </div>
     );
   }

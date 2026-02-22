@@ -1,3 +1,4 @@
+import { Metadata } from "next";
 import { Hero } from "@/components/marketing/sections/hero";
 import { Comparison } from "@/components/marketing/sections/comparison";
 import { LiveDemo } from "@/components/marketing/sections/live-demo";
@@ -7,6 +8,11 @@ import { Omnichannel, TelephonyStack, EnterpriseSecurity, Integrations } from "@
 import { IndustriesGrid } from "@/components/marketing/sections/industries-grid";
 import { FAQSection } from "@/components/marketing/sections/faq-section";
 import { CTASection } from "@/components/marketing/sections/cta-section";
+
+export const metadata: Metadata = {
+  title: "Invaria Labs | Enterprise Voice AI Platform",
+  description: "Build, deploy, and manage intelligent voice AI agents for your business. Automate calls, boost customer engagement, and scale operations with Invaria Labs.",
+};
 
 export default function HomePage() {
   return (

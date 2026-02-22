@@ -11,8 +11,11 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Invaria Labs",
-  description: "Voice AI Platform",
+  title: {
+    default: "Invaria Labs | Enterprise Voice AI Platform",
+    template: "%s | Invaria Labs",
+  },
+  description: "Build, deploy, and manage intelligent voice AI agents for your business. Automate customer calls, boost engagement, and scale operations with Invaria Labs.",
 };
 
 export default function RootLayout({

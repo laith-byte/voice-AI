@@ -25,11 +25,6 @@ const pillars = [
   },
 ];
 
-const team = [
-  { name: "Alex Rivera", role: "CEO & Co-Founder", bio: "Previously led product at a top SaaS company. Passionate about making enterprise AI accessible to every business." },
-  { name: "Jordan Patel", role: "CTO & Co-Founder", bio: "Machine learning engineer with a decade of experience in speech recognition and natural language processing." },
-  { name: "Sam Nakamura", role: "Head of Customer Success", bio: "Former operations director who understands the real-world challenges of managing business phone systems." },
-];
 
 export default function AboutPage() {
   return (
@@ -107,23 +102,11 @@ export default function AboutPage() {
       {/* Team */}
       <section className="py-20 bg-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <h2 className="font-display text-3xl sm:text-4xl text-navy-900 text-center mb-4">
-            The Team
-          </h2>
-          <p className="text-sm text-gray-400 text-center italic mb-12">
-            * Placeholder team members for demonstration purposes
-          </p>
-          <div className="grid md:grid-cols-3 gap-8">
-            {team.map((member) => (
-              <div key={member.name} className="text-center">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-navy-200 to-navy-300 mx-auto mb-4 flex items-center justify-center">
-                  <span className="text-2xl font-display text-navy-700">{member.name.split(" ").map(n => n[0]).join("")}</span>
-                </div>
-                <h3 className="font-semibold text-navy-900">{member.name}</h3>
-                <p className="text-sm text-gold-600 mb-2">{member.role}</p>
-                <p className="text-sm text-gray-500">{member.bio}</p>
-              </div>
-            ))}
+          <div className="text-center">
+            <h2 className="text-3xl font-display font-bold text-navy-900 mb-4">Our Team</h2>
+            <p className="text-gray-500 max-w-2xl mx-auto">
+              Invaria Labs is built by a passionate team of AI engineers, voice technology specialists, and customer experience experts dedicated to transforming how businesses communicate.
+            </p>
           </div>
         </div>
       </section>

@@ -23,6 +23,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { PricingTable, ClientPlan } from "@/types/database";
@@ -55,6 +65,7 @@ export default function SaaSPricingTablesPage() {
 
   // Delete
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [tableToDelete, setTableToDelete] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -315,7 +326,7 @@ export default function SaaSPricingTablesPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0"
-                          onClick={() => handleDeleteTable(table.id)}
+                          onClick={() => setTableToDelete(table.id)}
                           disabled={deleting === table.id}
                         >
                           {deleting === table.id ? (
@@ -633,6 +644,32 @@ export default function SaaSPricingTablesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Pricing Table Confirmation */}
+      <AlertDialog open={!!tableToDelete} onOpenChange={(open) => !open && setTableToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Pricing Table</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this pricing table and its embed code will stop working.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (tableToDelete) {
+                  handleDeleteTable(tableToDelete);
+                  setTableToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ArrowUpDown, Receipt, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -21,6 +22,8 @@ export default function BillingTransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -120,6 +123,8 @@ export default function BillingTransactionsPage() {
     );
   }
 
+  const paginatedTxns = transactions.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -156,7 +161,7 @@ export default function BillingTransactionsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {transactions.map((txn) => (
+              {paginatedTxns.map((txn) => (
                 <tr
                   key={txn.id}
                   className="hover:bg-gray-50 transition-colors"
@@ -201,6 +206,12 @@ export default function BillingTransactionsPage() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={transactions.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">

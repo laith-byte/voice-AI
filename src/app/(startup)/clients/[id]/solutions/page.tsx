@@ -31,6 +31,16 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Plus, Puzzle, Trash2, ExternalLink, Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import type { Solution } from "@/types/database";
 
@@ -47,6 +57,7 @@ export default function SolutionsPage() {
   const [availableSolutions, setAvailableSolutions] = useState<Solution[]>([]);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
+  const [solutionToRemove, setSolutionToRemove] = useState<string | null>(null);
 
   const clientId = params.id as string;
 
@@ -327,7 +338,7 @@ export default function SolutionsPage() {
                           variant="ghost"
                           size="icon-xs"
                           className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => handleRemoveSolution(solution.id)}
+                          onClick={() => setSolutionToRemove(solution.id)}
                           disabled={mutating}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -354,6 +365,32 @@ export default function SolutionsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Remove Solution Confirmation */}
+      <AlertDialog open={!!solutionToRemove} onOpenChange={(open) => !open && setSolutionToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Solution</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the solution from this client.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (solutionToRemove) {
+                  handleRemoveSolution(solutionToRemove);
+                  setSolutionToRemove(null);
+                }
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

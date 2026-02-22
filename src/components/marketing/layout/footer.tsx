@@ -37,10 +37,6 @@ export function Footer() {
             <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
               AI voice agents, purpose-built for your industry. Deploy in minutes. Never miss another call.
             </p>
-            <div className="mt-6 flex gap-4">
-              <span className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-gray-500 text-xs">Li</span>
-              <span className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-gray-500 text-xs">X</span>
-            </div>
           </div>
 
           {/* Platform */}
@@ -84,8 +80,8 @@ export function Footer() {
         <div className="mt-12 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-xs text-gray-500">&copy; {new Date().getFullYear()} Invaria Labs. All rights reserved.</p>
           <div className="flex gap-6">
-            <Link href="#" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Privacy Policy</Link>
-            <Link href="#" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Terms of Service</Link>
+            <Link href="/privacy" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Terms of Service</Link>
           </div>
         </div>
       </div>

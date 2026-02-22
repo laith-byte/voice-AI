@@ -1266,9 +1266,8 @@ export default function AgentSettingsPage() {
                 >
                   <Pencil className="w-3.5 h-3.5" />
                 </Button>
-                <Badge variant="outline" className="ml-1 text-green-600 border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5 inline-block" />
-                  Active
+                <Badge variant="outline" className="ml-1 text-muted-foreground border-border">
+                  {isChat ? "Chat" : "Voice"}
                 </Badge>
               </div>
               <button
