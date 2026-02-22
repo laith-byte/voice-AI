@@ -317,7 +317,7 @@ export default function PortalAgentsPage() {
                   <h3 className="font-semibold text-[15px]">
                     {onboardingStatus === "not_started"
                       ? "Welcome! Let's set up your AI agent"
-                      : `Continue setup (Step ${onboardingStep} of 6)`}
+                      : `Continue setup (Step ${onboardingStep} of 7)`}
                   </h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
                     {onboardingStatus === "not_started"

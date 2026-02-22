@@ -57,7 +57,8 @@ import { HoursEditor } from "@/components/business-settings/hours-editor";
 import { ServicesList } from "@/components/business-settings/services-list";
 import { FaqsList } from "@/components/business-settings/faqs-list";
 import { PoliciesList } from "@/components/business-settings/policies-list";
-import { INDUSTRIES, generateTemplateNodes } from "@/lib/conversation-flow-templates";
+import { INDUSTRIES, generateTemplateNodes, type FlowNode } from "@/lib/conversation-flow-templates";
+import { ConversationFlowEditor } from "@/components/onboarding/conversation-flow-editor";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -148,7 +149,7 @@ export default function OnboardingWizardPage() {
   const [chatWelcomeMessage, setChatWelcomeMessage] = useState("Hi! How can I help you today?");
   const [chatOfflineBehavior, setChatOfflineBehavior] = useState("message");
 
-  // Step 5 chat state
+  // Step 6 chat state
   const [testChatCompleted, setTestChatCompleted] = useState(false);
   const [chatAgentId, setChatAgentId] = useState<string | null>(null);
 
@@ -159,7 +160,7 @@ export default function OnboardingWizardPage() {
   const [testSmsSending, setTestSmsSending] = useState(false);
   const [testSmsCompleted, setTestSmsCompleted] = useState(false);
 
-  // Step 5 state
+  // Step 6 state (Test Call)
   const retellClient = useRef<RetellWebClient | null>(null);
   const [callActive, setCallActive] = useState(false);
   const [callStarting, setCallStarting] = useState(false);
@@ -170,7 +171,11 @@ export default function OnboardingWizardPage() {
   const callStartTimeRef = useRef<number | null>(null);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
 
-  // Step 6 state
+  // Step 5 state (Conversation Flow)
+  const [flowNodes, setFlowNodes] = useState<FlowNode[]>([]);
+  const [flowGenerated, setFlowGenerated] = useState(false);
+
+  // Step 7 state (Go Live)
   const [phoneOption, setPhoneOption] = useState("temporary");
   const [goingLive, setGoingLive] = useState(false);
   const [deployingFlow, setDeployingFlow] = useState(false);
@@ -220,6 +225,7 @@ export default function OnboardingWizardPage() {
         if (statusData.chat_welcome_message) setChatWelcomeMessage(statusData.chat_welcome_message);
         if (statusData.chat_offline_behavior) setChatOfflineBehavior(statusData.chat_offline_behavior);
         if (statusData.sms_phone_number) setSmsPhoneNumber(statusData.sms_phone_number);
+        if (statusData.conversation_flow_deployed) setFlowDeployed(statusData.conversation_flow_deployed);
 
         // Restore chatAgentId by looking up the agent for this client
         if (statusData.client_id) {
@@ -265,6 +271,21 @@ export default function OnboardingWizardPage() {
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
+
+  // Auto-generate flow nodes when entering step 5
+  useEffect(() => {
+    if (step !== 5 || flowGenerated) return;
+    const currentTemplate = templates.find((t) => t.id === selectedTemplate);
+    const industryKey = selectedIndustry || currentTemplate?.industry;
+    const useCaseKey = currentTemplate?.use_case;
+    if (industryKey && useCaseKey) {
+      const nodes = generateTemplateNodes(industryKey, useCaseKey);
+      if (nodes.length) {
+        setFlowNodes(nodes);
+        setFlowGenerated(true);
+      }
+    }
+  }, [step, flowGenerated, templates, selectedTemplate, selectedIndustry]);
 
   // ---------------------------------------------------------------------------
   // API helpers
@@ -400,12 +421,37 @@ export default function OnboardingWizardPage() {
   }
 
   async function handleStep5Continue() {
+    // Deploy flow if nodes exist and not already deployed
+    if (flowNodes.length > 0 && !flowDeployed) {
+      setDeployingFlow(true);
+      try {
+        await deployConversationFlowFromNodes(flowNodes);
+      } catch {
+        toast.error("Failed to deploy conversation flow.");
+        setDeployingFlow(false);
+        return;
+      }
+      setDeployingFlow(false);
+    }
+
     setSaving(true);
     try {
-      await saveStep(5, {
+      await saveStep(5, { conversation_flow_deployed: true });
+      setStep(6);
+    } catch {
+      toast.error("Failed to save progress.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleStep6Continue() {
+    setSaving(true);
+    try {
+      await saveStep(6, {
         test_call_completed: agentType === "chat" ? testChatCompleted : agentType === "sms" ? testSmsCompleted : testCallCompleted,
       });
-      setStep(6);
+      setStep(7);
     } catch {
       toast.error("Failed to save progress.");
     } finally {
@@ -472,8 +518,8 @@ export default function OnboardingWizardPage() {
     }
   }
 
-  // Deploy conversation flow
-  async function deployConversationFlow() {
+  // Deploy conversation flow from pre-edited nodes (used by Step 5)
+  async function deployConversationFlowFromNodes(editedNodes: FlowNode[]) {
     const currentTemplate = templates.find((t) => t.id === selectedTemplate);
     const industryKey = selectedIndustry || currentTemplate?.industry;
     const useCaseKey = currentTemplate?.use_case;
@@ -483,72 +529,57 @@ export default function OnboardingWizardPage() {
       return;
     }
 
-    const nodes = generateTemplateNodes(industryKey, useCaseKey);
-    if (!nodes.length) {
-      toast.error("No matching flow template found for your industry and use case.");
-      return;
-    }
-
-    setDeployingFlow(true);
-    try {
-      // Check if a flow already exists for this agent
-      const existingRes = await fetch("/api/conversation-flows");
-      if (existingRes.ok) {
-        const existingFlows = await existingRes.json();
-        const agentFlow = Array.isArray(existingFlows)
-          ? existingFlows.find((f: { agent_id: string | null }) => f.agent_id === chatAgentId)
-          : null;
-        if (agentFlow) {
-          // Flow already exists — update nodes then re-deploy
-          await fetch(`/api/conversation-flows/${agentFlow.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nodes }),
-          });
-          const deployRes = await fetch(`/api/conversation-flows/${agentFlow.id}`, {
-            method: "POST",
-          });
-          if (!deployRes.ok) throw new Error("Failed to deploy existing conversation flow");
-          setFlowDeployed(true);
-          toast.success("Conversation flow deployed to your agent!");
-          return;
-        }
+    // Check if a flow already exists for this agent
+    const existingRes = await fetch("/api/conversation-flows");
+    if (existingRes.ok) {
+      const existingFlows = await existingRes.json();
+      const agentFlow = Array.isArray(existingFlows)
+        ? existingFlows.find((f: { agent_id: string | null }) => f.agent_id === chatAgentId)
+        : null;
+      if (agentFlow) {
+        // Flow already exists — update nodes then re-deploy
+        await fetch(`/api/conversation-flows/${agentFlow.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nodes: editedNodes }),
+        });
+        const deployRes = await fetch(`/api/conversation-flows/${agentFlow.id}`, {
+          method: "POST",
+        });
+        if (!deployRes.ok) throw new Error("Failed to deploy existing conversation flow");
+        setFlowDeployed(true);
+        toast.success("Conversation flow deployed to your agent!");
+        return;
       }
-
-      const industryLabel = INDUSTRIES[industryKey]?.label || industryKey;
-      const useCaseLabel = USE_CASE_LABELS[useCaseKey] || useCaseKey;
-      const flowName = `${industryLabel} ${useCaseLabel}`;
-
-      // Create the flow
-      const createRes = await fetch("/api/conversation-flows", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: flowName,
-          agent_id: chatAgentId,
-          nodes,
-        }),
-      });
-
-      if (!createRes.ok) throw new Error("Failed to create conversation flow");
-      const flow = await createRes.json();
-
-      // Deploy the flow to Retell
-      const deployRes = await fetch(`/api/conversation-flows/${flow.id}`, {
-        method: "POST",
-      });
-
-      if (!deployRes.ok) throw new Error("Failed to deploy conversation flow");
-
-      setFlowDeployed(true);
-      toast.success("Conversation flow deployed to your agent!");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to deploy conversation flow"
-      );
-    } finally {
-      setDeployingFlow(false);
     }
+
+    const industryLabel = INDUSTRIES[industryKey]?.label || industryKey;
+    const useCaseLabel = USE_CASE_LABELS[useCaseKey] || useCaseKey;
+    const flowName = `${industryLabel} ${useCaseLabel}`;
+
+    // Create the flow
+    const createRes = await fetch("/api/conversation-flows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: flowName,
+        agent_id: chatAgentId,
+        nodes: editedNodes,
+      }),
+    });
+
+    if (!createRes.ok) throw new Error("Failed to create conversation flow");
+    const flow = await createRes.json();
+
+    // Deploy the flow to Retell
+    const deployRes = await fetch(`/api/conversation-flows/${flow.id}`, {
+      method: "POST",
+    });
+
+    if (!deployRes.ok) throw new Error("Failed to deploy conversation flow");
+
+    setFlowDeployed(true);
+    toast.success("Conversation flow deployed to your agent!");
   }
 
   // Go live
@@ -1793,9 +1824,106 @@ export default function OnboardingWizardPage() {
           )}
 
           {/* ================================================================= */}
-          {/* STEP 5: Test Call (enhanced with coaching, transcript, report)    */}
+          {/* STEP 5: Conversation Flow                                        */}
           {/* ================================================================= */}
-          {step === 5 && agentType === "sms" && (
+          {step === 5 && (() => {
+            const currentTemplate = templates.find((t) => t.id === selectedTemplate);
+            const industryKey = selectedIndustry || currentTemplate?.industry || "";
+            const useCaseKey = currentTemplate?.use_case || "";
+
+            return (
+              <div className="space-y-6">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight">
+                    Customize your conversation flow
+                  </h1>
+                  <p className="text-muted-foreground mt-1">
+                    Your agent will follow this script when handling{" "}
+                    {agentType === "chat" ? "conversations" : agentType === "sms" ? "text messages" : "calls"}.
+                    Edit the text to match your business style.
+                  </p>
+                </div>
+
+                {flowNodes.length > 0 ? (
+                  <ConversationFlowEditor
+                    nodes={flowNodes}
+                    onNodesChange={setFlowNodes}
+                    industryKey={industryKey}
+                    useCaseKey={useCaseKey}
+                  />
+                ) : (
+                  <Card className="glass-card">
+                    <CardContent className="p-8 text-center">
+                      <Loader2 className="w-6 h-6 text-primary animate-spin mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">
+                        Generating your conversation flow...
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Deploy status */}
+                {flowDeployed && (
+                  <div className="flex items-center gap-2 justify-center text-sm text-green-600 font-medium">
+                    <Check className="w-4 h-4" />
+                    Flow deployed successfully
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-4">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setStep(4)}
+                    className="gap-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back
+                  </Button>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setSaving(true);
+                        saveStep(5, { conversation_flow_deployed: false })
+                          .then(() => setStep(6))
+                          .catch(() => toast.error("Failed to save progress."))
+                          .finally(() => setSaving(false));
+                      }}
+                      disabled={saving || deployingFlow}
+                      className="text-muted-foreground gap-1"
+                    >
+                      <span className="text-xs">Skip for now</span>
+                    </Button>
+                    <Button
+                      size="lg"
+                      onClick={handleStep5Continue}
+                      disabled={saving || deployingFlow || flowNodes.length === 0}
+                      className="min-w-[160px] gap-2"
+                    >
+                      {saving || deployingFlow ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          {flowDeployed ? "Continue" : "Deploy & Continue"}
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground/60 text-center">
+                  <AlertTriangle className="w-3 h-3 inline mr-1" />
+                  You can customize your conversation flow in more detail later from the Conversation Flows page.
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* ================================================================= */}
+          {/* STEP 6: Test Call (enhanced with coaching, transcript, report)    */}
+          {/* ================================================================= */}
+          {step === 6 && agentType === "sms" && (
             <div className="space-y-6">
               <div className="text-center">
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -1874,7 +2002,7 @@ export default function OnboardingWizardPage() {
               <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(5)}
                   className="gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1884,7 +2012,7 @@ export default function OnboardingWizardPage() {
                   {!testSmsCompleted && (
                     <Button
                       variant="ghost"
-                      onClick={handleStep5Continue}
+                      onClick={handleStep6Continue}
                       disabled={saving}
                       className="text-muted-foreground"
                     >
@@ -1893,7 +2021,7 @@ export default function OnboardingWizardPage() {
                   )}
                   <Button
                     size="lg"
-                    onClick={handleStep5Continue}
+                    onClick={handleStep6Continue}
                     disabled={saving}
                     className="min-w-[160px] gap-2"
                   >
@@ -1918,7 +2046,7 @@ export default function OnboardingWizardPage() {
             </div>
           )}
 
-          {step === 5 && agentType === "chat" && (
+          {step === 6 && agentType === "chat" && (
             <div className="space-y-6">
               <div className="text-center">
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -1949,7 +2077,7 @@ export default function OnboardingWizardPage() {
               <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(5)}
                   className="gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -1959,7 +2087,7 @@ export default function OnboardingWizardPage() {
                   {!testChatCompleted && (
                     <Button
                       variant="ghost"
-                      onClick={handleStep5Continue}
+                      onClick={handleStep6Continue}
                       disabled={saving}
                       className="text-muted-foreground"
                     >
@@ -1968,7 +2096,7 @@ export default function OnboardingWizardPage() {
                   )}
                   <Button
                     size="lg"
-                    onClick={handleStep5Continue}
+                    onClick={handleStep6Continue}
                     disabled={saving}
                     className="min-w-[160px] gap-2"
                   >
@@ -1993,7 +2121,7 @@ export default function OnboardingWizardPage() {
             </div>
           )}
 
-          {step === 5 && agentType === "voice" && (() => {
+          {step === 6 && agentType === "voice" && (() => {
             const currentTemplate = templates.find((t) => t.id === selectedTemplate);
             const testScenarios: TestScenario[] = currentTemplate?.test_scenarios ?? [];
 
@@ -2141,7 +2269,7 @@ export default function OnboardingWizardPage() {
                         setCallDurationSeconds(0);
                       }}
                       onMakeChanges={() => setShowQuickFix(true)}
-                      onContinue={handleStep5Continue}
+                      onContinue={handleStep6Continue}
                     />
 
                     <QuickFixModal
@@ -2155,7 +2283,7 @@ export default function OnboardingWizardPage() {
                 <div className="flex items-center justify-between pt-4">
                   <Button
                     variant="ghost"
-                    onClick={() => setStep(4)}
+                    onClick={() => setStep(5)}
                     className="gap-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -2165,7 +2293,7 @@ export default function OnboardingWizardPage() {
                     {!testCallCompleted && (
                       <Button
                         variant="ghost"
-                        onClick={handleStep5Continue}
+                        onClick={handleStep6Continue}
                         disabled={saving}
                         className="text-muted-foreground"
                       >
@@ -2175,7 +2303,7 @@ export default function OnboardingWizardPage() {
                     {!testCallCompleted && (
                       <Button
                         size="lg"
-                        onClick={handleStep5Continue}
+                        onClick={handleStep6Continue}
                         disabled={saving}
                         className="min-w-[160px] gap-2"
                       >
@@ -2203,9 +2331,9 @@ export default function OnboardingWizardPage() {
           })()}
 
           {/* ================================================================= */}
-          {/* STEP 6: Go Live                                                   */}
+          {/* STEP 7: Go Live                                                   */}
           {/* ================================================================= */}
-          {step === 6 && (
+          {step === 7 && (
             <div className="space-y-6">
               <div className="text-center">
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -2246,6 +2374,10 @@ export default function OnboardingWizardPage() {
                             done: true,
                           },
                           {
+                            label: "Conversation flow configured",
+                            done: flowDeployed,
+                          },
+                          {
                             label: "Test chat completed",
                             done: testChatCompleted,
                           },
@@ -2269,6 +2401,10 @@ export default function OnboardingWizardPage() {
                             done: true,
                           },
                           {
+                            label: "Conversation flow configured",
+                            done: flowDeployed,
+                          },
+                          {
                             label: "Test SMS completed",
                             done: testSmsCompleted,
                           },
@@ -2289,6 +2425,10 @@ export default function OnboardingWizardPage() {
                           {
                             label: "Call handling rules set",
                             done: true,
+                          },
+                          {
+                            label: "Conversation flow configured",
+                            done: flowDeployed,
                           },
                           {
                             label: "Test call completed",
@@ -2330,53 +2470,28 @@ export default function OnboardingWizardPage() {
                 </CardContent>
               </Card>
 
-              {/* Deploy conversation flow */}
+              {/* Conversation flow status */}
               {(() => {
                 const currentTemplate = templates.find((t) => t.id === selectedTemplate);
                 const industryKey = selectedIndustry || currentTemplate?.industry;
                 const useCaseKey = currentTemplate?.use_case;
                 const hasFlow = !!(industryKey && useCaseKey && INDUSTRIES[industryKey]);
                 if (!hasFlow) return null;
-                const industryLabel = INDUSTRIES[industryKey!]?.label || industryKey;
-                const useCaseLabel = USE_CASE_LABELS[useCaseKey!] || useCaseKey;
                 return (
                   <Card className="glass-card">
-                    <CardContent className="p-6">
-                      <div className="flex items-center gap-2 mb-1">
-                        <GitBranch className="w-4 h-4 text-primary" />
-                        <h3 className="font-semibold text-sm">
-                          Deploy Conversation Flow
-                        </h3>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2">
+                        <GitBranch className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Conversation flow:</span>
+                        {flowDeployed ? (
+                          <span className="text-sm text-green-600 font-medium flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            Deployed
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Not deployed</span>
+                        )}
                       </div>
-                      <p className="text-xs text-muted-foreground mb-4">
-                        Deploy a <strong>{industryLabel} {useCaseLabel}</strong> conversation
-                        flow to guide your agent through calls with a structured script,
-                        scheduling, and CRM lookups.
-                      </p>
-                      {flowDeployed ? (
-                        <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
-                          <Check className="w-4 h-4" />
-                          Flow deployed successfully
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={deployConversationFlow}
-                          disabled={deployingFlow || !chatAgentId}
-                          className="gap-2"
-                        >
-                          {deployingFlow ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Rocket className="w-3.5 h-3.5" />
-                          )}
-                          {deployingFlow ? "Deploying..." : "Deploy Flow"}
-                        </Button>
-                      )}
-                      <p className="text-[11px] text-muted-foreground mt-3">
-                        You can customize this flow later from the Conversation Flows page.
-                      </p>
                     </CardContent>
                   </Card>
                 );
@@ -2549,7 +2664,7 @@ export default function OnboardingWizardPage() {
               <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
-                  onClick={() => setStep(5)}
+                  onClick={() => setStep(6)}
                   className="gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
