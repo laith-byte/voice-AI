@@ -6,6 +6,28 @@ import Link from "next/link";
 import { FeatureGate } from "@/components/portal/feature-gate";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,6 +86,7 @@ import {
   Undo2,
   GitBranch,
   ArrowRight,
+  Settings2,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -151,6 +174,41 @@ const TOOL_TYPE_LABELS: Record<string, string> = {
   press_digit: "Press Digit",
 };
 
+interface PostCallItem {
+  name: string;
+  description: string;
+  type: "string" | "enum" | "boolean" | "number";
+  choices?: string[];
+  examples?: string[];
+}
+
+const GUARDRAIL_OUTPUT_TOPICS = [
+  { value: "harassment", label: "Harassment" },
+  { value: "self_harm", label: "Self Harm" },
+  { value: "sexual_exploitation", label: "Sexual Exploitation" },
+  { value: "violence", label: "Violence" },
+  { value: "defense_and_national_security", label: "Defense & National Security" },
+  { value: "illicit_and_harmful_activity", label: "Illicit & Harmful Activity" },
+  { value: "gambling", label: "Gambling" },
+  { value: "regulated_professional_advice", label: "Regulated Professional Advice" },
+  { value: "child_safety_and_exploitation", label: "Child Safety & Exploitation" },
+];
+
+const GUARDRAIL_INPUT_TOPICS = [
+  { value: "platform_integrity_jailbreaking", label: "Platform Integrity / Jailbreaking" },
+];
+
+const WEBHOOK_EVENT_OPTIONS = [
+  { value: "call_started", label: "Call Started" },
+  { value: "call_ended", label: "Call Ended" },
+  { value: "call_analyzed", label: "Call Analyzed" },
+  { value: "transcript_updated", label: "Transcript Updated" },
+  { value: "transfer_started", label: "Transfer Started" },
+  { value: "transfer_bridged", label: "Transfer Bridged" },
+  { value: "transfer_cancelled", label: "Transfer Cancelled" },
+  { value: "transfer_ended", label: "Transfer Ended" },
+];
+
 interface VoiceOption {
   voice_id: string;
   voice_name: string;
@@ -237,7 +295,11 @@ export default function AgentSettingsPage() {
 
   // Post call analysis state
   const [postCallModel, setPostCallModel] = useState("gpt-4.1");
-  const [analysisDataConfig, setAnalysisDataConfig] = useState("");
+  const [postCallItems, setPostCallItems] = useState<PostCallItem[]>([]);
+  const [analysisSummaryPrompt, setAnalysisSummaryPrompt] = useState("");
+  const [analysisSuccessfulPrompt, setAnalysisSuccessfulPrompt] = useState("");
+  const [analysisSentimentPrompt, setAnalysisSentimentPrompt] = useState("");
+  const [editingPostCallIdx, setEditingPostCallIdx] = useState<number | null>(null);
 
   // Security fallback state
   const [dataStorage, setDataStorage] = useState("everything");
@@ -256,6 +318,24 @@ export default function AgentSettingsPage() {
   // Webhook state
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookTimeout, setWebhookTimeout] = useState("10");
+  const [webhookEvents, setWebhookEvents] = useState<string[]>([]);
+  const [webhookEventsDialogOpen, setWebhookEventsDialogOpen] = useState(false);
+  const [webhookTesting, setWebhookTesting] = useState(false);
+
+  // Guardrail config state
+  const [guardrailOutputTopics, setGuardrailOutputTopics] = useState<string[]>([]);
+  const [guardrailInputTopics, setGuardrailInputTopics] = useState<string[]>([]);
+  const [guardrailDialogOpen, setGuardrailDialogOpen] = useState(false);
+
+  // IVR option state
+  const [ivrEnabled, setIvrEnabled] = useState(false);
+  const [ivrAction, setIvrAction] = useState<"hangup">("hangup");
+
+  // Custom STT config state
+  const [customSttConfig, setCustomSttConfig] = useState<{provider?: string; endpointing_ms?: number} | null>(null);
+
+  // Voicemail detection timeout
+  const [voicemailDetectionTimeout, setVoicemailDetectionTimeout] = useState("30");
 
   // Versioning state
   const [versions, setVersions] = useState<{ version: number; is_published: boolean; llm_model: string | null; voice_id: string | null; created_at: number | null }[]>([]);
@@ -543,11 +623,18 @@ export default function AgentSettingsPage() {
       const pca = data.post_call_analysis;
       if (pca) {
         setPostCallModel(pca.model ?? "gpt-4.1");
-        if (pca.data != null && typeof pca.data === "object") {
-          setAnalysisDataConfig(JSON.stringify(pca.data, null, 2));
-        } else {
-          setAnalysisDataConfig(pca.data ?? "");
+        if (Array.isArray(pca.data)) {
+          setPostCallItems(pca.data.map((item: Record<string, unknown>) => ({
+            name: (item.name as string) ?? "",
+            description: (item.description as string) ?? "",
+            type: (item.type as string) ?? "string",
+            choices: Array.isArray(item.choices) ? item.choices : undefined,
+            examples: Array.isArray(item.examples) ? item.examples : undefined,
+          })));
         }
+        setAnalysisSummaryPrompt(pca.analysis_summary_prompt ?? "");
+        setAnalysisSuccessfulPrompt(pca.analysis_successful_prompt ?? "");
+        setAnalysisSentimentPrompt(pca.analysis_sentiment_prompt ?? "");
       }
 
       // Security fallback
@@ -606,6 +693,36 @@ export default function AgentSettingsPage() {
             })
           )
         );
+      }
+
+      // Guardrail config
+      if (data.guardrail_config) {
+        setGuardrailOutputTopics(data.guardrail_config.output_topics ?? []);
+        setGuardrailInputTopics(data.guardrail_config.input_topics ?? []);
+      }
+
+      // Webhook events
+      if (Array.isArray(data.webhook_events)) {
+        setWebhookEvents(data.webhook_events);
+      }
+
+      // IVR option
+      if (data.ivr_option) {
+        setIvrEnabled(true);
+        if (data.ivr_option.action?.type) {
+          setIvrAction(data.ivr_option.action.type);
+        }
+      }
+
+      // Custom STT config
+      if (data.custom_stt_config) {
+        setCustomSttConfig(data.custom_stt_config);
+        setTranscriptionMode("custom");
+      }
+
+      // Voicemail detection timeout
+      if (data.voicemail_detection_timeout_ms != null) {
+        setVoicemailDetectionTimeout(String(data.voicemail_detection_timeout_ms / 1000));
       }
     } catch (err) {
       console.error("Failed to fetch agent config:", err);
@@ -923,20 +1040,6 @@ export default function AgentSettingsPage() {
       }
     }
 
-    // Parse post call analysis data from JSON string
-    let parsedAnalysisData: unknown | undefined;
-    if (analysisDataConfig.trim()) {
-      try {
-        parsedAnalysisData = JSON.parse(analysisDataConfig);
-      } catch {
-        toast.error(
-          "Invalid JSON in Analysis Data Configuration. Please fix and try again."
-        );
-        setPublishing(false);
-        return;
-      }
-    }
-
     // Build full config payload matching the API structure
     const payload: Record<string, unknown> = {
       ...(llmId && { llm_id: llmId }),
@@ -960,7 +1063,10 @@ export default function AgentSettingsPage() {
       })),
       post_call_analysis: {
         model: postCallModel,
-        data: parsedAnalysisData,
+        data: postCallItems.length > 0 ? postCallItems : undefined,
+        analysis_summary_prompt: analysisSummaryPrompt || undefined,
+        analysis_successful_prompt: analysisSuccessfulPrompt || undefined,
+        analysis_sentiment_prompt: analysisSentimentPrompt || undefined,
       },
       security_fallback: {
         data_storage_setting: dataStorage,
@@ -978,6 +1084,10 @@ export default function AgentSettingsPage() {
         url: webhookUrl.trim() || null,
         timeout_ms: (parseFloat(webhookTimeout) || 10) * 1000,
       },
+      webhook_events: webhookEvents.length > 0 ? webhookEvents : null,
+      guardrail_config: (guardrailOutputTopics.length > 0 || guardrailInputTopics.length > 0)
+        ? { output_topics: guardrailOutputTopics, input_topics: guardrailInputTopics }
+        : null,
     };
 
     // Chat-only settings
@@ -1016,7 +1126,9 @@ export default function AgentSettingsPage() {
       };
       payload.realtime_transcription = {
         denoising_mode: denoisingMode,
-        transcription_mode: transcriptionMode,
+        // Retell only accepts "fast" or "accurate" for stt_mode.
+        // When using custom STT, skip sending stt_mode — custom_stt_config drives it.
+        transcription_mode: transcriptionMode === "custom" ? undefined : transcriptionMode,
         vocabulary_specialization: vocabulary.trim(),
         boosted_keywords: parsedBoostedKeywords,
       };
@@ -1048,6 +1160,13 @@ export default function AgentSettingsPage() {
         begin_message_delay: parseFloat(pauseBeforeSpeaking) * 1000,
         ring_duration: parseFloat(ringDuration) * 1000,
       };
+      payload.ivr_option = ivrEnabled ? { action: { type: ivrAction } } : null;
+      payload.voicemail_detection_timeout_ms = voicemailDetection
+        ? (parseFloat(voicemailDetectionTimeout) || 30) * 1000
+        : undefined;
+      if (transcriptionMode === "custom" && customSttConfig) {
+        payload.custom_stt_config = customSttConfig;
+      }
     }
 
     try {
@@ -1092,10 +1211,8 @@ export default function AgentSettingsPage() {
     }
   };
 
-  const [newToolType, setNewToolType] = useState("custom");
-
   function addFunction(toolType?: string) {
-    const type = toolType || newToolType;
+    const type = toolType || "custom";
     const base: FunctionTool = { id: Date.now().toString(), name: "", description: "", type };
     const typeDefaults: Record<string, Partial<FunctionTool>> = {
       agent_swap: { agent_id: "", post_call_analysis_setting: "both_agents" },
@@ -1112,6 +1229,9 @@ export default function AgentSettingsPage() {
         speak_after_execution: true,
         speak_during_execution: false,
       },
+      check_availability_cal: {},
+      book_appointment_cal: {},
+      press_digit: {},
     };
     setFunctions((prev) => [...prev, { ...base, ...(typeDefaults[type] || {}) }]);
   }
@@ -1194,6 +1314,34 @@ export default function AgentSettingsPage() {
 
   function removeMcpServer(id: string) {
     setMcpServers((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  async function testWebhook() {
+    if (!webhookUrl.trim()) {
+      toast.error("Enter a webhook URL first");
+      return;
+    }
+    setWebhookTesting(true);
+    try {
+      // Proxy through server-side endpoint to avoid CORS issues
+      const res = await fetch(`/api/agents/${agentId}/webhook-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: webhookUrl.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        toast.success("Webhook test successful");
+      } else if (res.ok) {
+        toast.error(`Webhook returned ${data.status}`);
+      } else {
+        toast.error(data.error || "Failed to reach webhook URL");
+      }
+    } catch {
+      toast.error("Failed to test webhook");
+    } finally {
+      setWebhookTesting(false);
+    }
   }
 
   const [copiedId, setCopiedId] = useState(false);
@@ -1323,21 +1471,14 @@ export default function AgentSettingsPage() {
             {/* Left - Main Config */}
             <div className="space-y-6">
               {/* Core Settings Card */}
-              <Card className="overflow-hidden animate-fade-in-up stagger-1 glass-card rounded-xl">
-                <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-6 py-4 border-b">
-                  <div className="flex items-center gap-2.5">
-                    <div className="h-8 w-8 rounded-lg bg-primary/10 dark:bg-primary/10 flex items-center justify-center">
-                      <Bot className="w-4 h-4 text-primary dark:text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">Core Configuration</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {isChat ? "Language, model, and behavior" : "Language, model, voice, and behavior"}
-                      </p>
-                    </div>
-                  </div>
+              <Card className="overflow-hidden rounded-xl">
+                <div className="px-6 pt-5 pb-1">
+                  <h3 className="font-semibold text-sm">Core Configuration</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {isChat ? "Language, model, and behavior" : "Language, model, voice, and behavior"}
+                  </p>
                 </div>
-                <CardContent className="p-6 space-y-5">
+                <CardContent className="p-6 pt-4 space-y-5">
                   <div className={`grid grid-cols-1 ${isChat ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_2fr_1.2fr]"} gap-x-6 gap-y-4`}>
                     <div className="space-y-2">
                       <Label className="flex items-center gap-1.5 text-xs font-medium">
@@ -1716,34 +1857,18 @@ export default function AgentSettingsPage() {
               </div>
             </div>
 
-            {/* Right - Collapsible Sections */}
-            <div className="space-y-3">
-              {/* Tools */}
-              <Collapsible>
-                <Card className="overflow-hidden animate-fade-in-up stagger-2 glass-card rounded-xl">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center">
-                            <Zap className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm">Tools</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Actions, integrations &amp; tool types</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {functions.length > 0 && (
-                            <Badge variant="secondary" className="text-[10px]">{functions.length}</Badge>
-                          )}
-                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
+            {/* Right - Accordion Sections */}
+            <div>
+              <Accordion type="multiple" className="rounded-lg border">
+                {/* Tools */}
+                <AccordionItem value="tools">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Tools {functions.length > 0 && <Badge variant="secondary" className="ml-1.5 text-[10px]">{functions.length}</Badge>}</span>
+                      <p className="text-xs text-muted-foreground font-normal">Actions, integrations &amp; tool types</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
                       {functions.map((fn) => (
                         <div key={fn.id} className="p-3 bg-accent/30 rounded-lg space-y-2">
                           <div className="flex items-center justify-between">
@@ -2278,67 +2403,48 @@ export default function AgentSettingsPage() {
                         </div>
                       ))}
 
-                      {/* Add Tool controls */}
-                      <div className="flex items-center gap-2">
-                        <Select value={newToolType} onValueChange={setNewToolType}>
-                          <SelectTrigger className="h-8 text-xs w-48">
-                            <SelectValue placeholder="Tool type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="custom">Custom Function</SelectItem>
-                            <SelectItem value="end_call">End Call</SelectItem>
-                            <SelectItem value="agent_swap">Agent Swap</SelectItem>
-                            <SelectItem value="send_sms">Send SMS</SelectItem>
-                            <SelectItem value="mcp">MCP Tool</SelectItem>
-                            <SelectItem value="extract_dynamic_variable">Extract Variable</SelectItem>
-                            {!isChat && <SelectItem value="transfer_call">Transfer Call</SelectItem>}
-                            {!isChat && <SelectItem value="press_digit">Press Digit</SelectItem>}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => addFunction()}
-                          className="gap-1"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Add Tool
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+                      {/* Add Tool dropdown */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="gap-1">
+                            <Plus className="h-3.5 w-3.5" />
+                            Add
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => addFunction("end_call")}>End Call</DropdownMenuItem>
+                          {!isChat && <DropdownMenuItem onClick={() => addFunction("transfer_call")}>Call Transfer</DropdownMenuItem>}
+                          <DropdownMenuItem onClick={() => addFunction("agent_swap")}>Agent Transfer</DropdownMenuItem>
+                          {!isChat && <DropdownMenuItem onClick={() => addFunction("check_availability_cal")}>Check Calendar Availability</DropdownMenuItem>}
+                          {!isChat && <DropdownMenuItem onClick={() => addFunction("book_appointment_cal")}>Book on Calendar</DropdownMenuItem>}
+                          {!isChat && <DropdownMenuItem onClick={() => addFunction("press_digit")}>Press Digit</DropdownMenuItem>}
+                          <DropdownMenuItem onClick={() => addFunction("send_sms")}>Send SMS</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => addFunction("extract_dynamic_variable")}>Extract Dynamic Variable</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => addFunction("custom")}>Custom Function</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                  </AccordionContent>
+                </AccordionItem>
 
-              {/* Speech Settings - voice agents only */}
-              {!isChat && planAccess && !planAccess.speech_settings_full && (
-                <UpgradeBanner
-                  feature="Advanced Speech Settings"
-                  plan="Professional"
-                  description="Unlock responsiveness tuning, background sounds, and backchannel settings."
-                />
-              )}
-              {!isChat && (!planAccess || planAccess.speech_settings_full) && (
-                <Collapsible>
-                  <Card className="overflow-hidden animate-fade-in-up stagger-3 glass-card rounded-xl">
-                    <CollapsibleTrigger asChild>
-                      <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="h-7 w-7 rounded-md bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center">
-                              <AudioLines className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                            </div>
-                            <div>
-                              <CardTitle className="text-sm">Speech Settings</CardTitle>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">Voice behavior & background audio</p>
-                            </div>
-                          </div>
-                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                        </div>
-                      </CardHeader>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <CardContent className="p-4 pt-0 space-y-3">
+                {/* Speech Settings - voice agents only */}
+                {!isChat && planAccess && !planAccess.speech_settings_full && (
+                  <div className="px-4 py-3">
+                    <UpgradeBanner
+                      feature="Advanced Speech Settings"
+                      plan="Professional"
+                      description="Unlock responsiveness tuning, background sounds, and backchannel settings."
+                    />
+                  </div>
+                )}
+                {!isChat && (!planAccess || planAccess.speech_settings_full) && (
+                <AccordionItem value="speech">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Speech Settings</span>
+                      <p className="text-xs text-muted-foreground font-normal">Voice behavior &amp; background audio</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <Label className="text-xs">Responsiveness</Label>
@@ -2559,165 +2665,160 @@ export default function AgentSettingsPage() {
                             </div>
                           ))}
                         </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Card>
-                </Collapsible>
-              )}
+                  </AccordionContent>
+                </AccordionItem>
+                )}
 
-              {/* Realtime Transcription - voice agents only */}
-              {!isChat && (
-                <Collapsible>
-                  <Card className="overflow-hidden animate-fade-in-up stagger-4 glass-card rounded-xl">
-                    <CollapsibleTrigger asChild>
-                      <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="h-7 w-7 rounded-md bg-sky-100 dark:bg-sky-900/50 flex items-center justify-center">
-                              <Mic className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                            </div>
-                            <div>
-                              <CardTitle className="text-sm">Transcription</CardTitle>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">Live speech-to-text settings</p>
-                            </div>
-                          </div>
-                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                        </div>
-                      </CardHeader>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <CardContent className="p-4 pt-0 space-y-3">
-                        <div className="space-y-2">
-                          <Label className="text-xs">Noise Reduction</Label>
+                {/* Realtime Transcription - voice agents only */}
+                {!isChat && (
+                <AccordionItem value="transcription">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Transcription</span>
+                      <p className="text-xs text-muted-foreground font-normal">Live speech-to-text settings</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Noise Reduction</Label>
+                      <RadioGroup value={denoisingMode} onValueChange={setDenoisingMode} className="gap-2">
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="no-denoise" />
+                          Off
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="noise-cancellation" />
+                          Noise Cancellation — included
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="noise-and-background-speech-cancellation" />
+                          Noise + Background Speech — +${ADDON_COSTS.advancedDenoising.toFixed(3)}/min
+                        </label>
+                      </RadioGroup>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Transcription Mode</Label>
+                      <RadioGroup value={transcriptionMode} onValueChange={(v) => {
+                        setTranscriptionMode(v);
+                        if (v !== "custom") setCustomSttConfig(null);
+                      }} className="gap-2">
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="fast" />
+                          Fast
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="accurate" />
+                          Accurate
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="custom" />
+                          Custom
+                        </label>
+                      </RadioGroup>
+                    </div>
+                    {transcriptionMode === "custom" && (
+                      <div className="space-y-2 pl-3 border-l-2 border-primary/20 ml-1">
+                        <div className="space-y-1">
+                          <Label className="text-xs">STT Provider</Label>
                           <Select
-                            value={denoisingMode}
-                            onValueChange={setDenoisingMode}
+                            value={customSttConfig?.provider || "deepgram"}
+                            onValueChange={(v) => setCustomSttConfig((prev) => ({ ...prev, provider: v }))}
                           >
-                            <SelectTrigger className="h-8">
+                            <SelectTrigger className="h-8 text-xs">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="no-denoise">Off</SelectItem>
-                              <SelectItem value="noise-cancellation">Noise Cancellation — included</SelectItem>
-                              <SelectItem value="noise-and-background-speech-cancellation">Noise + Background Speech — +${ADDON_COSTS.advancedDenoising.toFixed(3)}/min</SelectItem>
+                              <SelectItem value="deepgram">Deepgram</SelectItem>
+                              <SelectItem value="assembly_ai">Assembly AI</SelectItem>
+                              <SelectItem value="google">Google</SelectItem>
+                              <SelectItem value="whisper">Whisper</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Transcription Mode</Label>
-                          <Select
-                            value={transcriptionMode}
-                            onValueChange={setTranscriptionMode}
-                          >
-                            <SelectTrigger className="h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="fast">Fast</SelectItem>
-                              <SelectItem value="accurate">Accurate</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Vocabulary</Label>
-                          <Select value={vocabulary} onValueChange={setVocabulary}>
-                            <SelectTrigger className="h-8">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="general">General</SelectItem>
-                              <SelectItem value="medical">Medical</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Boosted Keywords</Label>
-                          <Input
-                            value={boostedKeywords}
-                            onChange={(e) => setBoostedKeywords(e.target.value)}
-                            placeholder="Priority words (comma separated)"
-                            className="text-sm h-8"
-                          />
-                        </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Card>
-                </Collapsible>
-              )}
-
-              {/* Chat Settings - chat/SMS agents only */}
-              {isChat && (
-                <Collapsible>
-                  <Card className="overflow-hidden animate-fade-in-up stagger-5 glass-card rounded-xl">
-                    <CollapsibleTrigger asChild>
-                      <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="h-7 w-7 rounded-md bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
-                              <MessageSquareText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <div>
-                              <CardTitle className="text-sm">Chat Settings</CardTitle>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">Timeout & auto-close behavior</p>
-                            </div>
-                          </div>
-                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                        </div>
-                      </CardHeader>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <CardContent className="p-4 pt-0 space-y-3">
-                        <div className="space-y-2">
-                          <Label className="text-xs">Inactivity Timeout (minutes)</Label>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Endpointing (ms)</Label>
                           <Input
                             type="number"
-                            value={chatSilenceTimeout}
-                            onChange={(e) => setChatSilenceTimeout(e.target.value)}
-                            min="6"
-                            max="4320"
-                            className="h-8 text-sm w-32"
+                            value={customSttConfig?.endpointing_ms ?? 500}
+                            onChange={(e) => setCustomSttConfig((prev) => ({ ...prev, endpointing_ms: parseInt(e.target.value) || 500 }))}
+                            className="h-8 text-xs w-32"
                           />
-                          <p className="text-[10px] text-muted-foreground">End chat after this many minutes of silence (min: 6, max: 4320 / 72 hours)</p>
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs">Auto-Close Message</Label>
-                          <Textarea
-                            value={autoCloseMessage}
-                            onChange={(e) => setAutoCloseMessage(e.target.value)}
-                            rows={2}
-                            className="text-xs resize-y"
-                            placeholder="This chat has been closed due to inactivity."
-                          />
-                          <p className="text-[10px] text-muted-foreground">Message shown when the chat auto-closes. Leave empty for no message.</p>
-                        </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Card>
-                </Collapsible>
-              )}
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Vocabulary</Label>
+                      <RadioGroup value={vocabulary} onValueChange={setVocabulary} className="gap-2">
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="general" />
+                          General
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="medical" />
+                          Medical
+                        </label>
+                      </RadioGroup>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Boosted Keywords</Label>
+                      <Input
+                        value={boostedKeywords}
+                        onChange={(e) => setBoostedKeywords(e.target.value)}
+                        placeholder="Priority words (comma separated)"
+                        className="text-sm h-8"
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+                )}
 
-              {/* Call Settings - voice agents only */}
-              {!isChat && (
-                <Collapsible>
-                  <Card className="overflow-hidden animate-fade-in-up stagger-5 glass-card rounded-xl">
-                    <CollapsibleTrigger asChild>
-                      <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <div className="h-7 w-7 rounded-md bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
-                              <Phone className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-                            </div>
-                            <div>
-                              <CardTitle className="text-sm">Call Settings</CardTitle>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">Duration, timeouts & detection</p>
-                            </div>
-                          </div>
-                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                        </div>
-                      </CardHeader>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <CardContent className="p-4 pt-0 space-y-3">
+                {/* Chat Settings - chat/SMS agents only */}
+                {isChat && (
+                <AccordionItem value="chat-settings">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Chat Settings</span>
+                      <p className="text-xs text-muted-foreground font-normal">Timeout &amp; auto-close behavior</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Inactivity Timeout (minutes)</Label>
+                      <Input
+                        type="number"
+                        value={chatSilenceTimeout}
+                        onChange={(e) => setChatSilenceTimeout(e.target.value)}
+                        min="6"
+                        max="4320"
+                        className="h-8 text-sm w-32"
+                      />
+                      <p className="text-[10px] text-muted-foreground">End chat after this many minutes of silence (min: 6, max: 4320 / 72 hours)</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Auto-Close Message</Label>
+                      <Textarea
+                        value={autoCloseMessage}
+                        onChange={(e) => setAutoCloseMessage(e.target.value)}
+                        rows={2}
+                        className="text-xs resize-y"
+                        placeholder="This chat has been closed due to inactivity."
+                      />
+                      <p className="text-[10px] text-muted-foreground">Message shown when the chat auto-closes. Leave empty for no message.</p>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+                )}
+
+                {/* Call Settings - voice agents only */}
+                {!isChat && (
+                <AccordionItem value="call-settings">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Call Settings</span>
+                      <p className="text-xs text-muted-foreground font-normal">Duration, timeouts &amp; detection</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <Label className="text-xs">Voicemail Detection</Label>
                           <Switch
@@ -2763,6 +2864,43 @@ export default function AgentSettingsPage() {
                                 </p>
                               </div>
                             )}
+                            <div className="space-y-1.5 pl-3">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">Detection Timeout</Label>
+                                <span className="text-xs text-muted-foreground font-mono">{voicemailDetectionTimeout} s</span>
+                              </div>
+                              <Slider
+                                value={[parseFloat(voicemailDetectionTimeout) || 30]}
+                                onValueChange={([v]) => setVoicemailDetectionTimeout(String(v))}
+                                min={5}
+                                max={180}
+                                step={1}
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label className="text-xs">IVR Detection</Label>
+                            <p className="text-[10px] text-muted-foreground">Detect IVR systems in the first 3 minutes of a call</p>
+                          </div>
+                          <Switch
+                            checked={ivrEnabled}
+                            onCheckedChange={setIvrEnabled}
+                          />
+                        </div>
+                        {ivrEnabled && (
+                          <div className="space-y-1.5 pl-3 border-l-2 border-primary/20 ml-1">
+                            <Label className="text-xs">Action When IVR Detected</Label>
+                            <Select value={ivrAction} onValueChange={(v) => setIvrAction(v as "hangup")}>
+                              <SelectTrigger className="h-8 text-xs w-40">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="hangup">Hang Up</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground">Action to take when an IVR menu is detected.</p>
                           </div>
                         )}
                         <div className="flex items-center justify-between">
@@ -2815,530 +2953,707 @@ export default function AgentSettingsPage() {
                             </div>
                           </div>
                         )}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-xs">Silence Timeout (s)</Label>
-                            <Input
-                              type="number"
-                              value={silenceTimeout}
-                              onChange={(e) => setSilenceTimeout(e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs">Max Duration (s)</Label>
-                            <Input
-                              type="number"
-                              value={maxDuration}
-                              onChange={(e) => setMaxDuration(e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-xs">Begin Message Delay (s)</Label>
-                            <Input
-                              type="number"
-                              value={pauseBeforeSpeaking}
-                              onChange={(e) => setPauseBeforeSpeaking(e.target.value)}
-                              step="0.1"
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs">Ring Duration (s)</Label>
-                            <Input
-                              type="number"
-                              value={ringDuration}
-                              onChange={(e) => setRingDuration(e.target.value)}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Card>
-                </Collapsible>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Silence Timeout</Label>
+                        <span className="text-xs text-muted-foreground font-mono">{silenceTimeout} s</span>
+                      </div>
+                      <Slider
+                        value={[parseFloat(silenceTimeout) || 30]}
+                        onValueChange={([v]) => setSilenceTimeout(String(v))}
+                        min={10}
+                        max={600}
+                        step={5}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Max Call Duration</Label>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {parseFloat(maxDuration) >= 3600
+                            ? `${(parseFloat(maxDuration) / 3600).toFixed(2)} h`
+                            : `${maxDuration} s`}
+                        </span>
+                      </div>
+                      <Slider
+                        value={[parseFloat(maxDuration) || 3600]}
+                        onValueChange={([v]) => setMaxDuration(String(v))}
+                        min={60}
+                        max={7200}
+                        step={60}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Begin Message Delay</Label>
+                        <span className="text-xs text-muted-foreground font-mono">{pauseBeforeSpeaking} s</span>
+                      </div>
+                      <Slider
+                        value={[parseFloat(pauseBeforeSpeaking) || 0.4]}
+                        onValueChange={([v]) => setPauseBeforeSpeaking(String(Math.round(v * 10) / 10))}
+                        min={0}
+                        max={5}
+                        step={0.1}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Ring Duration</Label>
+                        <span className="text-xs text-muted-foreground font-mono">{ringDuration} s</span>
+                      </div>
+                      <Slider
+                        value={[parseFloat(ringDuration) || 15]}
+                        onValueChange={([v]) => setRingDuration(String(v))}
+                        min={5}
+                        max={90}
+                        step={1}
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
               )}
 
-              {/* Knowledge Base Config */}
-              <Collapsible>
-                <Card className="overflow-hidden animate-fade-in-up glass-card rounded-xl">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-                            <BookOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm">Knowledge Base</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">RAG retrieval settings</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {knowledgeBaseIds.length > 0 && (
-                            <Badge variant="secondary" className="text-[10px]">{knowledgeBaseIds.length} linked</Badge>
-                          )}
-                          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                        </div>
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
+                {/* Knowledge Base Config */}
+                <AccordionItem value="knowledge-base">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Knowledge Base {knowledgeBaseIds.length > 0 && <Badge variant="secondary" className="ml-1.5 text-[10px]">{knowledgeBaseIds.length} linked</Badge>}</span>
+                      <p className="text-xs text-muted-foreground font-normal">RAG retrieval settings</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    {knowledgeBaseIds.length > 0 && (
                       <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs">Top K (chunks to retrieve)</Label>
-                          <span className="text-xs text-muted-foreground font-mono">{kbTopK}</span>
+                        <Label className="text-xs">Linked Knowledge Bases</Label>
+                        <div className="space-y-1">
+                          {knowledgeBaseIds.map((kbId) => (
+                            <div key={kbId} className="flex items-center justify-between p-1.5 bg-accent/30 rounded text-[11px]">
+                              <span className="font-mono truncate flex-1">{kbId}</span>
+                              <button
+                                onClick={() => setKnowledgeBaseIds((prev) => prev.filter((id) => id !== kbId))}
+                                className="text-muted-foreground hover:text-red-600 ml-2"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                        <Slider
-                          value={[parseInt(kbTopK) || 5]}
-                          onValueChange={([v]) => setKbTopK(String(v))}
-                          min={1}
-                          max={20}
-                          step={1}
-                        />
-                        <p className="text-[10px] text-muted-foreground">
-                          Max number of knowledge base chunks returned per query. Higher = more context but slower.
-                        </p>
                       </div>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs">Filter Score (similarity threshold)</Label>
-                          <span className="text-xs text-muted-foreground font-mono">{parseFloat(kbFilterScore).toFixed(2)}</span>
-                        </div>
-                        <Slider
-                          value={[parseFloat(kbFilterScore) || 0.7]}
-                          onValueChange={([v]) => setKbFilterScore(String(v))}
-                          min={0}
-                          max={1}
-                          step={0.05}
-                        />
-                        <p className="text-[10px] text-muted-foreground">
-                          Minimum similarity score to include a chunk. Higher = more relevant but fewer results.
-                        </p>
-                      </div>
-                      {knowledgeBaseIds.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t border-border/50">
-                          <Label className="text-xs">Linked Knowledge Bases</Label>
-                          <div className="space-y-1">
-                            {knowledgeBaseIds.map((kbId) => (
-                              <div key={kbId} className="flex items-center justify-between p-1.5 bg-accent/30 rounded text-[11px]">
-                                <span className="font-mono truncate flex-1">{kbId}</span>
-                                <button
-                                  onClick={() => setKnowledgeBaseIds((prev) => prev.filter((id) => id !== kbId))}
-                                  className="text-muted-foreground hover:text-red-600 ml-2"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
+                    )}
+                    <p className="text-[10px] text-muted-foreground">
+                      Manage knowledge base sources (documents, text, URLs) from the Knowledge Base tab.
+                    </p>
+                    <Collapsible>
+                      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                        <Settings2 className="w-3 h-3" />
+                        Advance Setting
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-3 space-y-3">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Top K (chunks to retrieve)</Label>
+                            <span className="text-xs text-muted-foreground font-mono">{kbTopK}</span>
                           </div>
+                          <Slider
+                            value={[parseInt(kbTopK) || 5]}
+                            onValueChange={([v]) => setKbTopK(String(v))}
+                            min={1}
+                            max={20}
+                            step={1}
+                          />
                         </div>
-                      )}
-                      <p className="text-[10px] text-muted-foreground">
-                        Manage knowledge base sources (documents, text, URLs) from the Knowledge Base tab.
-                      </p>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Filter Score (similarity threshold)</Label>
+                            <span className="text-xs text-muted-foreground font-mono">{parseFloat(kbFilterScore).toFixed(2)}</span>
+                          </div>
+                          <Slider
+                            value={[parseFloat(kbFilterScore) || 0.7]}
+                            onValueChange={([v]) => setKbFilterScore(String(v))}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                          />
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </AccordionContent>
+                </AccordionItem>
 
-              {/* Post Call/Chat Analysis */}
-              <Collapsible>
-                <Card className="overflow-hidden animate-fade-in-up stagger-6 glass-card rounded-xl">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
+                {/* Post Call/Chat Analysis */}
+                <AccordionItem value="post-call">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">{isChat ? "Post Chat Analysis" : "Post Call Analysis"}</span>
+                      <p className="text-xs text-muted-foreground font-normal">{isChat ? "AI-powered chat insights" : "AI-powered call insights"}</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Analysis Model</Label>
+                      <Select
+                        value={postCallModel}
+                        onValueChange={setPostCallModel}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gpt-4.1-nano">GPT-4.1 Nano</SelectItem>
+                          <SelectItem value="gpt-4.1-mini">GPT-4.1 Mini</SelectItem>
+                          <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
+                          <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                          <SelectItem value="gpt-5">GPT-5</SelectItem>
+                          <SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem>
+                          <SelectItem value="claude-4.5-sonnet">Claude 4.5 Sonnet</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Built-in prompt fields */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Call Summary Prompt</Label>
+                      <Textarea
+                        value={analysisSummaryPrompt}
+                        onChange={(e) => setAnalysisSummaryPrompt(e.target.value)}
+                        rows={2}
+                        placeholder="Summarize this conversation..."
+                        className="text-xs resize-y"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Call Successful Prompt</Label>
+                      <Textarea
+                        value={analysisSuccessfulPrompt}
+                        onChange={(e) => setAnalysisSuccessfulPrompt(e.target.value)}
+                        rows={2}
+                        placeholder="Evaluate whether this call was successful..."
+                        className="text-xs resize-y"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">User Sentiment Prompt</Label>
+                      <Textarea
+                        value={analysisSentimentPrompt}
+                        onChange={(e) => setAnalysisSentimentPrompt(e.target.value)}
+                        rows={2}
+                        placeholder="Analyze the user's sentiment..."
+                        className="text-xs resize-y"
+                      />
+                    </div>
+
+                    {/* Structured extraction items */}
+                    <div className="space-y-2 pt-2 border-t border-border/50">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-pink-100 dark:bg-pink-900/50 flex items-center justify-center">
-                            <BrainCircuit className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm">{isChat ? "Post Chat Analysis" : "Post Call Analysis"}</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">{isChat ? "AI-powered chat insights" : "AI-powered call insights"}</p>
-                          </div>
-                        </div>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Analysis Model</Label>
-                        <Select
-                          value={postCallModel}
-                          onValueChange={setPostCallModel}
+                        <Label className="text-xs">Data Extraction Items</Label>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => setPostCallItems((prev) => [...prev, { name: "", description: "", type: "string" }])}
                         >
-                          <SelectTrigger className="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="gpt-4.1-nano">GPT-4.1 Nano</SelectItem>
-                            <SelectItem value="gpt-4.1-mini">GPT-4.1 Mini</SelectItem>
-                            <SelectItem value="gpt-4.1">GPT-4.1</SelectItem>
-                            <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                            <SelectItem value="gpt-5">GPT-5</SelectItem>
-                            <SelectItem value="gpt-5-mini">GPT-5 Mini</SelectItem>
-                            <SelectItem value="claude-4.5-sonnet">Claude 4.5 Sonnet</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          <Plus className="w-3 h-3" />
+                          Add
+                        </Button>
                       </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Analysis Schema</Label>
-                        <Textarea
-                          value={analysisDataConfig}
-                          onChange={(e) => setAnalysisDataConfig(e.target.value)}
-                          rows={4}
-                          placeholder='e.g.: {"sentiment": "positive | negative | neutral"}'
-                          className="font-mono text-xs resize-y"
-                        />
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+                      {postCallItems.map((item, idx) => (
+                        <div key={idx} className="p-2.5 bg-accent/30 rounded-lg space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Input
+                              value={item.name}
+                              onChange={(e) => {
+                                const items = [...postCallItems];
+                                items[idx] = { ...items[idx], name: e.target.value };
+                                setPostCallItems(items);
+                              }}
+                              placeholder="Field name"
+                              className="text-xs font-mono h-7 flex-1 mr-2"
+                            />
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={() => setEditingPostCallIdx(editingPostCallIdx === idx ? null : idx)}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => setPostCallItems((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          {editingPostCallIdx === idx && (
+                            <div className="space-y-2 pl-2 border-l-2 border-primary/20">
+                              <Textarea
+                                value={item.description}
+                                onChange={(e) => {
+                                  const items = [...postCallItems];
+                                  items[idx] = { ...items[idx], description: e.target.value };
+                                  setPostCallItems(items);
+                                }}
+                                placeholder="Description of what to extract"
+                                rows={2}
+                                className="text-xs"
+                              />
+                              <Select
+                                value={item.type}
+                                onValueChange={(v) => {
+                                  const items = [...postCallItems];
+                                  items[idx] = { ...items[idx], type: v as PostCallItem["type"] };
+                                  setPostCallItems(items);
+                                }}
+                              >
+                                <SelectTrigger className="h-7 text-xs w-32">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="string">String</SelectItem>
+                                  <SelectItem value="number">Number</SelectItem>
+                                  <SelectItem value="boolean">Boolean</SelectItem>
+                                  <SelectItem value="enum">Enum</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {item.type === "enum" && (
+                                <Input
+                                  value={(item.choices || []).join(", ")}
+                                  onChange={(e) => {
+                                    const items = [...postCallItems];
+                                    items[idx] = { ...items[idx], choices: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) };
+                                    setPostCallItems(items);
+                                  }}
+                                  placeholder="Choices (comma separated)"
+                                  className="text-xs h-7"
+                                />
+                              )}
+                              {item.type === "string" && (
+                                <Input
+                                  value={(item.examples || []).join(", ")}
+                                  onChange={(e) => {
+                                    const items = [...postCallItems];
+                                    items[idx] = { ...items[idx], examples: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) };
+                                    setPostCallItems(items);
+                                  }}
+                                  placeholder="Examples (comma separated)"
+                                  className="text-xs h-7"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
 
-              {/* Security & Privacy */}
-              <Collapsible>
-                <Card className="overflow-hidden animate-fade-in-up stagger-6 glass-card rounded-xl">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-                            <Shield className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm">Security & Privacy</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Data protection & fallbacks</p>
-                          </div>
-                        </div>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
+                {/* Security & Privacy */}
+                <AccordionItem value="security">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Security &amp; Privacy</span>
+                      <p className="text-xs text-muted-foreground font-normal">Data protection &amp; fallbacks</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    <div className="space-y-2">
+                      <Label className="text-xs">Data Storage</Label>
+                      <RadioGroup value={dataStorage} onValueChange={setDataStorage} className="gap-2">
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="everything" />
+                          Everything
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="everything_except_pii" />
+                          Everything Except PII
+                        </label>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer">
+                          <RadioGroupItem value="basic_attributes_only" />
+                          Basic Attributes Only
+                        </label>
+                      </RadioGroup>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Secure URLs</Label>
+                      <Switch
+                        checked={secureUrls}
+                        onCheckedChange={setSecureUrls}
+                      />
+                    </div>
+                    {secureUrls && (
+                      <div className="space-y-1.5 pl-3 border-l-2 border-primary/20 ml-1">
+                        <Label className="text-xs">URL Expiration (hours)</Label>
+                        <Input
+                          type="number"
+                          value={signedUrlExpiration}
+                          onChange={(e) => setSignedUrlExpiration(e.target.value)}
+                          min="1"
+                          max="168"
+                          className="h-8 text-xs w-32"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Default: 24 hours. Max: 168 hours (7 days).</p>
                       </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
+                    )}
+                    {!isChat && (
                       <div className="space-y-2">
-                        <Label className="text-xs">Data Storage</Label>
-                        <Select value={dataStorage} onValueChange={setDataStorage}>
-                          <SelectTrigger className="h-8">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="everything">Everything</SelectItem>
-                            <SelectItem value="everything_except_pii">Everything Except PII</SelectItem>
-                            <SelectItem value="basic_attributes_only">Basic Attributes Only</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <Label className="text-xs">Secure URLs</Label>
-                        <Switch
-                          checked={secureUrls}
-                          onCheckedChange={setSecureUrls}
+                        <Label className="text-xs">Fallback Voice IDs</Label>
+                        <Input
+                          value={fallbackVoiceIds}
+                          onChange={(e) => setFallbackVoiceIds(e.target.value)}
+                          placeholder="Comma-separated voice IDs"
+                          className="text-sm h-8"
                         />
                       </div>
-                      {secureUrls && (
-                        <div className="space-y-1.5 pl-1 border-l-2 border-primary/20 ml-1 pl-3">
-                          <Label className="text-xs">URL Expiration (hours)</Label>
-                          <Input
-                            type="number"
-                            value={signedUrlExpiration}
-                            onChange={(e) => setSignedUrlExpiration(e.target.value)}
-                            min="1"
-                            max="168"
-                            className="h-8 text-xs w-32"
-                          />
-                          <p className="text-[10px] text-muted-foreground">Default: 24 hours. Max: 168 hours (7 days).</p>
-                        </div>
-                      )}
-                      {!isChat && (
-                        <div className="space-y-2">
-                          <Label className="text-xs">Fallback Voice IDs</Label>
-                          <Input
-                            value={fallbackVoiceIds}
-                            onChange={(e) => setFallbackVoiceIds(e.target.value)}
-                            placeholder="Comma-separated voice IDs"
-                            className="text-sm h-8"
-                          />
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <Label className="text-xs">Default Dynamic Variables</Label>
-                        <Textarea
-                          value={defaultDynamicVars}
-                          onChange={(e) => setDefaultDynamicVars(e.target.value)}
-                          rows={3}
-                          placeholder='e.g.: {"company": "Acme"}'
-                          className="font-mono text-xs resize-y"
-                        />
-                      </div>
-                      <PiiRedactionSettings agentId={agentId} embedded />
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+                    )}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Default Dynamic Variables</Label>
+                      <Textarea
+                        value={defaultDynamicVars}
+                        onChange={(e) => setDefaultDynamicVars(e.target.value)}
+                        rows={3}
+                        placeholder='e.g.: {"company": "Acme"}'
+                        className="font-mono text-xs resize-y"
+                      />
+                    </div>
+                    <PiiRedactionSettings agentId={agentId} embedded />
 
-              {/* Webhook */}
-              <Collapsible>
-                <Card className="overflow-hidden glass-card rounded-xl">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
+                    {/* Guardrails */}
+                    <div className="pt-2 border-t border-border/50">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
-                            <Send className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm">Webhook</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Event notifications URL</p>
-                          </div>
+                        <div>
+                          <Label className="text-xs">Safety Guardrails</Label>
+                          <p className="text-[10px] text-muted-foreground">Block harmful input/output topics</p>
                         </div>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
+                        <Dialog open={guardrailDialogOpen} onOpenChange={setGuardrailDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-7 text-xs">
+                              {(guardrailOutputTopics.length + guardrailInputTopics.length) > 0
+                                ? `${guardrailOutputTopics.length + guardrailInputTopics.length} active`
+                                : "Set Up"}
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Safety Guardrails</DialogTitle>
+                              <DialogDescription>Select topics to block in agent output and input.</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Output Topics</Label>
+                                {GUARDRAIL_OUTPUT_TOPICS.map((topic) => (
+                                  <label key={topic.value} className="flex items-center gap-2 text-xs cursor-pointer">
+                                    <Checkbox
+                                      checked={guardrailOutputTopics.includes(topic.value)}
+                                      onCheckedChange={(checked) => {
+                                        setGuardrailOutputTopics((prev) =>
+                                          checked ? [...prev, topic.value] : prev.filter((t) => t !== topic.value)
+                                        );
+                                      }}
+                                      className="h-3.5 w-3.5"
+                                    />
+                                    {topic.label}
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs font-medium">Input Topics</Label>
+                                {GUARDRAIL_INPUT_TOPICS.map((topic) => (
+                                  <label key={topic.value} className="flex items-center gap-2 text-xs cursor-pointer">
+                                    <Checkbox
+                                      checked={guardrailInputTopics.includes(topic.value)}
+                                      onCheckedChange={(checked) => {
+                                        setGuardrailInputTopics((prev) =>
+                                          checked ? [...prev, topic.value] : prev.filter((t) => t !== topic.value)
+                                        );
+                                      }}
+                                      className="h-3.5 w-3.5"
+                                    />
+                                    {topic.label}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button onClick={() => setGuardrailDialogOpen(false)}>Done</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                       </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Webhook URL</Label>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Webhook */}
+                <AccordionItem value="webhook">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">Webhook</span>
+                      <p className="text-xs text-muted-foreground font-normal">Event notifications URL</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Webhook URL</Label>
+                      <div className="flex items-center gap-2">
                         <Input
                           value={webhookUrl}
                           onChange={(e) => setWebhookUrl(e.target.value)}
                           placeholder="https://your-server.com/webhook"
-                          className="h-8 text-xs font-mono"
+                          className="h-8 text-xs font-mono flex-1"
                         />
-                        <p className="text-[10px] text-muted-foreground">Receives call_started, call_ended, and call_analyzed events. Leave empty to use account-level webhook.</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Timeout (seconds)</Label>
-                        <Input
-                          type="number"
-                          value={webhookTimeout}
-                          onChange={(e) => setWebhookTimeout(e.target.value)}
-                          min="1"
-                          max="30"
-                          className="h-8 text-xs w-24"
-                        />
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
-
-              {/* Agent Versioning */}
-              <Collapsible>
-                <Card className="overflow-hidden glass-card rounded-xl">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-cyan-100 dark:bg-cyan-900/50 flex items-center justify-center">
-                            <History className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CardTitle className="text-sm">Versioning</CardTitle>
-                            {hasUnpublishedChanges && (
-                              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-400 text-amber-600 dark:text-amber-400">Draft</Badge>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground mt-0.5 sr-only">Publish &amp; version history</p>
-                        </div>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
-                      <p className="text-[11px] text-muted-foreground">
-                        Publishing creates a snapshot of the current agent config. New calls will use the published version.
-                      </p>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={publishing}
-                            className="gap-1.5 w-full"
-                          >
-                            {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                            {publishing ? "Publishing..." : "Publish Version"}
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Publish Agent Version?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This creates a production snapshot. New calls will use this version.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={publishVersion}>Publish</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-
-                      <div className="pt-2 border-t border-border/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <Label className="text-xs">Version History</Label>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={fetchVersions}
-                            disabled={versionsLoading}
-                            className="h-6 px-2 text-[10px]"
-                          >
-                            {versionsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                          </Button>
-                        </div>
-                        {versions.length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground">
-                            {versionsLoading ? "Loading..." : "Click refresh to load versions."}
-                          </p>
-                        ) : (
-                          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                            {versions.map((v) => (
-                              <div key={v.version} className="flex items-center justify-between p-2 bg-accent/30 rounded text-[11px]">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-medium">v{v.version}</span>
-                                  {v.is_published && (
-                                    <Badge variant="default" className="text-[9px] h-4 px-1.5">Live</Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-muted-foreground">
-                                    {v.created_at ? new Date(v.created_at).toLocaleDateString() : "—"}
-                                  </span>
-                                  {!v.is_published && (
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-5 px-1.5 text-[10px] gap-1"
-                                          disabled={restoringVersion === v.version}
-                                        >
-                                          {restoringVersion === v.version ? (
-                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                          ) : (
-                                            <Undo2 className="h-3 w-3" />
-                                          )}
-                                          Restore
-                                        </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>Restore Version {v.version}?</AlertDialogTitle>
-                                          <AlertDialogDescription>
-                                            This will apply the configuration from version {v.version} to the current agent. You can publish a new version afterward to make it live.
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                          <AlertDialogAction onClick={() => restoreVersion(v.version)}>Restore</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
-
-              {/* MCP Servers */}
-              <Collapsible>
-                <Card className="overflow-hidden">
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="p-4 cursor-pointer hover:bg-accent/50 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="h-7 w-7 rounded-md bg-primary/10 dark:bg-primary/10 flex items-center justify-center">
-                            <Plug className="w-3.5 h-3.5 text-primary dark:text-primary" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-sm">MCP Servers</CardTitle>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">Model Context Protocol servers</p>
-                          </div>
-                        </div>
-                        <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform" />
-                      </div>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent className="p-4 pt-0 space-y-3">
-                      {mcpServers.length === 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          No MCP servers configured yet.
-                        </p>
-                      )}
-                      {mcpServers.map((server) => (
-                        <div
-                          key={server.id}
-                          className="flex items-start gap-2 p-3 bg-accent/30 rounded-lg"
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs shrink-0"
+                          onClick={testWebhook}
+                          disabled={webhookTesting || !webhookUrl.trim()}
                         >
-                          <div className="flex-1 space-y-2">
-                            <Input
-                              value={server.name}
-                              onChange={(e) =>
-                                setMcpServers((prev) =>
-                                  prev.map((s) =>
-                                    s.id === server.id
-                                      ? { ...s, name: e.target.value }
-                                      : s
-                                  )
-                                )
-                              }
-                              placeholder="Server name"
-                              className="text-sm h-8"
-                            />
-                            <Input
-                              value={server.url}
-                              onChange={(e) =>
-                                setMcpServers((prev) =>
-                                  prev.map((s) =>
-                                    s.id === server.id
-                                      ? { ...s, url: e.target.value }
-                                      : s
-                                  )
-                                )
-                              }
-                              placeholder="Endpoint URL"
-                              className="text-sm font-mono h-8"
-                            />
-                          </div>
-                          <button
-                            onClick={() => removeMcpServer(server.id)}
-                            className="text-muted-foreground hover:text-red-600 transition-colors mt-2"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {webhookTesting ? <Loader2 className="w-3 h-3 animate-spin" /> : "Test"}
+                        </Button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Leave empty to use account-level webhook.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs">Timeout</Label>
+                        <span className="text-xs text-muted-foreground font-mono">{webhookTimeout} s</span>
+                      </div>
+                      <Slider
+                        value={[parseFloat(webhookTimeout) || 10]}
+                        onValueChange={([v]) => setWebhookTimeout(String(v))}
+                        min={1}
+                        max={30}
+                        step={1}
+                      />
+                    </div>
+
+                    {/* Webhook Events */}
+                    <div className="pt-2 border-t border-border/50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-xs">Webhook Events</Label>
+                          <p className="text-[10px] text-muted-foreground">Choose which events trigger the webhook</p>
                         </div>
-                      ))}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={addMcpServer}
-                        className="gap-1"
+                        <Dialog open={webhookEventsDialogOpen} onOpenChange={setWebhookEventsDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-7 text-xs">
+                              {webhookEvents.length > 0 ? `${webhookEvents.length} selected` : "Set Up"}
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Webhook Events</DialogTitle>
+                              <DialogDescription>Select which events should trigger your webhook.</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-2">
+                              {WEBHOOK_EVENT_OPTIONS.map((evt) => (
+                                <label key={evt.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                                  <Checkbox
+                                    checked={webhookEvents.includes(evt.value)}
+                                    onCheckedChange={(checked) => {
+                                      setWebhookEvents((prev) =>
+                                        checked ? [...prev, evt.value] : prev.filter((e) => e !== evt.value)
+                                      );
+                                    }}
+                                  />
+                                  {evt.label}
+                                </label>
+                              ))}
+                            </div>
+                            <DialogFooter>
+                              <Button onClick={() => setWebhookEventsDialogOpen(false)}>Done</Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* Agent Versioning */}
+                <AccordionItem value="versioning">
+                  <AccordionTrigger className="px-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Versioning</span>
+                      {hasUnpublishedChanges && (
+                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-400 text-amber-600 dark:text-amber-400">Draft</Badge>
+                      )}
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      Publishing creates a snapshot of the current agent config. New calls will use the published version.
+                    </p>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={publishing}
+                          className="gap-1.5 w-full"
+                        >
+                          {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          {publishing ? "Publishing..." : "Publish Version"}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Publish Agent Version?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This creates a production snapshot. New calls will use this version.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction onClick={publishVersion}>Publish</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+
+                    <div className="pt-2 border-t border-border/50">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-xs">Version History</Label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={fetchVersions}
+                          disabled={versionsLoading}
+                          className="h-6 px-2 text-[10px]"
+                        >
+                          {versionsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                      {versions.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          {versionsLoading ? "Loading..." : "Click refresh to load versions."}
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {versions.map((v) => (
+                            <div key={v.version} className="flex items-center justify-between p-2 bg-accent/30 rounded text-[11px]">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-medium">v{v.version}</span>
+                                {v.is_published && (
+                                  <Badge variant="default" className="text-[9px] h-4 px-1.5">Live</Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">
+                                  {v.created_at ? new Date(v.created_at).toLocaleDateString() : "—"}
+                                </span>
+                                {!v.is_published && (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-5 px-1.5 text-[10px] gap-1"
+                                        disabled={restoringVersion === v.version}
+                                      >
+                                        {restoringVersion === v.version ? (
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                          <Undo2 className="h-3 w-3" />
+                                        )}
+                                        Restore
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Restore Version {v.version}?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will apply the configuration from version {v.version} to the current agent. You can publish a new version afterward to make it live.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => restoreVersion(v.version)}>Restore</AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                {/* MCP Servers */}
+                <AccordionItem value="mcp">
+                  <AccordionTrigger className="px-4">
+                    <div>
+                      <span className="text-sm font-medium">MCP Servers</span>
+                      <p className="text-xs text-muted-foreground font-normal">Model Context Protocol servers</p>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4 space-y-3">
+                    {mcpServers.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No MCP servers configured yet.
+                      </p>
+                    )}
+                    {mcpServers.map((server) => (
+                      <div
+                        key={server.id}
+                        className="flex items-start gap-2 p-3 bg-accent/30 rounded-lg"
                       >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add MCP Server
-                      </Button>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
+                        <div className="flex-1 space-y-2">
+                          <Input
+                            value={server.name}
+                            onChange={(e) =>
+                              setMcpServers((prev) =>
+                                prev.map((s) =>
+                                  s.id === server.id
+                                    ? { ...s, name: e.target.value }
+                                    : s
+                                )
+                              )
+                            }
+                            placeholder="Server name"
+                            className="text-sm h-8"
+                          />
+                          <Input
+                            value={server.url}
+                            onChange={(e) =>
+                              setMcpServers((prev) =>
+                                prev.map((s) =>
+                                  s.id === server.id
+                                    ? { ...s, url: e.target.value }
+                                    : s
+                                )
+                              )
+                            }
+                            placeholder="Endpoint URL"
+                            className="text-sm font-mono h-8"
+                          />
+                        </div>
+                        <button
+                          onClick={() => removeMcpServer(server.id)}
+                          className="text-muted-foreground hover:text-red-600 transition-colors mt-2"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={addMcpServer}
+                      className="gap-1"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add MCP Server
+                    </Button>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </div>
 
             {/* Right - Inline Test Panel */}

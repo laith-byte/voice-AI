@@ -197,15 +197,33 @@ export async function GET(
       };
     }
 
-    config.post_call_analysis = isChat
-      ? {
-          model: retellAgent.post_chat_analysis_model,
-          data: retellAgent.post_chat_analysis_data,
-        }
-      : {
-          model: retellAgent.post_call_analysis_model,
-          data: retellAgent.post_call_analysis_data,
-        };
+    // Post call/chat analysis — structured data + prompt fields
+    const pcaDataField = isChat ? retellAgent.post_chat_analysis_data : retellAgent.post_call_analysis_data;
+    config.post_call_analysis = {
+      model: isChat ? retellAgent.post_chat_analysis_model : retellAgent.post_call_analysis_model,
+      data: pcaDataField,
+      analysis_summary_prompt: retellAgent.analysis_summary_prompt ?? null,
+      analysis_successful_prompt: retellAgent.analysis_successful_prompt ?? null,
+      analysis_sentiment_prompt: retellAgent.analysis_user_sentiment_prompt ?? null,
+    };
+
+    // Guardrail config
+    config.guardrail_config = retellAgent.guardrail_config ?? null;
+
+    // Webhook events
+    config.webhook_events = retellAgent.webhook_events ?? null;
+
+    // IVR option (voice only)
+    if (!isChat) {
+      config.ivr_option = retellAgent.ivr_option ?? null;
+      config.voicemail_detection_timeout_ms = retellAgent.voicemail_detection_timeout_ms ?? null;
+    }
+
+    // Custom STT config
+    if (!isChat) {
+      config.custom_stt_config = retellAgent.custom_stt_config ?? null;
+    }
+
     config.security_fallback = {
       data_storage_setting: retellAgent.data_storage_setting,
       pii_redaction: !!retellAgent.pii_config,
@@ -437,8 +455,26 @@ export async function PATCH(
       const analysisModelField = isChat ? "post_chat_analysis_model" : "post_call_analysis_model";
       const analysisDataField = isChat ? "post_chat_analysis_data" : "post_call_analysis_data";
       if (body.post_call_analysis.model) retellUpdate[analysisModelField] = body.post_call_analysis.model;
-      if (body.post_call_analysis.data) retellUpdate[analysisDataField] = body.post_call_analysis.data;
+      if (body.post_call_analysis.data !== undefined) retellUpdate[analysisDataField] = body.post_call_analysis.data;
+      if (body.post_call_analysis.analysis_summary_prompt !== undefined) retellUpdate.analysis_summary_prompt = body.post_call_analysis.analysis_summary_prompt;
+      if (body.post_call_analysis.analysis_successful_prompt !== undefined) retellUpdate.analysis_successful_prompt = body.post_call_analysis.analysis_successful_prompt;
+      if (body.post_call_analysis.analysis_sentiment_prompt !== undefined) retellUpdate.analysis_user_sentiment_prompt = body.post_call_analysis.analysis_sentiment_prompt;
     }
+
+    // Guardrail config
+    if (body.guardrail_config !== undefined) retellUpdate.guardrail_config = body.guardrail_config;
+
+    // Webhook events
+    if (body.webhook_events !== undefined) retellUpdate.webhook_events = body.webhook_events;
+
+    // IVR option (voice only)
+    if (body.ivr_option !== undefined && !isChat) retellUpdate.ivr_option = body.ivr_option;
+
+    // Voicemail detection timeout (voice only)
+    if (body.voicemail_detection_timeout_ms !== undefined && !isChat) retellUpdate.voicemail_detection_timeout_ms = body.voicemail_detection_timeout_ms;
+
+    // Custom STT config
+    if (body.custom_stt_config !== undefined && !isChat) retellUpdate.custom_stt_config = body.custom_stt_config;
 
     // Security fallback
     if (body.security_fallback) {
