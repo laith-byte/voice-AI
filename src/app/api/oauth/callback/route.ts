@@ -206,6 +206,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // For Housecall Pro, fetch company info
+    if (provider === "housecallpro") {
+      const hcpInfoRes = await fetch(
+        "https://api.housecallpro.com/pro/v1/me",
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (hcpInfoRes.ok) {
+        const hcpInfo = await hcpInfoRes.json();
+        providerMetadata = {
+          company_id: hcpInfo.company?.id || null,
+          company_name: hcpInfo.company?.name || null,
+          user_id: hcpInfo.id || null,
+          user_name: hcpInfo.name || null,
+        };
+        providerEmail = hcpInfo.email || null;
+      }
+    }
+
+    // For Jobber, fetch account info via GraphQL
+    if (provider === "jobber") {
+      const jobberInfoRes = await fetch(
+        "https://api.getjobber.com/api/graphql",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            "X-JOBBER-GRAPHQL-VERSION": "2024-12-17",
+          },
+          body: JSON.stringify({
+            query: `{ account { id name } user { id name { full } email { raw } } }`,
+          }),
+        }
+      );
+      if (jobberInfoRes.ok) {
+        const jobberInfo = await jobberInfoRes.json();
+        const acct = jobberInfo.data?.account;
+        const usr = jobberInfo.data?.user;
+        providerMetadata = {
+          account_id: acct?.id || null,
+          account_name: acct?.name || null,
+          user_id: usr?.id || null,
+          user_name: usr?.name?.full || null,
+        };
+        providerEmail = usr?.email?.raw || null;
+      }
+    }
+
     // Upsert into oauth_connections
     const supabase = await createServiceClient();
     const { error: upsertError } = await supabase
@@ -233,7 +281,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Register Retell tools if applicable (non-blocking)
-    if (["google", "hubspot", "calendly", "salesforce", "gohighlevel"].includes(provider)) {
+    if (["google", "hubspot", "calendly", "salesforce", "gohighlevel", "housecallpro", "jobber"].includes(provider)) {
       registerAgentTools(clientId, provider).catch((err) =>
         console.error("Failed to register Retell tools:", err)
       );

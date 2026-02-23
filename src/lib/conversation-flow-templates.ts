@@ -103,6 +103,18 @@ export const INDUSTRIES: Record<string, IndustryConfig> = {
     dispatchItem: "technician",
     dispatchTimeframe: "45 minutes",
   },
+  hvac: {
+    label: "HVAC",
+    specialist: "HVAC technician",
+    servicePlural: "heating, cooling, and air quality services",
+    customer: "homeowner",
+    appointmentTerm: "service appointment",
+    leadOptions: ["AC Repair", "AC Installation", "Heating Repair", "Furnace Installation", "Maintenance & Tune-Up", "Duct Work", "Thermostat Installation", "Indoor Air Quality", "Emergency Service"],
+    supportOptions: ["Repair status", "Warranty questions", "Reschedule service", "Equipment questions"],
+    receptionistOptions: ["Schedule a service call", "Get an estimate", "Emergency HVAC repair", "Speak with a technician"],
+    dispatchItem: "HVAC technician",
+    dispatchTimeframe: "45 minutes",
+  },
   retail: {
     label: "Retail & Consumer",
     specialist: "customer service representative",

@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/usage-alerts",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/retry-queue",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

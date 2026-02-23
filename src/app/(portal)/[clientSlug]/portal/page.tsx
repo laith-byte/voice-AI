@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { RecentSyncsWidget } from "@/components/portal/recent-syncs-widget";
 
 interface AgentRow {
   id: string;
@@ -608,6 +609,9 @@ export default function PortalAgentsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Recent CRM Syncs */}
+          <RecentSyncsWidget />
 
           {/* Agent Grid */}
           <div>

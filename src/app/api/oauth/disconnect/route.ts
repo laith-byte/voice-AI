@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Unregister Retell tools if applicable
-  if (provider === "google" || provider === "hubspot") {
+  if (["google", "hubspot", "calendly", "salesforce", "gohighlevel", "housecallpro", "jobber"].includes(provider)) {
     try {
       await unregisterAgentTools(clientId, provider);
     } catch (err) {

@@ -246,6 +246,298 @@ export const GOHIGHLEVEL_TOOLS = [
   },
 ];
 
+export const HOUSECALLPRO_TOOLS = [
+  {
+    type: "custom",
+    name: "lookup_caller_housecallpro",
+    description:
+      "Look up a caller's information in Housecall Pro by their phone number. Use this at the start of the call to personalize the conversation.",
+    url: `${APP_URL}/api/tools/housecallpro/lookup`,
+    method: "POST",
+    speak_during_execution: false,
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        caller_phone_number: {
+          type: "string",
+          description: "The caller's phone number in E.164 format",
+        },
+      },
+      required: ["caller_phone_number"],
+    },
+    response_variables: {
+      caller_found: "$.found",
+      caller_name: "$.caller_name",
+      caller_company: "$.company",
+    },
+  },
+  {
+    type: "custom",
+    name: "check_availability_housecallpro",
+    description:
+      "Check technician schedule availability in Housecall Pro for a given date.",
+    url: `${APP_URL}/api/tools/housecallpro/availability`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are checking the schedule for available times",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "The date to check availability for, in YYYY-MM-DD format",
+        },
+        service_type: {
+          type: "string",
+          description: "The type of service requested (optional)",
+        },
+      },
+      required: ["date"],
+    },
+    response_variables: {
+      available_slots: "$.slots",
+      earliest_slot: "$.earliest",
+    },
+  },
+  {
+    type: "custom",
+    name: "book_job_housecallpro",
+    description:
+      "Book a job in Housecall Pro. Use this after the caller confirms a time slot.",
+    url: `${APP_URL}/api/tools/housecallpro/book`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are booking the job",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        customer_name: {
+          type: "string",
+          description: "The customer's full name",
+        },
+        customer_phone: {
+          type: "string",
+          description: "The customer's phone number",
+        },
+        service_type: {
+          type: "string",
+          description: "The type of service to book",
+        },
+        preferred_date: {
+          type: "string",
+          description: "Preferred date in YYYY-MM-DD format",
+        },
+        preferred_time: {
+          type: "string",
+          description: "Preferred time (e.g. '09:00', '14:00')",
+        },
+        notes: {
+          type: "string",
+          description: "Additional notes for the job",
+        },
+      },
+      required: ["customer_name", "customer_phone", "service_type", "preferred_date", "preferred_time", "notes"],
+    },
+    response_variables: {
+      job_booked: "$.success",
+      job_id: "$.job_id",
+    },
+  },
+  {
+    type: "custom",
+    name: "create_estimate_housecallpro",
+    description:
+      "Create an estimate in Housecall Pro for a customer.",
+    url: `${APP_URL}/api/tools/housecallpro/create-estimate`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are creating an estimate",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        customer_name: {
+          type: "string",
+          description: "The customer's full name",
+        },
+        customer_phone: {
+          type: "string",
+          description: "The customer's phone number",
+        },
+        service_type: {
+          type: "string",
+          description: "The type of service for the estimate",
+        },
+        notes: {
+          type: "string",
+          description: "Additional notes for the estimate",
+        },
+      },
+      required: ["customer_name", "customer_phone", "service_type", "notes"],
+    },
+    response_variables: {
+      estimate_created: "$.success",
+      estimate_id: "$.estimate_id",
+    },
+  },
+];
+
+export const JOBBER_TOOLS = [
+  {
+    type: "custom",
+    name: "lookup_caller_jobber",
+    description:
+      "Look up a caller's information in Jobber by their phone number. Use this at the start of the call to personalize the conversation.",
+    url: `${APP_URL}/api/tools/jobber/lookup`,
+    method: "POST",
+    speak_during_execution: false,
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        caller_phone_number: {
+          type: "string",
+          description: "The caller's phone number in E.164 format",
+        },
+      },
+      required: ["caller_phone_number"],
+    },
+    response_variables: {
+      caller_found: "$.found",
+      caller_name: "$.caller_name",
+      caller_company: "$.company",
+    },
+  },
+  {
+    type: "custom",
+    name: "check_availability_jobber",
+    description:
+      "Check schedule availability in Jobber for a given date.",
+    url: `${APP_URL}/api/tools/jobber/availability`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are checking the schedule for available times",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "The date to check availability for, in YYYY-MM-DD format",
+        },
+        service_type: {
+          type: "string",
+          description: "The type of service requested (optional)",
+        },
+      },
+      required: ["date"],
+    },
+    response_variables: {
+      available_slots: "$.slots",
+      earliest_slot: "$.earliest",
+    },
+  },
+  {
+    type: "custom",
+    name: "book_job_jobber",
+    description:
+      "Create a job in Jobber. Use this after the caller confirms a time slot.",
+    url: `${APP_URL}/api/tools/jobber/book`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are booking the job",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        customer_name: {
+          type: "string",
+          description: "The customer's full name",
+        },
+        customer_phone: {
+          type: "string",
+          description: "The customer's phone number",
+        },
+        service_type: {
+          type: "string",
+          description: "The type of service to book",
+        },
+        preferred_date: {
+          type: "string",
+          description: "Preferred date in YYYY-MM-DD format",
+        },
+        preferred_time: {
+          type: "string",
+          description: "Preferred time (e.g. '09:00', '14:00')",
+        },
+        notes: {
+          type: "string",
+          description: "Additional notes for the job",
+        },
+      },
+      required: ["customer_name", "customer_phone", "service_type", "preferred_date", "preferred_time", "notes"],
+    },
+    response_variables: {
+      job_booked: "$.success",
+      job_id: "$.job_id",
+    },
+  },
+  {
+    type: "custom",
+    name: "create_quote_jobber",
+    description:
+      "Create a quote in Jobber for a customer.",
+    url: `${APP_URL}/api/tools/jobber/create-quote`,
+    method: "POST",
+    speak_during_execution: true,
+    execution_message_description:
+      "Let the caller know you are creating a quote",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: {
+      type: "object",
+      properties: {
+        customer_name: {
+          type: "string",
+          description: "The customer's full name",
+        },
+        customer_phone: {
+          type: "string",
+          description: "The customer's phone number",
+        },
+        service_type: {
+          type: "string",
+          description: "The type of service for the quote",
+        },
+        notes: {
+          type: "string",
+          description: "Additional notes for the quote",
+        },
+      },
+      required: ["customer_name", "customer_phone", "service_type", "notes"],
+    },
+    response_variables: {
+      quote_created: "$.success",
+      quote_id: "$.quote_id",
+    },
+  },
+];
+
 async function getRetellApiKeyForClient(
   clientId: string
 ): Promise<{ apiKey: string; retellAgentId: string } | null> {
@@ -370,6 +662,14 @@ export async function registerAgentTools(
     newTools = addAuthHeaders(
       injectClientId(GOHIGHLEVEL_TOOLS as unknown as Record<string, unknown>[], clientId)
     );
+  } else if (provider === "housecallpro") {
+    newTools = addAuthHeaders(
+      injectClientId(HOUSECALLPRO_TOOLS as unknown as Record<string, unknown>[], clientId)
+    );
+  } else if (provider === "jobber") {
+    newTools = addAuthHeaders(
+      injectClientId(JOBBER_TOOLS as unknown as Record<string, unknown>[], clientId)
+    );
   }
 
   // Filter out any existing tools with the same names
@@ -450,6 +750,10 @@ export async function unregisterAgentTools(
     toolNamesToRemove = SALESFORCE_TOOLS.map((t) => t.name);
   } else if (provider === "gohighlevel") {
     toolNamesToRemove = GOHIGHLEVEL_TOOLS.map((t) => t.name);
+  } else if (provider === "housecallpro") {
+    toolNamesToRemove = HOUSECALLPRO_TOOLS.map((t) => t.name);
+  } else if (provider === "jobber") {
+    toolNamesToRemove = JOBBER_TOOLS.map((t) => t.name);
   }
 
   const removeSet = new Set(toolNamesToRemove);

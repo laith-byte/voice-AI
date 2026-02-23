@@ -6,6 +6,8 @@ import { executeTwilioSms } from "@/lib/oauth/executors/twilio-sms";
 import { executeQuickBooks } from "@/lib/oauth/executors/quickbooks";
 import { executeSalesforce } from "@/lib/oauth/executors/salesforce";
 import { executeGoHighLevel } from "@/lib/oauth/executors/gohighlevel";
+import { executeHousecallPro } from "@/lib/oauth/executors/housecallpro";
+import { executeJobber } from "@/lib/oauth/executors/jobber";
 
 export async function executeNativeRecipe(
   provider: string,
@@ -36,6 +38,10 @@ export async function executeNativeRecipe(
       return executeSalesforce(callLog as never, clientId, config);
     case "gohighlevel":
       return executeGoHighLevel(callLog as never, clientId, config);
+    case "housecallpro":
+      return executeHousecallPro(callLog as never, clientId, config);
+    case "jobber":
+      return executeJobber(callLog as never, clientId, config);
     default:
       throw new Error(`Unknown native provider: ${provider}`);
   }

@@ -76,6 +76,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   quickbooks: "QuickBooks",
   salesforce: "Salesforce",
   gohighlevel: "GoHighLevel",
+  housecallpro: "Housecall Pro",
+  jobber: "Jobber",
 };
 
 // Map recipe categories/names to plan access fields
@@ -92,6 +94,8 @@ const RECIPE_PLAN_GATES: Record<string, string> = {
   hubspot: "crm_integration",
   salesforce: "crm_integration",
   gohighlevel: "crm_integration",
+  housecallpro: "crm_integration",
+  jobber: "crm_integration",
   webhook: "webhook_forwarding",
   webhook_forwarding: "webhook_forwarding",
 };

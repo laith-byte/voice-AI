@@ -81,6 +81,22 @@ const PROVIDERS: Record<string, () => OAuthProviderConfig> = {
     clientId: process.env.GHL_CLIENT_ID!,
     clientSecret: process.env.GHL_CLIENT_SECRET!,
   }),
+
+  housecallpro: () => ({
+    authUrl: "https://api.housecallpro.com/oauth/authorize",
+    tokenUrl: "https://api.housecallpro.com/oauth/token",
+    scopes: [],
+    clientId: process.env.HOUSECALLPRO_CLIENT_ID!,
+    clientSecret: process.env.HOUSECALLPRO_CLIENT_SECRET!,
+  }),
+
+  jobber: () => ({
+    authUrl: "https://api.getjobber.com/api/oauth/authorize",
+    tokenUrl: "https://api.getjobber.com/api/oauth/token",
+    scopes: ["read:clients", "write:clients", "read:jobs", "write:jobs", "read:quotes", "write:quotes", "read:schedules"],
+    clientId: process.env.JOBBER_CLIENT_ID!,
+    clientSecret: process.env.JOBBER_CLIENT_SECRET!,
+  }),
 };
 
 export function getProviderConfig(provider: string): OAuthProviderConfig {
