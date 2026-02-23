@@ -29,7 +29,8 @@ export async function POST(request: NextRequest) {
 
     const result = await jobberGraphQL(
       accessToken,
-      `{ calendarEvents(filter: { startAt: { gte: "${startOfDay}" }, endAt: { lte: "${endOfDay}" } }) { nodes { startAt endAt title } } }`
+      `query($startAt: DateTime!, $endAt: DateTime!) { calendarEvents(filter: { startAt: { gte: $startAt }, endAt: { lte: $endAt } }) { nodes { startAt endAt title } } }`,
+      { startAt: startOfDay, endAt: endOfDay }
     );
 
     const events = (result.data?.calendarEvents as { nodes: { startAt: string; endAt: string; title: string }[] })?.nodes || [];

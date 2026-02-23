@@ -60,6 +60,7 @@ import {
   Plane,
   Banknote,
   ArrowRight,
+  Snowflake,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -205,6 +206,13 @@ const INDUSTRY_STYLES: Record<
     text: "text-orange-700 dark:text-orange-300",
     border: "border-orange-200 dark:border-orange-800",
     icon: Banknote,
+  },
+  hvac: {
+    gradient: "from-cyan-500 to-blue-600",
+    bg: "bg-cyan-50 dark:bg-cyan-950/30",
+    text: "text-cyan-700 dark:text-cyan-300",
+    border: "border-cyan-200 dark:border-cyan-800",
+    icon: Snowflake,
   },
 };
 

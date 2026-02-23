@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
 
     const result = await jobberGraphQL(
       accessToken,
-      `{ clients(searchTerm: "${caller_phone_number}") { nodes { id name { full } phones { number } emails { address } companyName } } }`
+      `query($searchTerm: String!) { clients(searchTerm: $searchTerm) { nodes { id name { full } phones { number } emails { address } companyName } } }`,
+      { searchTerm: caller_phone_number }
     );
 
     const nodes = (result.data?.clients as { nodes: { id: string; name: { full: string }; phones: { number: string }[]; emails: { address: string }[]; companyName: string | null }[] })?.nodes || [];

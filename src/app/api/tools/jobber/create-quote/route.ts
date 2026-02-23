@@ -26,7 +26,8 @@ export async function POST(request: NextRequest) {
     // Look up or create client
     const searchResult = await jobberGraphQL(
       accessToken,
-      `{ clients(searchTerm: "${customer_phone}") { nodes { id } } }`
+      `query($searchTerm: String!) { clients(searchTerm: $searchTerm) { nodes { id } } }`,
+      { searchTerm: customer_phone }
     );
 
     const existingClients = (searchResult.data?.clients as { nodes: { id: string }[] })?.nodes || [];

@@ -78,7 +78,8 @@ export async function executeJobber(
     // Search for existing client by phone
     const searchResult = await jobberGraphQL(
       accessToken,
-      `{ clients(searchTerm: "${phone}") { nodes { id name { full } phones { number } emails { address } } } }`
+      `query($searchTerm: String!) { clients(searchTerm: $searchTerm) { nodes { id name { full } phones { number } emails { address } } } }`,
+      { searchTerm: phone }
     );
 
     const clients = (searchResult.data?.clients as { nodes: { id: string; name: { full: string }; phones: { number: string }[]; emails: { address: string }[] }[] })?.nodes || [];
