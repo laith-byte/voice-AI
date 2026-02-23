@@ -10,7 +10,12 @@ import {
   Pencil,
   Trash2,
   Users,
+  Bell,
+  Phone,
+  ArrowRight,
+  X,
 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -73,6 +78,18 @@ interface ClientAutomationSummary {
   last_triggered_at: string | null;
 }
 
+interface IntegrationRequest {
+  id: string;
+  client_id: string;
+  request_type: "integration" | "phone_number";
+  recipe_id: string | null;
+  metadata: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  clients: { name: string } | null;
+  automation_recipes: { name: string; icon: string | null } | null;
+}
+
 export default function StartupAutomationsPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [clientStats, setClientStats] = useState<Record<string, ClientAutomationSummary>>({});
@@ -83,6 +100,7 @@ export default function StartupAutomationsPage() {
   const [recipeToDelete, setRecipeToDelete] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+  const [pendingRequests, setPendingRequests] = useState<IntegrationRequest[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -92,6 +110,13 @@ export default function StartupAutomationsPage() {
       if (res.ok) {
         const data = await res.json();
         setRecipes(data.recipes || []);
+      }
+
+      // Fetch pending integration requests
+      const reqsRes = await fetch("/api/integration-requests?status=pending");
+      if (reqsRes.ok) {
+        const reqsData = await reqsRes.json();
+        setPendingRequests(reqsData.requests || []);
       }
 
       // Fetch client automation stats directly from Supabase
@@ -238,6 +263,84 @@ export default function StartupAutomationsPage() {
           Create Recipe
         </Button>
       </div>
+
+      {/* Client Requests */}
+      {pendingRequests.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Bell className="w-4 h-4 text-amber-500" />
+            <h2 className="text-sm font-semibold text-[#111827]">
+              Client Requests ({pendingRequests.length})
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pendingRequests.map((req) => (
+              <Card key={req.id} className="border-amber-200 bg-amber-50/30">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg flex-shrink-0">
+                        {req.request_type === "phone_number"
+                          ? "📞"
+                          : req.automation_recipes?.icon || "⚡"}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#111827] truncate">
+                          {req.request_type === "phone_number"
+                            ? "Phone Number Setup"
+                            : req.automation_recipes?.name || "Integration"}
+                        </p>
+                        <p className="text-xs text-[#6b7280] truncate">
+                          {req.clients?.name || "Unknown client"} &middot;{" "}
+                          {timeAgo(req.created_at)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          if (req.request_type === "phone_number") {
+                            window.location.href = `/clients/${req.client_id}/phone-numbers`;
+                          } else {
+                            window.location.href = `/clients/${req.client_id}/automations`;
+                          }
+                        }}
+                      >
+                        Set Up
+                        <ArrowRight className="w-3 h-3 ml-1" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-[#6b7280] hover:text-red-600"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/integration-requests/${req.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ status: "dismissed" }),
+                            });
+                            if (!res.ok) throw new Error("Failed to dismiss");
+                            setPendingRequests((prev) => prev.filter((r) => r.id !== req.id));
+                            toast.success("Request dismissed");
+                          } catch {
+                            toast.error("Failed to dismiss request");
+                          }
+                        }}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recipes Table */}
       {recipes.length > 0 ? (

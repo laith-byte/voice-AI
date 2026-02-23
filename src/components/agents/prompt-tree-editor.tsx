@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { nodeTypes } from "./prompt-tree-nodes";
 import { PromptTreeToolbar } from "./prompt-tree-toolbar";
 import { PromptTreeSidebar } from "./prompt-tree-sidebar";
+import { PromptTreeTestPanel } from "./prompt-tree-test-panel";
 import { CustomFunctionDialog, CalToolDialog, ToolConfigDialog } from "./prompt-tree-tool-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -580,6 +581,9 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // Test call panel
+  const [showTestPanel, setShowTestPanel] = useState(false);
+
   // Engine metadata for retell-llm compatibility
   const [engineType, setEngineType] = useState<"conversation-flow" | "retell-llm" | null>(null);
   const [llmId, setLlmId] = useState<string | null>(null);
@@ -640,6 +644,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
             data: {
               type: "begin_tag",
               startSpeaker: data.flow.start_speaker ?? "agent",
+              onStartTest: () => setShowTestPanel(true),
             } as BeginTagNodeData as PromptTreeNodeData,
             draggable: true,
             selectable: false,
@@ -789,6 +794,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
               data: {
                 type: "begin_tag",
                 startSpeaker: data.flow.start_speaker ?? "agent",
+                onStartTest: () => setShowTestPanel(true),
               } as BeginTagNodeData as PromptTreeNodeData,
               draggable: true,
               selectable: false,
@@ -1423,6 +1429,12 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
           onAddTool={handleAddTool}
           onEditTool={handleEditTool}
           onClose={() => setSelectedNodeId(null)}
+        />
+      )}
+      {showTestPanel && (
+        <PromptTreeTestPanel
+          agentId={agentId}
+          onClose={() => setShowTestPanel(false)}
         />
       )}
 

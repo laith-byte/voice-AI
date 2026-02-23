@@ -180,6 +180,8 @@ export default function OnboardingWizardPage() {
   const [goingLive, setGoingLive] = useState(false);
   const [deployingFlow, setDeployingFlow] = useState(false);
   const [flowDeployed, setFlowDeployed] = useState(false);
+  const [phoneRequestedOnboarding, setPhoneRequestedOnboarding] = useState(false);
+  const [phoneRequestingOnboarding, setPhoneRequestingOnboarding] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Fetch onboarding status & templates on mount
@@ -249,6 +251,19 @@ export default function OnboardingWizardPage() {
             .maybeSingle();
           if (phoneRow?.number) {
             setAssignedPhoneNumber(phoneRow.number);
+          }
+
+          // Check for existing pending phone request
+          const { data: phoneReqRow } = await supabaseInner
+            .from("integration_requests")
+            .select("id")
+            .eq("client_id", statusData.client_id)
+            .eq("request_type", "phone_number")
+            .eq("status", "pending")
+            .limit(1)
+            .maybeSingle();
+          if (phoneReqRow) {
+            setPhoneRequestedOnboarding(true);
           }
         }
       }
@@ -772,7 +787,7 @@ export default function OnboardingWizardPage() {
               financial_services: "Financial Services",
               insurance: "Insurance",
               logistics: "Logistics",
-              home_services: "Home Services",
+              hvac: "Home Services",
               retail: "Retail & Consumer",
               travel_hospitality: "Travel & Hospitality",
               debt_collection: "Debt Collection",
@@ -2590,19 +2605,99 @@ export default function OnboardingWizardPage() {
                           </p>
                         </div>
                       </div>
-                    ) : (
+                    ) : phoneRequestedOnboarding ? (
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
-                          <Phone className="w-5 h-5 text-blue-500" />
+                        <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0">
+                          <Check className="w-5 h-5 text-amber-600" />
                         </div>
                         <div>
                           <h3 className="font-semibold text-sm">
-                            Phone number
+                            Phone Number Requested
                           </h3>
                           <p className="text-xs text-muted-foreground">
-                            Your phone number will be configured by your team.
+                            Your administrator will reach out shortly to complete the setup.
                             You can proceed to go live.
                           </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Phone className="w-4 h-4 text-primary" />
+                          <h3 className="font-semibold text-sm">Phone Number</h3>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-4">
+                          Choose how you&apos;d like to set up a phone number for your AI agent.
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <Button
+                            variant="outline"
+                            className="h-auto py-3 flex flex-col items-start gap-1"
+                            disabled={phoneRequestingOnboarding}
+                            onClick={async () => {
+                              setPhoneRequestingOnboarding(true);
+                              try {
+                                const res = await fetch("/api/integration-requests", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ request_type: "phone_number", metadata: { subtype: "new" } }),
+                                });
+                                if (!res.ok) {
+                                  const err = await res.json().catch(() => null);
+                                  throw new Error(err?.error || "Failed to submit request");
+                                }
+                                setPhoneRequestedOnboarding(true);
+                                toast.success("Phone number request submitted!");
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Failed to submit request");
+                              } finally {
+                                setPhoneRequestingOnboarding(false);
+                              }
+                            }}
+                          >
+                            {phoneRequestingOnboarding ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <span className="font-medium text-sm">Get a New Number</span>
+                                <span className="text-xs text-muted-foreground font-normal">Request a new phone number</span>
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="h-auto py-3 flex flex-col items-start gap-1"
+                            disabled={phoneRequestingOnboarding}
+                            onClick={async () => {
+                              setPhoneRequestingOnboarding(true);
+                              try {
+                                const res = await fetch("/api/integration-requests", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ request_type: "phone_number", metadata: { subtype: "existing" } }),
+                                });
+                                if (!res.ok) {
+                                  const err = await res.json().catch(() => null);
+                                  throw new Error(err?.error || "Failed to submit request");
+                                }
+                                setPhoneRequestedOnboarding(true);
+                                toast.success("Phone number request submitted!");
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Failed to submit request");
+                              } finally {
+                                setPhoneRequestingOnboarding(false);
+                              }
+                            }}
+                          >
+                            {phoneRequestingOnboarding ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <>
+                                <span className="font-medium text-sm">Connect Existing Number</span>
+                                <span className="text-xs text-muted-foreground font-normal">Bring your own phone number</span>
+                              </>
+                            )}
+                          </Button>
                         </div>
                       </div>
                     )}

@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Sparkles, Zap, Lock } from "lucide-react";
+import { Sparkles, Zap, Lock, Phone, Loader2, Check } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { RecipeCard } from "@/components/automations/recipe-card";
 import { RecipeSetupModal } from "@/components/automations/recipe-setup-modal";
+import { IntegrationRequestModal } from "@/components/automations/integration-request-modal";
 import { ActiveAutomationCard } from "@/components/automations/active-automation-card";
 import { usePlanAccess } from "@/hooks/use-plan-access";
 import { UpgradeBanner } from "@/components/portal/upgrade-banner";
@@ -132,6 +135,11 @@ function groupRecipesBySection(recipes: Recipe[]): Record<string, Recipe[]> {
   return groups;
 }
 
+function requiresAdminSetup(recipe: Recipe): boolean {
+  if (!recipe.config_schema || !Array.isArray(recipe.config_schema)) return false;
+  return recipe.config_schema.some((field) => field.type === "oauth_connect");
+}
+
 export default function PortalAutomationsPage() {
   return (
     <Suspense fallback={<div className="space-y-6 p-6"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div><Skeleton className="h-64" /></div>}>
@@ -149,16 +157,22 @@ function PortalAutomationsContent() {
   const [clientId, setClientId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [setupRecipe, setSetupRecipe] = useState<Recipe | null>(null);
+  const [requestRecipe, setRequestRecipe] = useState<Recipe | null>(null);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
+  const [pendingPhoneRequest, setPendingPhoneRequest] = useState(false);
+  const [phoneRequesting, setPhoneRequesting] = useState(false);
+  const [phoneRequestSubmitted, setPhoneRequestSubmitted] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [recipesRes, automationsRes, connectionsRes] = await Promise.all([
+      const [recipesRes, automationsRes, connectionsRes, requestsRes] = await Promise.all([
         fetch("/api/automations/recipes"),
         fetch("/api/automations/client"),
         fetch("/api/oauth/connections"),
+        fetch("/api/integration-requests?status=pending"),
       ]);
 
       if (recipesRes.ok) {
@@ -174,6 +188,19 @@ function PortalAutomationsContent() {
       if (connectionsRes.ok) {
         const data = await connectionsRes.json();
         setOauthConnections(data.connections || []);
+      }
+      if (requestsRes.ok) {
+        const data = await requestsRes.json();
+        const requests = data.requests || [];
+        const recipeIds = new Set<string>(
+          requests
+            .filter((r: { request_type: string; recipe_id: string | null }) => r.request_type === "integration" && r.recipe_id)
+            .map((r: { recipe_id: string }) => r.recipe_id)
+        );
+        setPendingRequests(recipeIds);
+        setPendingPhoneRequest(
+          requests.some((r: { request_type: string }) => r.request_type === "phone_number")
+        );
       }
     } catch {
       toast.error("Failed to load integrations");
@@ -420,7 +447,18 @@ function PortalAutomationsContent() {
                     <RecipeCard
                       key={recipe.id}
                       recipe={recipe}
-                      onSetup={() => atRecipeLimit ? toast.error("Recipe limit reached. Upgrade your plan for more integrations.") : setSetupRecipe(recipe)}
+                      requested={pendingRequests.has(recipe.id)}
+                      onSetup={() => {
+                        if (atRecipeLimit) {
+                          toast.error("Recipe limit reached. Upgrade your plan for more integrations.");
+                        } else if (pendingRequests.has(recipe.id)) {
+                          // Already requested, do nothing
+                        } else if (requiresAdminSetup(recipe)) {
+                          setRequestRecipe(recipe);
+                        } else {
+                          setSetupRecipe(recipe);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -470,6 +508,112 @@ function PortalAutomationsContent() {
           </section>
         )}
 
+        {/* Phone Number Section */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Phone className="w-4 h-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Phone Number
+            </h2>
+          </div>
+          {pendingPhoneRequest || phoneRequestSubmitted ? (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0">
+                    <Check className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm">Phone Number Requested</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Your administrator will reach out shortly to complete the setup.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200">
+                <CardContent className="p-4">
+                  <span className="text-2xl leading-none mb-2 block">📞</span>
+                  <h3 className="font-semibold text-sm mb-1">Get a New Number</h3>
+                  <p className="text-muted-foreground text-xs leading-snug mb-3">
+                    Request a new phone number for your AI agent.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={phoneRequesting}
+                    onClick={async () => {
+                      setPhoneRequesting(true);
+                      try {
+                        const res = await fetch("/api/integration-requests", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ request_type: "phone_number", metadata: { subtype: "new" } }),
+                        });
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => null);
+                          throw new Error(err?.error || "Failed to submit request");
+                        }
+                        setPhoneRequestSubmitted(true);
+                        toast.success("Phone number request submitted!");
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Failed to submit request");
+                      } finally {
+                        setPhoneRequesting(false);
+                      }
+                    }}
+                  >
+                    {phoneRequesting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                    Request New Number
+                  </Button>
+                </CardContent>
+              </Card>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all duration-200">
+                <CardContent className="p-4">
+                  <span className="text-2xl leading-none mb-2 block">🔗</span>
+                  <h3 className="font-semibold text-sm mb-1">Connect Existing Number</h3>
+                  <p className="text-muted-foreground text-xs leading-snug mb-3">
+                    Bring your own phone number to use with your AI agent.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={phoneRequesting}
+                    onClick={async () => {
+                      setPhoneRequesting(true);
+                      try {
+                        const res = await fetch("/api/integration-requests", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ request_type: "phone_number", metadata: { subtype: "existing" } }),
+                        });
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => null);
+                          throw new Error(err?.error || "Failed to submit request");
+                        }
+                        setPhoneRequestSubmitted(true);
+                        toast.success("Phone number request submitted!");
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Failed to submit request");
+                      } finally {
+                        setPhoneRequesting(false);
+                      }
+                    }}
+                  >
+                    {phoneRequesting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                    Connect Existing Number
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </section>
+
         {/* Empty state */}
         {recipes.length === 0 && automations.length === 0 && (
           <div className="text-center py-16">
@@ -507,6 +651,18 @@ function PortalAutomationsContent() {
         clientId={clientId}
         oauthConnections={oauthConnections}
         onConnectionChange={fetchConnections}
+      />
+
+      {/* Integration Request Modal */}
+      <IntegrationRequestModal
+        open={!!requestRecipe}
+        onOpenChange={(open) => !open && setRequestRecipe(null)}
+        recipe={requestRecipe}
+        onSuccess={() => {
+          if (requestRecipe) {
+            setPendingRequests((prev) => new Set([...prev, requestRecipe.id]));
+          }
+        }}
       />
     </div>
   );

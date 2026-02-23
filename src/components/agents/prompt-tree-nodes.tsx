@@ -417,10 +417,17 @@ const BeginTagNode = memo(function BeginTagNode({
 }: NodeProps<BeginTagFlowNode>) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 shadow-md">
+      <button
+        className="flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2 shadow-md hover:bg-emerald-600 transition-colors cursor-pointer"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (data.onStartTest) data.onStartTest();
+        }}
+        title="Click to start a test call"
+      >
         <Play className="size-3.5 text-white fill-white" />
         <span className="text-sm font-semibold text-white">Begin</span>
-      </div>
+      </button>
       <span className="text-[10px] text-gray-400 font-medium">
         {data.startSpeaker === "agent" ? "Agent speaks first" : "User speaks first"}
       </span>

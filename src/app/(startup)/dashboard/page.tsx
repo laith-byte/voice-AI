@@ -23,6 +23,8 @@ import {
   BarChart3,
   Receipt,
   Zap,
+  Bell,
+  ArrowRight,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -45,6 +47,16 @@ export default function DashboardHomePage() {
   const [totalCalls, setTotalCalls] = useState(0);
   const [onboardingInProgress, setOnboardingInProgress] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState(0);
+
+  // Integration requests
+  const [pendingRequests, setPendingRequests] = useState<{
+    id: string;
+    request_type: string;
+    client_id: string;
+    created_at: string;
+    clients: { name: string } | null;
+    automation_recipes: { name: string; icon: string | null } | null;
+  }[]>([]);
 
   // Setup checklist state
   const [retellConnected, setRetellConnected] = useState(false);
@@ -83,6 +95,7 @@ export default function DashboardHomePage() {
         integrationsResult,
         stripeResult,
         onboardingResult,
+        integrationRequestsResult,
       ] = await Promise.all([
         // Organization custom_domain
         supabase
@@ -130,6 +143,14 @@ export default function DashboardHomePage() {
           .from("client_onboarding")
           .select("status, current_step")
           .eq("organization_id", orgId),
+        // Pending integration requests
+        supabase
+          .from("integration_requests")
+          .select("id, request_type, client_id, created_at, clients(name), automation_recipes(name, icon)")
+          .eq("organization_id", orgId)
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .limit(5),
       ]);
 
       // Domain
@@ -163,6 +184,11 @@ export default function DashboardHomePage() {
         ).length;
         setOnboardingCompleted(completed);
         setOnboardingInProgress(onboardingResult.data.length - completed);
+      }
+
+      // Integration requests
+      if (integrationRequestsResult.data) {
+        setPendingRequests(integrationRequestsResult.data);
       }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
@@ -361,6 +387,72 @@ export default function DashboardHomePage() {
         </div>
       )}
 
+      {/* Pending Integration Requests */}
+      {pendingRequests.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/30">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-600" />
+                <CardTitle className="text-base">Client Requests</CardTitle>
+                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-xs">
+                  {pendingRequests.length}
+                </Badge>
+              </div>
+              <Button variant="ghost" size="sm" className="text-xs" asChild>
+                <Link href="/automations">
+                  View All
+                  <ArrowRight className="w-3 h-3 ml-1" />
+                </Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-2">
+              {pendingRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base flex-shrink-0">
+                      {req.request_type === "phone_number"
+                        ? "📞"
+                        : req.automation_recipes?.icon || "⚡"}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {req.clients?.name || "Client"}{" "}
+                        <span className="font-normal text-muted-foreground">
+                          requested{" "}
+                          {req.request_type === "phone_number"
+                            ? "phone number setup"
+                            : req.automation_recipes?.name || "an integration"}
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {timeAgo(req.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-7 text-xs flex-shrink-0" asChild>
+                    <Link
+                      href={
+                        req.request_type === "phone_number"
+                          ? `/clients/${req.client_id}/phone-numbers`
+                          : `/clients/${req.client_id}/overview`
+                      }
+                    >
+                      Set Up
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Quick Actions + Domain */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Domain Card */}
@@ -463,4 +555,15 @@ export default function DashboardHomePage() {
       )}
     </div>
   );
+}
+
+function timeAgo(date: string): string {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }

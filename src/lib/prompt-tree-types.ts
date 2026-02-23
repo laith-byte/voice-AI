@@ -518,6 +518,7 @@ export interface BeginTagNodeData {
   [key: string]: unknown;
   type: "begin_tag";
   startSpeaker: "user" | "agent";
+  onStartTest?: () => void;
 }
 
 export type PromptTreeNodeData =

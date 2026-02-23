@@ -15,9 +15,10 @@ interface RecipeCardProps {
     is_coming_soon: boolean
   }
   onSetup: (recipeId: string) => void
+  requested?: boolean
 }
 
-export function RecipeCard({ recipe, onSetup }: RecipeCardProps) {
+export function RecipeCard({ recipe, onSetup, requested }: RecipeCardProps) {
   return (
     <Card
       className={`relative transition-all duration-200 ${
@@ -29,6 +30,12 @@ export function RecipeCard({ recipe, onSetup }: RecipeCardProps) {
       {recipe.is_coming_soon && (
         <div className="absolute top-3 right-3 z-10">
           <Badge variant="secondary" className="text-[10px] font-medium">Coming Soon</Badge>
+        </div>
+      )}
+
+      {requested && !recipe.is_coming_soon && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge className="text-[10px] font-medium bg-amber-100 text-amber-800 hover:bg-amber-100">Requested</Badge>
         </div>
       )}
 
@@ -52,6 +59,10 @@ export function RecipeCard({ recipe, onSetup }: RecipeCardProps) {
         {recipe.is_coming_soon ? (
           <div className="mt-3 text-center text-xs text-muted-foreground py-1">
             We&apos;ll notify you when it&apos;s ready
+          </div>
+        ) : requested ? (
+          <div className="mt-3 text-center text-xs text-amber-600 font-medium py-1">
+            Pending
           </div>
         ) : (
           <Button
