@@ -24,9 +24,18 @@ async function authenticateN8n(request: NextRequest) {
   if (data) return { clientId: data.client_id, apiKeyHash: keyHash, supabase };
 
   // If no existing subscription, check if it's a new key format: client_id:random_key
+  // Verify the client_id actually exists before allowing the bootstrap path
   const parts = apiKey.split(":");
   if (parts.length === 2) {
-    return { clientId: parts[0], apiKeyHash: keyHash, supabase };
+    const { data: client } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", parts[0])
+      .single();
+
+    if (client) {
+      return { clientId: parts[0], apiKeyHash: keyHash, supabase };
+    }
   }
 
   return null;

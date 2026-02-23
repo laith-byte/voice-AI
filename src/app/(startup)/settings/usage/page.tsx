@@ -332,8 +332,8 @@ export default function SettingsUsagePage() {
 
       {/* Stat Cards */}
       {loading ? (
-        <div className="border border-[#e5e7eb] rounded-lg py-16 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+        <div className="border border-[#e5e7eb] rounded-lg min-h-[400px] flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

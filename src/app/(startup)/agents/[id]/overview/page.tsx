@@ -12,6 +12,32 @@ import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase/client";
 import type { Agent } from "@/types/database";
 
+function CopyButton({
+  value,
+  field,
+  copiedField,
+  onCopy,
+}: {
+  value: string;
+  field: string;
+  copiedField: string | null;
+  onCopy: (value: string, field: string) => void;
+}) {
+  return (
+    <button
+      onClick={() => onCopy(value, field)}
+      className="text-[#6b7280] hover:text-[#111827] transition-colors"
+      title="Copy to clipboard"
+    >
+      {copiedField === field ? (
+        <Check className="h-4 w-4 text-green-600" />
+      ) : (
+        <Copy className="h-4 w-4" />
+      )}
+    </button>
+  );
+}
+
 export default function AgentOverviewPage() {
   const params = useParams();
   const id = params.id as string;
@@ -60,26 +86,10 @@ export default function AgentOverviewPage() {
     setTimeout(() => setCopiedField(null), 2000);
   }
 
-  function CopyButton({ value, field }: { value: string; field: string }) {
-    return (
-      <button
-        onClick={() => handleCopy(value, field)}
-        className="text-[#6b7280] hover:text-[#111827] transition-colors"
-        title="Copy to clipboard"
-      >
-        {copiedField === field ? (
-          <Check className="h-4 w-4 text-green-600" />
-        ) : (
-          <Copy className="h-4 w-4" />
-        )}
-      </button>
-    );
-  }
-
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[300px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#6b7280]" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }
@@ -165,7 +175,7 @@ export default function AgentOverviewPage() {
                   className="font-mono text-sm pr-10"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <CopyButton value={agentId} field="agent-id" />
+                  <CopyButton value={agentId} field="agent-id" copiedField={copiedField} onCopy={handleCopy} />
                 </div>
               </div>
             </div>
@@ -192,7 +202,7 @@ export default function AgentOverviewPage() {
                   {kbName}
                 </Badge>
               )}
-              {kbId && <CopyButton value={kbId} field="kb-id" />}
+              {kbId && <CopyButton value={kbId} field="kb-id" copiedField={copiedField} onCopy={handleCopy} />}
             </div>
           </div>
         </div>
@@ -216,7 +226,7 @@ export default function AgentOverviewPage() {
               className="font-mono text-sm pr-10"
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
-              {webhookUrl && <CopyButton value={webhookUrl} field="webhook-url" />}
+              {webhookUrl && <CopyButton value={webhookUrl} field="webhook-url" copiedField={copiedField} onCopy={handleCopy} />}
             </div>
           </div>
         </div>

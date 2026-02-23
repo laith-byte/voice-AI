@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Try to find existing lead, or create one
-    let { data: lead } = await supabase
+    const { data: lead } = await supabase
       .from("leads")
       .select("id, dynamic_vars")
       .eq("phone", caller_phone)

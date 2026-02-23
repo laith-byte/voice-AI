@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import type { AiAnalysisConfig, Topic } from "@/types/database";
+import type { Topic } from "@/types/database";
 
 export default function AiAnalysisPage() {
   const params = useParams();
@@ -260,7 +260,7 @@ export default function AiAnalysisPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#6b7280]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }

@@ -194,11 +194,8 @@ export default function AssignedAgentsPage() {
     return (
       <div className="space-y-6">
         <Card className="rounded-lg">
-          <CardContent className="py-12 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
-            <span className="ml-2 text-sm text-[#6b7280]">
-              Loading agents...
-            </span>
+          <CardContent className="min-h-[400px] flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
           </CardContent>
         </Card>
       </div>

@@ -3,6 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Info, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -22,6 +32,9 @@ export default function BillingSubscriptionsPage() {
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<"active" | "scheduled">("active");
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [subToCancel, setSubToCancel] = useState<string | null>(null);
+  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -51,6 +64,7 @@ export default function BillingSubscriptionsPage() {
         return;
       }
       setIsConnected(true);
+      setStripeAccountId(connection.stripe_account_id);
 
       const res = await fetch("/api/billing", {
         method: "POST",
@@ -100,6 +114,30 @@ export default function BillingSubscriptionsPage() {
     fetchData();
   }, [fetchData]);
 
+  async function handleCancelSubscription(subscriptionId: string) {
+    if (!stripeAccountId) return;
+    setCancellingId(subscriptionId);
+    try {
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "cancel_subscription",
+          stripeAccountId,
+          subscriptionId,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      toast.success("Subscription will cancel at end of billing period.");
+      await fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to cancel subscription");
+    } finally {
+      setCancellingId(null);
+    }
+  }
+
   const filteredSubscriptions = subscriptions.filter((sub) => {
     if (activeTab === "active") return sub.status === "active" || sub.status === "past_due";
     return sub.status === "scheduled";
@@ -107,8 +145,8 @@ export default function BillingSubscriptionsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-[#6b7280]" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }
@@ -198,6 +236,9 @@ export default function BillingSubscriptionsPage() {
                 <th className="text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider px-4 py-3">
                   Period End
                 </th>
+                <th className="text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider px-4 py-3">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
@@ -233,6 +274,22 @@ export default function BillingSubscriptionsPage() {
                   <td className="px-4 py-3 text-sm text-[#6b7280]">
                     {sub.currentPeriodEnd}
                   </td>
+                  <td className="px-4 py-3">
+                    {sub.status === "active" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        onClick={() => setSubToCancel(sub.id)}
+                        disabled={cancellingId === sub.id}
+                      >
+                        {cancellingId === sub.id ? (
+                          <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />
+                        ) : null}
+                        Cancel
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -257,6 +314,32 @@ export default function BillingSubscriptionsPage() {
           </Button>
         </div>
       )}
+
+      {/* Cancel Subscription Confirmation */}
+      <AlertDialog open={!!subToCancel} onOpenChange={(open) => !open && setSubToCancel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Subscription</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cancel at end of billing period? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (subToCancel) {
+                  handleCancelSubscription(subToCancel);
+                  setSubToCancel(null);
+                }
+              }}
+            >
+              Cancel Subscription
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

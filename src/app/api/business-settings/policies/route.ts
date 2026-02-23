@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
 import { regeneratePrompt } from "@/lib/prompt-generator";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     .order("sort_order");
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 
@@ -45,11 +46,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 
-  regeneratePrompt(clientId!).catch(err => console.error("Prompt regeneration failed:", err));
+  regeneratePrompt(clientId!).catch(err => logger.error("Prompt regeneration failed", { error: String(err) }));
 
   return NextResponse.json(data, { status: 201 });
 }

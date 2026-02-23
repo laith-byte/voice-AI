@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   if (qualification && qualification !== "all") query = query.eq("qualification", qualification);
 
   const { data, error } = await query;
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data);
 }
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       { onConflict: "phone,agent_id" }
     ).select();
 
-    if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+    if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
     return NextResponse.json(data, { status: 201 });
   }
 
@@ -66,6 +67,6 @@ export async function POST(request: NextRequest) {
     dynamic_vars: body.dynamic_vars || {},
   }).select().single();
 
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data, { status: 201 });
 }

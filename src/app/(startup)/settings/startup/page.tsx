@@ -13,6 +13,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -29,6 +39,7 @@ export default function SettingsStartupPage() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [gdprEnabled, setGdprEnabled] = useState(false);
   const [hipaaEnabled, setHipaaEnabled] = useState(false);
+  const [showRemoveKeyDialog, setShowRemoveKeyDialog] = useState(false);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -102,20 +113,18 @@ export default function SettingsStartupPage() {
   async function handleSave() {
     if (!orgId) return;
     setSaving(true);
-    const supabase = createClient();
     try {
-      const { error } = await supabase
-        .from("organizations")
-        .update({ name: startupName })
-        .eq("id", orgId);
-      if (error) {
-        console.error("Failed to save organization name:", error);
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_name: startupName }),
+      });
+      if (!res.ok) {
         toast.error("Failed to save. Please try again.");
       } else {
         toast.success("Startup name updated.");
       }
-    } catch (error) {
-      console.error("Failed to save organization name:", error);
+    } catch {
       toast.error("Failed to save. Please try again.");
     } finally {
       setSaving(false);
@@ -322,7 +331,7 @@ export default function SettingsStartupPage() {
                   variant="outline"
                   size="sm"
                   className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                  onClick={handleRemoveApiKey}
+                  onClick={() => setShowRemoveKeyDialog(true)}
                   disabled={savingApiKey}
                 >
                   Remove
@@ -409,6 +418,30 @@ export default function SettingsStartupPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Remove API Key Confirmation */}
+      <AlertDialog open={showRemoveKeyDialog} onOpenChange={setShowRemoveKeyDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove API Key</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the API key? AI features will stop working until a new key is configured.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                handleRemoveApiKey();
+                setShowRemoveKeyDialog(false);
+              }}
+            >
+              Remove Key
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

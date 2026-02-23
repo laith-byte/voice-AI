@@ -42,7 +42,6 @@ import { toast } from "sonner";
 import {
   Plus,
   Trash2,
-  FileText,
   Globe,
   Type,
   Loader2,

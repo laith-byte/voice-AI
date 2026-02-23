@@ -338,7 +338,7 @@ export default function WidgetPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#6b7280]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }
@@ -384,6 +384,7 @@ export default function WidgetPage() {
               />
               {agentImageUrl ? (
                 <div className="relative border border-[#e5e7eb] rounded-lg p-2 group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={agentImageUrl}
                     alt="Agent"
@@ -493,6 +494,7 @@ export default function WidgetPage() {
               />
               {backgroundImageUrl ? (
                 <div className="relative border border-[#e5e7eb] rounded-lg p-2 group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={backgroundImageUrl}
                     alt="Background"
@@ -550,6 +552,7 @@ export default function WidgetPage() {
               />
               {launcherImageUrl ? (
                 <div className="relative border border-[#e5e7eb] rounded-lg p-2 group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={launcherImageUrl}
                     alt="Launcher"

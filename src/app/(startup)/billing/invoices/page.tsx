@@ -3,6 +3,23 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
 import { TablePagination } from "@/components/ui/table-pagination";
 import { toast } from "sonner";
@@ -19,12 +36,27 @@ interface Invoice {
   hostedInvoiceUrl: string | null;
 }
 
+interface Customer {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export default function BillingInvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 25;
+  const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
+
+  // Create invoice dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [invoiceAmount, setInvoiceAmount] = useState("");
+  const [invoiceDescription, setInvoiceDescription] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -54,6 +86,7 @@ export default function BillingInvoicesPage() {
         return;
       }
       setIsConnected(true);
+      setStripeAccountId(connection.stripe_account_id);
 
       const res = await fetch("/api/billing", {
         method: "POST",
@@ -101,10 +134,71 @@ export default function BillingInvoicesPage() {
     fetchData();
   }, [fetchData]);
 
+  async function handleOpenCreateDialog() {
+    if (!stripeAccountId) return;
+    setCreateOpen(true);
+    setSelectedCustomer("");
+    setInvoiceAmount("");
+    setInvoiceDescription("");
+    try {
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "list_customers",
+          stripeAccountId,
+        }),
+      });
+      const data = await res.json();
+      if (!data.error && Array.isArray(data)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setCustomers(data.map((c: any) => ({
+          id: c.id,
+          name: c.name || c.email || c.id,
+          email: c.email || "",
+        })));
+      }
+    } catch {
+      toast.error("Failed to load customers.");
+    }
+  }
+
+  async function handleCreateInvoice() {
+    if (!stripeAccountId || !selectedCustomer || !invoiceAmount) return;
+    const amount = parseFloat(invoiceAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "create_invoice",
+          stripeAccountId,
+          customerId: selectedCustomer,
+          amount,
+          description: invoiceDescription || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      toast.success("Invoice created and sent.");
+      setCreateOpen(false);
+      await fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create invoice");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-[#6b7280]" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }
@@ -139,7 +233,7 @@ export default function BillingInvoicesPage() {
         <h2 className="text-base font-medium text-[#111827]">
           {invoices.length} invoice{invoices.length !== 1 ? "s" : ""}
         </h2>
-        <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white" onClick={() => toast.info("Invoice creation coming soon. Create invoices directly in your Stripe dashboard for now.")}>
+        <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white" onClick={handleOpenCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
           Create Invoice
         </Button>
@@ -240,12 +334,81 @@ export default function BillingInvoicesPage() {
           <p className="text-sm text-[#6b7280] mb-4">
             Create an invoice to bill your clients.
           </p>
-          <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white" onClick={() => toast.info("Invoice creation coming soon. Create invoices directly in your Stripe dashboard for now.")}>
+          <Button className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white" onClick={handleOpenCreateDialog}>
             <Plus className="h-4 w-4 mr-2" />
             Create Invoice
           </Button>
         </div>
       )}
+
+      {/* Create Invoice Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Invoice</DialogTitle>
+            <DialogDescription>
+              Create and send a new invoice to a customer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Customer</Label>
+              <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select a customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}{c.email ? ` (${c.email})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoice-amount">Amount (USD)</Label>
+              <Input
+                id="invoice-amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                value={invoiceAmount}
+                onChange={(e) => setInvoiceAmount(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoice-desc">Description (optional)</Label>
+              <Input
+                id="invoice-desc"
+                placeholder="Invoice description..."
+                value={invoiceDescription}
+                onChange={(e) => setInvoiceDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
+              onClick={handleCreateInvoice}
+              disabled={!selectedCustomer || !invoiceAmount || creating}
+            >
+              {creating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create & Send"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { logger } from "@/lib/logger";
 
 export async function GET() {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { data, error } = await supabase
     .from("clients")
     .select("*, agents(id)")
     .order("created_at", { ascending: false });
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data);
 }
 
@@ -31,6 +32,6 @@ export async function POST(request: NextRequest) {
     status: body.status || "active",
   }).select().single();
 
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data, { status: 201 });
 }

@@ -124,7 +124,6 @@ export async function scoreLeadFromCall(
 
   // Evaluate each rule
   const breakdown: ScoreBreakdown = {};
-  let totalScore = 0;
 
   for (const rule of rules) {
     let matched = false;
@@ -136,7 +135,6 @@ export async function scoreLeadFromCall(
 
     if (matched) {
       breakdown[rule.criterion] = { points: rule.points, label: rule.label };
-      totalScore += rule.points;
     }
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -45,7 +45,6 @@ import {
   DollarSign,
 } from "lucide-react";
 import {
-  CLIENT_COST_CATEGORIES,
   RETELL_INFRA_COST,
   TELEPHONY_COST,
   ESTIMATOR_LLM_MODELS,
@@ -569,7 +568,6 @@ export default function PortalBillingPage() {
   const sub = data?.subscription;
   const plans = data?.plans || [];
   const currentPlan = data?.current_plan;
-  const addons = data?.addons || [];
   const clientAddons = data?.client_addons || [];
   const invoices = data?.invoices || [];
 

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createHash } from "crypto";
 
+function hashApiKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
 // GET — Zapier authentication test endpoint
 // Zapier calls this to verify the API key is valid
 export async function GET(request: NextRequest) {
@@ -17,6 +21,7 @@ export async function GET(request: NextRequest) {
   }
 
   const [clientId] = parts;
+  const keyHash = hashApiKey(apiKey);
   const supabase = await createServiceClient();
 
   // Verify the client exists
@@ -27,6 +32,19 @@ export async function GET(request: NextRequest) {
     .single();
 
   if (!client) {
+    return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+  }
+
+  // Verify the full API key hash exists in subscriptions
+  const { data: sub } = await supabase
+    .from("zapier_subscriptions")
+    .select("id")
+    .eq("client_id", clientId)
+    .eq("api_key_hash", keyHash)
+    .limit(1)
+    .maybeSingle();
+
+  if (!sub) {
     return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
   }
 

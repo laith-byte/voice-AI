@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { createServiceClient } from "@/lib/supabase/server";
-import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 
 export async function PATCH(request: NextRequest) {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const body = await request.json();

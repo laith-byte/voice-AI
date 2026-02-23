@@ -223,20 +223,32 @@ async function sendCallerFollowup(
     .replace(/\{\{caller_name\}\}/g, callerName);
 
   const delayMinutes = (config.delay_minutes as number) || 0;
+  const fromAddress = `${businessName} <noreply@invarialabs.com>`;
+  const htmlBody = `<div style="font-family: sans-serif; max-width: 600px; line-height: 1.6;">${body.replace(/\n/g, "<br/>")}</div>`;
 
-  const sendFn = async () => {
+  if (delayMinutes > 0) {
+    // Schedule the email for later delivery via cron
+    const sendAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+    const supabase = await createServiceClient();
+    await supabase.from("scheduled_emails").insert({
+      to: callerEmail,
+      subject,
+      html: htmlBody,
+      from_address: fromAddress,
+      send_at: sendAt,
+      status: "pending",
+      client_id: callLog.client_id,
+      call_log_id: callLog.id,
+    });
+  } else {
     const { sendEmail } = await import("@/lib/resend");
     await sendEmail({
       to: callerEmail,
       subject,
-      html: `<div style="font-family: sans-serif; max-width: 600px; line-height: 1.6;">${body.replace(/\n/g, "<br/>")}</div>`,
-      from: `${businessName} <noreply@invarialabs.com>`,
+      html: htmlBody,
+      from: fromAddress,
     });
-  };
-
-  // Note: delay_minutes is ignored on serverless — setTimeout callbacks are lost
-  // when the function terminates. Send immediately.
-  await sendFn();
+  }
 }
 
 // ---------------------------------------------------------------------------

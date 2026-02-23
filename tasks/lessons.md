@@ -41,4 +41,33 @@
 
 ## Learned Patterns
 
-_(populated after corrections)_
+### Platform Vet Audit (2026-02-22)
+
+**Pattern: Admin pages bypass API routes**
+- 4 admin pages write directly to Supabase from client components instead of going through API routes
+- This bypasses server-side validation, logging, and rate limiting
+- Rule: ALL mutations (insert/update/delete) must go through API routes, never direct Supabase client calls from "use client" components
+- Even when RLS protects the data, API routes add defense-in-depth
+
+**Pattern: Unscoped queries leak cross-org data**
+- Dashboard onboarding query fetched ALL records without organization_id filter
+- Rule: Every Supabase query in a multi-tenant app MUST include the tenant filter (organization_id or client_id)
+- Don't rely solely on RLS — code-level scoping is a required safety net
+
+**Pattern: Team agent mailbox issues**
+- Some team agents went idle repeatedly without processing their task
+- Workaround: Use direct Task agents (non-team) for independent audit work that doesn't need inter-agent coordination
+- Team agents are better for tasks that require back-and-forth communication
+
+**Pattern: Large audit agents hit context limits**
+- Admin audit agent ran out of context reading 38 page files
+- Workaround: Instruct agents to be concise — read files, note only issues, don't reproduce file contents
+- Keep audit reports focused on findings, not file listings
+
+**Pattern: OG images for social sharing**
+- Marketing site had OG title/description but no image property
+- Rule: Every marketing page needs an OG image for social previews. Add `opengraph-image.png` to public/ or set `openGraph.images` in metadata
+
+**Pattern: Meta description accuracy**
+- Pricing page said "Start free" but cheapest plan is $499/mo
+- Rule: Always verify meta descriptions match actual product/pricing reality

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/resend";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
         });
 
       if (inviteError) {
-        console.error("Invite error:", inviteError.message);
+        logger.error("Invite error", { error: inviteError.message });
         return NextResponse.json({ error: "Failed to invite member" }, { status: 400 });
       }
 
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest) {
         );
 
       if (insertError) {
-        console.error("User insert error:", insertError.message);
+        logger.error("User insert error", { error: insertError.message });
         return NextResponse.json({ error: "Failed to create user record" }, { status: 500 });
       }
 
@@ -203,7 +204,7 @@ async function sendResetEmail(to: string, actionLink: string) {
 </html>`,
     });
   } catch (err) {
-    console.error("Failed to send reset email:", err);
+    logger.error("Failed to send reset email", { error: String(err) });
   }
 }
 
@@ -247,6 +248,6 @@ async function sendInviteEmail(to: string, role: string, actionLink: string) {
 </html>`,
     });
   } catch (err) {
-    console.error("Failed to send invite email:", err);
+    logger.error("Failed to send invite email", { error: String(err) });
   }
 }

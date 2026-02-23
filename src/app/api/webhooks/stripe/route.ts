@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { constructWebhookEvent } from "@/lib/stripe";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
+import { logger } from "@/lib/logger";
 
 // Disable body parsing — Stripe needs the raw body for signature verification
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error("STRIPE_WEBHOOK_SECRET not configured");
+    logger.error("STRIPE_WEBHOOK_SECRET not configured");
     return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 });
   }
 
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
   try {
     event = constructWebhookEvent(rawBody, sig, webhookSecret);
   } catch (err) {
-    console.error("Webhook signature verification failed:", err);
+    logger.error("Webhook signature verification failed", { error: String(err) });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -94,16 +95,16 @@ export async function POST(request: NextRequest) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleCheckoutCompleted(session: any, supabase: any) {
   const metadata = session.metadata || {};
-  const { plan_id, organization_id, org_slug } = metadata;
+  const { plan_id, organization_id } = metadata;
 
   if (!plan_id || !organization_id) {
-    console.error("Checkout session missing plan_id or organization_id metadata");
+    logger.error("Checkout session missing plan_id or organization_id metadata");
     return;
   }
 
   const customerEmail = session.customer_details?.email || session.customer_email;
   if (!customerEmail) {
-    console.error("Checkout session has no customer email");
+    logger.error("Checkout session has no customer email");
     return;
   }
 
@@ -115,7 +116,7 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
     .single();
 
   if (!plan) {
-    console.error("Plan not found:", plan_id);
+    logger.error("Plan not found", { plan_id });
     return;
   }
 
@@ -128,7 +129,7 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
     .maybeSingle();
 
   if (existingUser?.client_id) {
-    console.log("Client already exists for email:", customerEmail);
+    logger.info("Client already exists for email", { customerEmail });
     return;
   }
 
@@ -163,11 +164,11 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
     .single();
 
   if (clientError || !client) {
-    console.error("Failed to create client:", clientError?.message);
+    logger.error("Failed to create client", { error: clientError?.message });
     return;
   }
 
-  console.log("Created client:", client.id, "slug:", slug);
+  logger.info("Created client", { clientId: client.id, slug });
 
   // 4. Create auth user and generate invite link (without sending Supabase's default email)
   const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
@@ -183,7 +184,7 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
   });
 
   if (linkError) {
-    console.error("Failed to generate invite link:", linkError.message);
+    logger.error("Failed to generate invite link", { error: linkError.message });
     // Try to see if user already exists in auth
     const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     const existingAuthUser = users?.find((u: { email?: string }) => u.email === customerEmail);
@@ -202,7 +203,7 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
     if (actionLink) {
       await sendWelcomeEmail(customerEmail, clientName, actionLink);
     } else {
-      console.error("No action_link returned from generateLink");
+      logger.error("No action_link returned from generateLink");
     }
   }
 
@@ -216,7 +217,7 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
     current_step: 1,
   });
 
-  console.log("Auto-provisioning complete for:", customerEmail, "→", slug);
+  logger.info("Auto-provisioning complete", { customerEmail, slug });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -232,7 +233,7 @@ async function handleSubscriptionDeleted(subscription: any, supabase: any) {
     .maybeSingle();
 
   if (!client) {
-    console.log("No client found for cancelled subscription:", subscriptionId);
+    logger.warn("No client found for cancelled subscription", { subscriptionId });
     return;
   }
 
@@ -242,9 +243,9 @@ async function handleSubscriptionDeleted(subscription: any, supabase: any) {
     .eq("id", client.id);
 
   if (error) {
-    console.error("Failed to deactivate client:", error.message);
+    logger.error("Failed to deactivate client", { error: error.message });
   } else {
-    console.log("Client deactivated due to subscription cancellation:", client.name);
+    logger.info("Client deactivated due to subscription cancellation", { clientName: client.name });
   }
 }
 
@@ -262,7 +263,7 @@ async function handleSubscriptionUpdated(subscription: any, supabase: any) {
       .eq("stripe_subscription_id", subscriptionId);
 
     if (error) {
-      console.error("Failed to update client status to past_due:", error.message);
+      logger.error("Failed to update client status to past_due", { error: error.message });
     }
   } else if (status === "active") {
     // Reactivate if payment is resolved
@@ -273,7 +274,7 @@ async function handleSubscriptionUpdated(subscription: any, supabase: any) {
       .in("status", ["past_due", "cancelled"]);
 
     if (error) {
-      console.error("Failed to reactivate client:", error.message);
+      logger.error("Failed to reactivate client", { error: error.message });
     }
   }
 }
@@ -292,7 +293,7 @@ async function handlePaymentFailed(invoice: any, supabase: any) {
 
   if (!client) return;
 
-  console.warn("Payment failed for client:", client.name, "invoice:", invoice.id);
+  logger.warn("Payment failed for client", { clientName: client.name, invoiceId: invoice.id });
 
   await supabase
     .from("clients")
@@ -315,7 +316,7 @@ async function createUserRow(supabase: any, userId: string, email: string, orgId
   );
 
   if (error) {
-    console.error("Failed to create user row:", error.message);
+    logger.error("Failed to create user row", { error: error.message });
   }
 }
 
@@ -348,7 +349,7 @@ async function setClientPermissions(supabase: any, clientId: string, plan: any) 
   });
 
   if (error) {
-    console.error("Failed to set client permissions:", error.message);
+    logger.error("Failed to set client permissions", { error: error.message });
   }
 }
 
@@ -429,9 +430,9 @@ async function sendWelcomeEmail(to: string, businessName: string, actionLink: st
 </body>
 </html>`,
     });
-    console.log("Welcome email sent to:", to);
+    logger.info("Welcome email sent", { to });
   } catch (err) {
-    console.error("Failed to send welcome email:", err);
+    logger.error("Failed to send welcome email", { error: String(err) });
   }
 }
 
@@ -441,14 +442,14 @@ async function handleInvoicePaid(invoice: any, supabase: any) {
   const customerEmail = invoice.customer_email;
 
   if (!subscriptionId || !customerEmail) {
-    console.log("Invoice paid but no subscription or email — skipping receipt:", invoice.id);
+    logger.info("Invoice paid but no subscription or email — skipping receipt", { invoiceId: invoice.id });
     return;
   }
 
   // Skip the very first invoice created at checkout (billing_reason = "subscription_create")
   // because the client just received a welcome email
   if (invoice.billing_reason === "subscription_create") {
-    console.log("Skipping receipt for initial subscription invoice:", invoice.id);
+    logger.info("Skipping receipt for initial subscription invoice", { invoiceId: invoice.id });
     return;
   }
 
@@ -460,7 +461,7 @@ async function handleInvoicePaid(invoice: any, supabase: any) {
     .maybeSingle();
 
   if (!client) {
-    console.log("No client found for paid invoice subscription:", subscriptionId);
+    logger.warn("No client found for paid invoice subscription", { subscriptionId });
     return;
   }
 
@@ -547,7 +548,7 @@ async function handleInvoicePaid(invoice: any, supabase: any) {
     portalUrl: `${process.env.NEXT_PUBLIC_APP_URL || ""}/${client.slug}/portal/billing`,
   });
 
-  console.log("Receipt email sent for invoice:", invoice.id, "to:", customerEmail);
+  logger.info("Receipt email sent", { invoiceId: invoice.id, to: customerEmail });
 }
 
 interface ReceiptEmailParams {
@@ -759,7 +760,7 @@ async function sendReceiptEmail(params: ReceiptEmailParams) {
       html,
     });
   } catch (err) {
-    console.error("Failed to send receipt email:", err);
+    logger.error("Failed to send receipt email", { error: String(err) });
   }
 }
 

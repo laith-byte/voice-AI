@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { encrypt } from "@/lib/crypto";
+import { logger } from "@/lib/logger";
 
 export async function GET() {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { data, error } = await supabase
     .from("agents")
     .select("id, name, description, platform, retell_agent_id, knowledge_base_id, knowledge_base_name, webhook_url, organization_id, client_id, created_at, updated_at, clients(name)")
     .order("created_at", { ascending: false });
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data);
 }
 
@@ -36,6 +37,6 @@ export async function POST(request: NextRequest) {
     webhook_url: body.webhook_url || null,
   }).select().single();
 
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data, { status: 201 });
 }

@@ -125,10 +125,11 @@ export default function DashboardHomePage() {
           .select("id")
           .eq("organization_id", orgId)
           .limit(1),
-        // Client onboarding stats
+        // Client onboarding stats (scoped to org)
         supabase
           .from("client_onboarding")
-          .select("status, current_step"),
+          .select("status, current_step")
+          .eq("organization_id", orgId),
       ]);
 
       // Domain
@@ -189,7 +190,7 @@ export default function DashboardHomePage() {
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }

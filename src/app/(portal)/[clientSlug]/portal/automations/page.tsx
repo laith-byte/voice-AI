@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, Sparkles, Zap } from "lucide-react";
+import { Sparkles, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { RecipeCard } from "@/components/automations/recipe-card";

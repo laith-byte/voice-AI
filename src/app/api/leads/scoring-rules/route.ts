@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query.order("agent_id", { ascending: false, nullsFirst: false }).limit(1).single();
 
   if (error && error.code !== "PGRST116") {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 
@@ -97,7 +98,7 @@ export async function PUT(request: NextRequest) {
     .single();
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 

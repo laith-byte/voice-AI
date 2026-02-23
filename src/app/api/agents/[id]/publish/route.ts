@@ -7,7 +7,7 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;

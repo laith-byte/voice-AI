@@ -45,7 +45,7 @@ import type { AgentTemplate } from "@/types/database";
 export default function SaaSTemplatesPage() {
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const [, setOrgId] = useState<string | null>(null);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -101,20 +101,25 @@ export default function SaaSTemplatesPage() {
   }, [fetchTemplates]);
 
   const handleCreateTemplate = async () => {
-    if (!orgId || !newTemplate.name.trim()) return;
+    if (!newTemplate.name.trim()) return;
     setCreating(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from("agent_templates").insert({
-        organization_id: orgId,
-        name: newTemplate.name.trim(),
-        description: newTemplate.description.trim() || null,
-        text_provider: newTemplate.text_provider,
-        voice_provider: newTemplate.voice_provider,
-        retell_agent_id: newTemplate.retell_agent_id.trim() || null,
+      const res = await fetch("/api/agent-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newTemplate.name.trim(),
+          description: newTemplate.description.trim() || null,
+          text_provider: newTemplate.text_provider,
+          voice_provider: newTemplate.voice_provider,
+          retell_agent_id: newTemplate.retell_agent_id.trim() || null,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to create template");
+      }
 
       toast.success("Template created successfully");
       setDialogOpen(false);
@@ -138,13 +143,16 @@ export default function SaaSTemplatesPage() {
   const handleDeleteTemplate = async (id: string) => {
     setDeleting(id);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("agent_templates")
-        .delete()
-        .eq("id", id);
+      const res = await fetch("/api/agent-templates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to delete template");
+      }
 
       toast.success("Template deleted");
       setTemplates((prev) => prev.filter((t) => t.id !== id));
@@ -168,8 +176,8 @@ export default function SaaSTemplatesPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
         </div>
       </div>
     );
@@ -279,7 +287,16 @@ export default function SaaSTemplatesPage() {
         {/* Create Template Card */}
         <button
           className="border-2 border-dashed border-[#e5e7eb] rounded-lg p-5 flex flex-col items-center justify-center gap-2 hover:border-[#2563eb] hover:bg-blue-50/50 transition-colors min-h-[160px] cursor-pointer"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => {
+            setNewTemplate({
+              name: "",
+              description: "",
+              text_provider: "openai",
+              voice_provider: "retell",
+              retell_agent_id: "",
+            });
+            setDialogOpen(true);
+          }}
         >
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
             <Plus className="h-5 w-5 text-[#6b7280]" />

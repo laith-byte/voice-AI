@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { TablePagination } from "@/components/ui/table-pagination";
 
 interface Workflow {
   id: string;
@@ -30,11 +31,12 @@ interface Workflow {
 export default function WorkflowsPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [orgId, setOrgId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newWebhookUrl, setNewWebhookUrl] = useState("");
   const [creating, setCreating] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
 
   const fetchWorkflows = useCallback(async () => {
     setLoading(true);
@@ -56,7 +58,6 @@ export default function WorkflowsPage() {
         .single();
       if (userError || !currentUser?.organization_id) return;
 
-      setOrgId(currentUser.organization_id);
 
       // Fetch solutions (workflows) for this organization
       const { data: solutions, error: solutionsError } = await supabase
@@ -97,13 +98,15 @@ export default function WorkflowsPage() {
         prev.map((wf) => (wf.id === id ? { ...wf, active: newActive } : wf))
       );
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("solutions")
-        .update({ is_active: newActive })
-        .eq("id", id);
+      try {
+        const res = await fetch("/api/solutions", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, is_active: newActive }),
+        });
 
-      if (error) {
+        if (!res.ok) throw new Error("Failed to update");
+      } catch {
         // Revert on failure
         setWorkflows((prev) =>
           prev.map((wf) =>
@@ -117,27 +120,26 @@ export default function WorkflowsPage() {
   );
 
   const handleCreate = useCallback(async () => {
-    if (!newName.trim() || !newWebhookUrl.trim() || !orgId) return;
+    if (!newName.trim() || !newWebhookUrl.trim()) return;
 
     setCreating(true);
     try {
-      const supabase = createClient();
-
-      const { data, error } = await supabase
-        .from("solutions")
-        .insert({
+      const res = await fetch("/api/solutions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: newName.trim(),
           webhook_url: newWebhookUrl.trim(),
-          organization_id: orgId,
           is_active: true,
-        })
-        .select("id, name, description, webhook_url, is_active, created_at")
-        .single();
+        }),
+      });
 
-      if (error || !data) {
-        if (error) toast.error("Failed to create workflow.");
+      if (!res.ok) {
+        toast.error("Failed to create workflow.");
         return;
       }
+
+      const data = await res.json();
 
       toast.success("Workflow created.");
 
@@ -153,14 +155,16 @@ export default function WorkflowsPage() {
       setNewName("");
       setNewWebhookUrl("");
       setDialogOpen(false);
+    } catch {
+      toast.error("Failed to create workflow.");
     } finally {
       setCreating(false);
     }
-  }, [newName, newWebhookUrl, orgId]);
+  }, [newName, newWebhookUrl]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
+      <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
@@ -259,7 +263,7 @@ export default function WorkflowsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {workflows.map((wf) => (
+              {workflows.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((wf) => (
                 <tr key={wf.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -289,6 +293,12 @@ export default function WorkflowsPage() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={workflows.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">

@@ -5,15 +5,13 @@ import { Mail, Clock, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const industryOptions = [
-  "Healthcare & Dental",
-  "Legal Services",
-  "Home Services",
-  "Real Estate",
-  "Insurance",
-  "Financial Services",
-  "Automotive",
-  "Hospitality & Restaurants",
-  "Other",
+  { label: "HVAC", value: "hvac" },
+  { label: "Plumbing", value: "plumbing" },
+  { label: "Electrical", value: "electrical" },
+  { label: "Landscaping", value: "landscaping" },
+  { label: "Roofing", value: "roofing" },
+  { label: "General", value: "general" },
+  { label: "Other", value: "other" },
 ];
 
 export default function ContactPage() {
@@ -140,7 +138,7 @@ export default function ContactPage() {
                     >
                       <option value="" disabled>Select your industry</option>
                       {industryOptions.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
                   </div>
@@ -172,9 +170,9 @@ export default function ContactPage() {
             {/* Right side info */}
             <div className="lg:col-span-2 space-y-8">
               {/* Book a Demo */}
-              <div className="text-center p-8 rounded-lg border border-gray-800">
+              <div className="text-center p-8 rounded-2xl bg-navy-900 border border-navy-800">
                 <h3 className="text-xl font-semibold text-white mb-2">Schedule a Demo</h3>
-                <p className="text-gray-400">Fill out the form and our team will reach out to schedule a personalized demo.</p>
+                <p className="text-sm text-gray-300">Fill out the form and our team will reach out to schedule a personalized demo.</p>
               </div>
 
               {/* Contact Info */}

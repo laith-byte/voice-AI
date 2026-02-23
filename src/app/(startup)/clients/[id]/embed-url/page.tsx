@@ -1,54 +1,69 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Save, Globe, Info } from "lucide-react";
+import { Save, Globe, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function EmbedUrlPage() {
   const params = useParams();
   const [domain, setDomain] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    toast.info("Embed URL saving coming soon.");
+  const fetchEmbedDomain = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/clients/${params.id}/embed-url`);
+      if (res.ok) {
+        const data = await res.json();
+        setDomain(data.embed_domain || "");
+      }
+    } catch {
+      // Silently fail on load
+    } finally {
+      setLoading(false);
+    }
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchEmbedDomain();
+  }, [fetchEmbedDomain]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/clients/${params.id}/embed-url`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ embed_domain: domain.trim() }),
+      });
+      if (res.ok) {
+        toast.success("Embed domain saved.");
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to save embed domain.");
+      }
+    } catch {
+      toast.error("Failed to save embed domain.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Phase 2 Notice */}
-      <Card className="rounded-lg border-amber-200 bg-amber-50/50">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-              <Info className="w-4 h-4 text-amber-600" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-amber-800">
-                  Phase 2 Feature
-                </p>
-                <Badge
-                  variant="outline"
-                  className="bg-amber-100 text-amber-700 border-amber-300 text-xs"
-                >
-                  Coming Soon
-                </Badge>
-              </div>
-              <p className="text-xs text-amber-700 mt-0.5">
-                White-label embed URL configuration is planned for Phase 2.
-                You can set up the domain now and it will be activated when
-                the feature is released.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Domain Configuration */}
       <Card className="rounded-lg">
         <CardHeader>
@@ -95,10 +110,19 @@ export default function EmbedUrlPage() {
             <Button
               className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
               onClick={handleSave}
-              disabled={!domain.trim()}
+              disabled={!domain.trim() || saving}
             >
-              <Save className="w-4 h-4 mr-1.5" />
-              Save Domain
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-1.5" />
+                  Save Domain
+                </>
+              )}
             </Button>
           </div>
         </CardContent>

@@ -92,3 +92,36 @@ export async function retrieveSubscription(subscriptionId: string, stripeAccount
     stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
   );
 }
+
+export async function cancelSubscription(subscriptionId: string, stripeAccountId?: string) {
+  return getStripe().subscriptions.update(
+    subscriptionId,
+    { cancel_at_period_end: true },
+    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
+  );
+}
+
+export async function createInvoice(
+  params: Stripe.InvoiceCreateParams,
+  stripeAccountId?: string
+) {
+  return getStripe().invoices.create(params, stripeAccountId ? { stripeAccount: stripeAccountId } : undefined);
+}
+
+export async function sendInvoice(invoiceId: string, stripeAccountId?: string) {
+  return getStripe().invoices.sendInvoice(invoiceId, stripeAccountId ? { stripeAccount: stripeAccountId } : undefined);
+}
+
+export async function createInvoiceItem(
+  params: Stripe.InvoiceItemCreateParams,
+  stripeAccountId?: string
+) {
+  return getStripe().invoiceItems.create(params, stripeAccountId ? { stripeAccount: stripeAccountId } : undefined);
+}
+
+export async function listCustomers(stripeAccountId?: string) {
+  return getStripe().customers.list(
+    { limit: 100 },
+    stripeAccountId ? { stripeAccount: stripeAccountId } : undefined
+  );
+}

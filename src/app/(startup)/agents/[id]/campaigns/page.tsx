@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -159,7 +159,7 @@ export default function CampaignsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#6b7280]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }

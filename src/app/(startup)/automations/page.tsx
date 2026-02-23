@@ -39,6 +39,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { RecipeEditor } from "@/components/automations/recipe-editor";
+import { TablePagination } from "@/components/ui/table-pagination";
 
 interface Recipe {
   id: string;
@@ -80,6 +81,8 @@ export default function StartupAutomationsPage() {
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [saving, setSaving] = useState(false);
   const [recipeToDelete, setRecipeToDelete] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -206,7 +209,7 @@ export default function StartupAutomationsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
+      <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
@@ -263,7 +266,7 @@ export default function StartupAutomationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {recipes.map((recipe) => {
+              {recipes.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((recipe) => {
                 const stats = clientStats[recipe.id];
                 return (
                   <tr key={recipe.id} className="hover:bg-gray-50 transition-colors">
@@ -351,6 +354,12 @@ export default function StartupAutomationsPage() {
               })}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={recipes.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">

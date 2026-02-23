@@ -63,8 +63,8 @@ export const ADDON_COSTS = {
   piiRemoval: 0.01,
 } as const;
 
-/** Monthly fixed costs */
-const MONTHLY_COSTS = {
+/** Monthly fixed costs — reserved for upcoming phone-number billing */
+export const MONTHLY_COSTS = {
   phoneNumberStandard: 2,
   phoneNumberTollFree: 3,
 } as const;

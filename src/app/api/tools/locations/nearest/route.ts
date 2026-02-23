@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createServiceClient();
 
-    let query = supabase
+    const query = supabase
       .from("business_locations")
       .select("name, address, phone, is_primary")
       .eq("client_id", client_id)

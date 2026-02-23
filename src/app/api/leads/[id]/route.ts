@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { logger } from "@/lib/logger";
 
 const ALLOWED_FIELDS = new Set(["name", "tags", "dynamic_vars", "phone"]);
 
@@ -35,7 +36,7 @@ export async function PATCH(
     .single();
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
   if (!data) {
@@ -64,7 +65,7 @@ export async function DELETE(
     .eq("organization_id", userData.organization_id);
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 

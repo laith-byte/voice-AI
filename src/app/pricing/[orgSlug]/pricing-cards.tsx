@@ -19,11 +19,8 @@ import {
   Users,
   Clock,
   Zap,
-  ChevronDown,
-  HelpCircle,
   BrainCircuit,
   AudioLines,
-  Server,
 } from "lucide-react";
 import {
   RETELL_INFRA_COST,
@@ -301,7 +298,7 @@ function CostEstimator() {
   );
 }
 
-export default function PricingCards({ plans, addons, orgSlug, stripeAccountId }: PricingCardsProps) {
+export default function PricingCards({ plans, addons, orgSlug: _orgSlug, stripeAccountId: _stripeAccountId }: PricingCardsProps) {
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
   const [isAnnual, setIsAnnual] = useState(false);
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -28,13 +29,13 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     // Don't reveal whether the email exists — always return success
-    console.error("generateLink error:", error.message);
+    logger.error("generateLink error", { error: error.message });
     return NextResponse.json({ success: true });
   }
 
   const actionLink = data.properties?.action_link;
   if (!actionLink) {
-    console.error("No action_link returned for recovery");
+    logger.error("No action_link returned for recovery");
     return NextResponse.json({ success: true });
   }
 
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
 </html>`,
     });
   } catch (err) {
-    console.error("Failed to send reset email:", err);
+    logger.error("Failed to send reset email", { error: String(err) });
   }
 
   // Always return success to avoid email enumeration

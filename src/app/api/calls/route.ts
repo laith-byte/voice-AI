@@ -3,9 +3,10 @@ import { requireAuth } from "@/lib/api/auth";
 import { getIntegrationKey } from "@/lib/integrations";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { searchParams } = new URL(request.url);
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   if (agentId) query = query.eq("agent_id", agentId);
 
   const { data, error } = await query;
-  if (error) { console.error("DB error:", error.message); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
+  if (error) { logger.error("DB error", { error: error.message }); return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 }); }
   return NextResponse.json(data);
 }
 

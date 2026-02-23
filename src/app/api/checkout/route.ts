@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 
 /**
  * Public checkout endpoint — no auth required.
@@ -7,6 +8,10 @@ import { createServiceClient } from "@/lib/supabase/server";
  * webhook can auto-provision the client after payment.
  */
 export async function POST(request: NextRequest) {
+  const ip = getClientIp(request);
+  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  if (!allowed) return rateLimitExceeded(resetMs);
+
   const body = await request.json();
   const { plan_id, billing_period, return_url } = body;
   const isYearly = billing_period === "yearly";

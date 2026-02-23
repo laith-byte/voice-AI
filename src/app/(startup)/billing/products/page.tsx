@@ -16,6 +16,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import Link from "next/link";
+import { TablePagination } from "@/components/ui/table-pagination";
 
 interface Product {
   id: string;
@@ -33,6 +34,8 @@ export default function BillingProductsPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newPrice, setNewPrice] = useState("");
@@ -146,8 +149,8 @@ export default function BillingProductsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-[#6b7280]" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }
@@ -210,7 +213,7 @@ export default function BillingProductsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {products.map((product) => (
+              {products.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((product) => (
                 <tr
                   key={product.id}
                   className="hover:bg-gray-50 transition-colors"
@@ -244,6 +247,12 @@ export default function BillingProductsPage() {
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={products.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">

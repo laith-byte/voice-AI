@@ -28,7 +28,7 @@ import {
   Palette,
   MessageSquareText,
   Clock,
-  Image,
+  Image as ImageIcon,
   Link2,
   Settings2,
   Type,
@@ -402,7 +402,7 @@ export default function WidgetPage() {
             <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-4 py-3 border-b">
               <div className="flex items-center gap-2">
                 <div className="h-7 w-7 rounded-md bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
-                  <Image className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                  <ImageIcon className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
                 </div>
                 <h3 className="font-semibold text-sm">Appearance</h3>
               </div>

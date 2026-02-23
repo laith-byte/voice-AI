@@ -357,8 +357,8 @@ export default function ClientsPage() {
       {/* Client Table */}
       {loading ? (
         <Card className="rounded-lg">
-          <CardContent className="py-16 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+          <CardContent className="min-h-[400px] flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
           </CardContent>
         </Card>
       ) : filteredClients.length > 0 ? (

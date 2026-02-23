@@ -94,6 +94,12 @@ export default function SettingsIntegrationsPage() {
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [integrationToDisconnect, setIntegrationToDisconnect] = useState<string | null>(null);
 
+  // Configure dialog state
+  const [configOpen, setConfigOpen] = useState(false);
+  const [configIntegration, setConfigIntegration] = useState<IntegrationRow | null>(null);
+  const [configApiKey, setConfigApiKey] = useState("");
+  const [configSaving, setConfigSaving] = useState(false);
+
   const fetchIntegrations = useCallback(async () => {
     const supabase = createClient();
     try {
@@ -183,6 +189,37 @@ export default function SettingsIntegrationsPage() {
     }
   };
 
+  const handleOpenConfigure = (integration: IntegrationRow) => {
+    setConfigIntegration(integration);
+    setConfigApiKey("");
+    setConfigOpen(true);
+  };
+
+  const handleUpdateApiKey = async () => {
+    if (!configIntegration || !configApiKey.trim()) return;
+    setConfigSaving(true);
+    try {
+      const res = await fetch("/api/integrations/configure", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integrationId: configIntegration.id,
+          api_key: configApiKey.trim(),
+        }),
+      });
+      if (res.ok) {
+        toast.success("API key updated successfully.");
+        setConfigOpen(false);
+      } else {
+        toast.error("Failed to update API key.");
+      }
+    } catch {
+      toast.error("Failed to update API key.");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   const getIntegrationForProvider = (provider: Provider): IntegrationRow | undefined => {
     return integrations.find((i) => i.provider === provider);
   };
@@ -193,8 +230,8 @@ export default function SettingsIntegrationsPage() {
         <p className="text-sm text-[#6b7280]">
           Connect external accounts for a more streamlined experience.
         </p>
-        <div className="border border-[#e5e7eb] rounded-lg py-16 flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+        <div className="border border-[#e5e7eb] rounded-lg min-h-[400px] flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
         </div>
       </div>
     );
@@ -248,7 +285,7 @@ export default function SettingsIntegrationsPage() {
                 <div className="mt-4">
                   {connected && integration ? (
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="text-xs" onClick={() => toast.info("Integration configuration coming soon.")}>
+                      <Button variant="outline" size="sm" className="text-xs" onClick={() => handleOpenConfigure(integration)}>
                         Configure
                       </Button>
                       <Button
@@ -327,6 +364,58 @@ export default function SettingsIntegrationsPage() {
                 </>
               ) : (
                 "Connect"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Configure Integration Dialog */}
+      <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Configure {configIntegration ? PROVIDER_META[configIntegration.provider]?.name : ""}
+            </DialogTitle>
+            <DialogDescription>
+              Update the API key for this integration.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Current API Key</Label>
+              <div className="flex items-center h-10 px-3 rounded-md border border-[#e5e7eb] bg-gray-50">
+                <span className="text-sm text-[#6b7280] font-mono">{"*".repeat(32)}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="config-api-key">New API Key</Label>
+              <Input
+                id="config-api-key"
+                type="password"
+                placeholder="Enter new API key..."
+                value={configApiKey}
+                onChange={(e) => setConfigApiKey(e.target.value)}
+                className="font-mono text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfigOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white"
+              onClick={handleUpdateApiKey}
+              disabled={!configApiKey.trim() || configSaving}
+            >
+              {configSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Update Key"
               )}
             </Button>
           </DialogFooter>

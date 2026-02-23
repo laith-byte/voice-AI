@@ -74,7 +74,9 @@ export default function SolutionsPage() {
     }
 
     const mapped: AssignedSolution[] = (data ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((row: any) => row.solutions)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((row: any) => ({
         ...row.solutions,
         assigned_at: row.solutions?.created_at ?? "",
@@ -176,8 +178,8 @@ export default function SolutionsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
   }

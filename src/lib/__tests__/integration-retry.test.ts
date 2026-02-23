@@ -3,7 +3,7 @@ import { enqueueRetry, processRetryQueue } from "../integration-retry";
 
 const mockInsert = vi.fn();
 const mockUpdate = vi.fn();
-const mockSelect = vi.fn();
+const _mockSelect = vi.fn();
 const mockExecuteNativeRecipe = vi.fn();
 
 // Build a chainable query mock for processRetryQueue

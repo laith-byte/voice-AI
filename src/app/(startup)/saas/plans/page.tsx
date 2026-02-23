@@ -400,7 +400,7 @@ export default function SaaSPlansPage() {
       const supabase = createClient();
       const payload = formDataToDbPayload(editFormData, orgId);
       // Remove organization_id from update payload
-      const { organization_id, ...updatePayload } = payload;
+      const { organization_id: _organization_id, ...updatePayload } = payload;
 
       const { error } = await supabase
         .from("client_plans")
@@ -818,8 +818,8 @@ export default function SaaSPlansPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="w-6 h-6 animate-spin text-[#6b7280]" />
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
         </div>
       </div>
     );

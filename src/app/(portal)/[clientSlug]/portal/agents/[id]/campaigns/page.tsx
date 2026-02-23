@@ -68,7 +68,6 @@ import {
   Pause,
   Play,
   CheckCircle2,
-  FileDown,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";

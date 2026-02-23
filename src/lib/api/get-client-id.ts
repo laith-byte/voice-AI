@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function getClientId(
   user: { id: string },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   request: NextRequest
 ): Promise<{ clientId: string | null; error?: NextResponse }> {

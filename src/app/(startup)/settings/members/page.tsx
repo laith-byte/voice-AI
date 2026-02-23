@@ -16,12 +16,23 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { TablePagination } from "@/components/ui/table-pagination";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
@@ -55,12 +66,22 @@ export default function SettingsMembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   // Invite dialog state
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"startup_admin" | "startup_member">("startup_member");
   const [inviting, setInviting] = useState(false);
+
+  // Remove member state
+  const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  // Role change state
+  const [changingRole, setChangingRole] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
     setLoading(true);
@@ -73,6 +94,8 @@ export default function SettingsMembersPage() {
         error: authError,
       } = await supabase.auth.getUser();
       if (authError || !user) return;
+
+      setCurrentUserId(user.id);
 
       // Get the current user's organization_id
       const { data: currentUser, error: userError } = await supabase
@@ -119,6 +142,11 @@ export default function SettingsMembersPage() {
       member.role.toLowerCase().includes(search.toLowerCase())
   );
 
+  const paginatedMembers = filteredMembers.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   async function handleInvite() {
     if (!inviteEmail.trim()) {
       toast.error("Please enter an email address");
@@ -162,9 +190,56 @@ export default function SettingsMembersPage() {
     }
   }
 
+  async function handleRoleChange(memberId: string, newRole: string) {
+    setChangingRole(memberId);
+    try {
+      const res = await fetch("/api/members", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberId,
+          role: newRole === "Admin" ? "startup_admin" : "startup_member",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to update role");
+        return;
+      }
+      toast.success("Role updated.");
+      await fetchMembers();
+    } catch {
+      toast.error("Failed to update role.");
+    } finally {
+      setChangingRole(null);
+    }
+  }
+
+  async function handleRemoveMember() {
+    if (!memberToRemove) return;
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/members?id=${memberToRemove.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to remove member");
+        return;
+      }
+      toast.success(`${memberToRemove.name} has been removed.`);
+      setMemberToRemove(null);
+      await fetchMembers();
+    } catch {
+      toast.error("Failed to remove member.");
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
+      <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-[#2563eb]" />
       </div>
     );
@@ -179,7 +254,7 @@ export default function SettingsMembersPage() {
           <Input
             placeholder="Search by email or role..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
             className="pl-10"
           />
         </div>
@@ -207,10 +282,13 @@ export default function SettingsMembersPage() {
                 <th className="text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider px-4 py-3">
                   Role
                 </th>
+                <th className="text-left text-xs font-medium text-[#6b7280] uppercase tracking-wider px-4 py-3">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#e5e7eb]">
-              {filteredMembers.map((member) => (
+              {paginatedMembers.map((member) => (
                 <tr
                   key={member.id}
                   className="hover:bg-gray-50 transition-colors"
@@ -233,21 +311,55 @@ export default function SettingsMembersPage() {
                     {member.email}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge
-                      variant="secondary"
-                      className={
-                        member.role === "Admin"
-                          ? "bg-blue-50 text-[#2563eb] border border-blue-200"
-                          : "bg-gray-100 text-[#6b7280] border border-[#e5e7eb]"
-                      }
-                    >
-                      {member.role}
-                    </Badge>
+                    {member.id === currentUserId ? (
+                      <Badge
+                        variant="secondary"
+                        className={
+                          member.role === "Admin"
+                            ? "bg-blue-50 text-[#2563eb] border border-blue-200"
+                            : "bg-gray-100 text-[#6b7280] border border-[#e5e7eb]"
+                        }
+                      >
+                        {member.role}
+                      </Badge>
+                    ) : (
+                      <Select
+                        value={member.role}
+                        onValueChange={(value) => handleRoleChange(member.id, value)}
+                        disabled={changingRole === member.id}
+                      >
+                        <SelectTrigger className="w-[110px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Admin">Admin</SelectItem>
+                          <SelectItem value="Member">Member</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {member.id !== currentUserId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        onClick={() => setMemberToRemove(member)}
+                      >
+                        Remove
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <TablePagination
+            currentPage={currentPage}
+            totalItems={filteredMembers.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
       ) : (
         <div className="border border-[#e5e7eb] border-dashed rounded-lg py-16 flex flex-col items-center justify-center">
@@ -332,6 +444,35 @@ export default function SettingsMembersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Remove Member Confirmation */}
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {memberToRemove?.name} from the organization? They will lose access immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleRemoveMember}
+              disabled={removing}
+            >
+              {removing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove Member"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

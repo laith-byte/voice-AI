@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Actions that require a connected account
-  const requiresAccount = ["list_products", "create_product", "list_subscriptions", "list_invoices", "list_charges", "create_coupon", "list_coupons", "create_checkout"];
+  const requiresAccount = ["list_products", "create_product", "list_subscriptions", "list_invoices", "list_charges", "create_coupon", "list_coupons", "create_checkout", "cancel_subscription", "create_invoice", "list_customers"];
   if (requiresAccount.includes(action) && !stripeAccountId) {
     return NextResponse.json({ error: "stripeAccountId is required for this action" }, { status: 400 });
   }
@@ -130,6 +130,46 @@ export async function POST(request: NextRequest) {
           stripeAccountId
         );
         return NextResponse.json({ url: session.url });
+      }
+
+      case "cancel_subscription": {
+        if (!body.subscriptionId) {
+          return NextResponse.json({ error: "subscriptionId is required" }, { status: 400 });
+        }
+        const updated = await stripeLib.cancelSubscription(body.subscriptionId, stripeAccountId);
+        return NextResponse.json(updated);
+      }
+
+      case "create_invoice": {
+        if (!body.customerId || !body.amount) {
+          return NextResponse.json({ error: "customerId and amount are required" }, { status: 400 });
+        }
+        const invoice = await stripeLib.createInvoice(
+          {
+            customer: body.customerId,
+            collection_method: "send_invoice",
+            days_until_due: 30,
+            description: body.description || undefined,
+          },
+          stripeAccountId
+        );
+        await stripeLib.createInvoiceItem(
+          {
+            customer: body.customerId,
+            amount: Math.round(body.amount * 100),
+            currency: "usd",
+            invoice: invoice.id,
+            description: body.description || "Invoice item",
+          },
+          stripeAccountId
+        );
+        const sent = await stripeLib.sendInvoice(invoice.id, stripeAccountId);
+        return NextResponse.json(sent);
+      }
+
+      case "list_customers": {
+        const customers = await stripeLib.listCustomers(stripeAccountId);
+        return NextResponse.json(customers.data);
       }
 
       default:

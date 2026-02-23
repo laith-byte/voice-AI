@@ -16,6 +16,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -72,6 +82,8 @@ export default function SettingsWhitelabelPage() {
   const [domain, setDomain] = useState("");
   const [domainValid, setDomainValid] = useState(false);
   const [backendDomain, setBackendDomain] = useState("");
+  const [showRemoveDomainDialog, setShowRemoveDomainDialog] = useState(false);
+  const [removingDomain, setRemovingDomain] = useState(false);
 
   // Email state
   const [sendingDomain, setSendingDomain] = useState("");
@@ -183,13 +195,12 @@ export default function SettingsWhitelabelPage() {
   async function handleSaveBranding() {
     if (!orgId) return;
     setSavingBranding(true);
-    const supabase = createClient();
     try {
-      const { error } = await supabase
-        .from("whitelabel_settings")
-        .upsert(
-          {
-            organization_id: orgId,
+      const res = await fetch("/api/whitelabel", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branding: {
             color_theme: selectedColor,
             loading_icon: selectedIcon,
             loading_icon_size: selectedSize,
@@ -200,81 +211,79 @@ export default function SettingsWhitelabelPage() {
             sender_address: senderAddress,
             sender_name: senderName,
           },
-          { onConflict: "organization_id" }
-        );
-      if (error) {
-        console.error("Failed to save branding settings:", error);
+        }),
+      });
+      if (!res.ok) {
         toast.error("Failed to save branding settings.");
       } else {
         toast.success("Branding & domain settings saved.");
       }
-    } catch (error) {
-      console.error("Failed to save branding settings:", error);
+    } catch {
       toast.error("Failed to save branding settings.");
     } finally {
       setSavingBranding(false);
     }
   }
 
+  async function handleRemoveDomain() {
+    if (!orgId) return;
+    setRemovingDomain(true);
+    try {
+      const res = await fetch("/api/whitelabel", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          branding: { domain: null },
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Failed to remove domain.");
+      } else {
+        setDomain("");
+        setDomainValid(false);
+        toast.success("Domain removed.");
+      }
+    } catch {
+      toast.error("Failed to remove domain.");
+    } finally {
+      setRemovingDomain(false);
+      setShowRemoveDomainDialog(false);
+    }
+  }
+
   async function handleSaveTemplate() {
     if (!orgId) return;
     setSavingTemplate(true);
-    const supabase = createClient();
     try {
-      // Find existing template for this type
-      const existing = emailTemplates.find(
-        (t) => t.template_type === emailTemplate
-      );
-
-      if (existing) {
-        // Update existing
-        const { data, error } = await supabase
-          .from("email_templates")
-          .update({
-            subject: emailSubject,
-            greeting: emailGreeting,
-            body: emailBody,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id)
-          .select()
-          .single();
-
-        if (error) {
-          console.error("Failed to save email template:", error);
-          toast.error("Failed to save email template.");
-        } else if (data) {
-          setEmailTemplates((prev) =>
-            prev.map((t) =>
-              t.id === existing.id ? (data as EmailTemplateRow) : t
-            )
-          );
-          toast.success("Email template saved.");
-        }
-      } else {
-        // Insert new
-        const { data, error } = await supabase
-          .from("email_templates")
-          .insert({
-            organization_id: orgId,
+      const res = await fetch("/api/whitelabel", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email_template: {
             template_type: emailTemplate,
             subject: emailSubject,
             greeting: emailGreeting,
             body: emailBody,
-          })
-          .select()
-          .single();
+          },
+        }),
+      });
 
-        if (error) {
-          console.error("Failed to save email template:", error);
-          toast.error("Failed to save email template.");
-        } else if (data) {
-          setEmailTemplates((prev) => [...prev, data as EmailTemplateRow]);
-          toast.success("Email template saved.");
+      if (!res.ok) {
+        toast.error("Failed to save email template.");
+      } else {
+        // Refresh templates from server
+        const supabase = createClient();
+        const { data: templates } = await supabase
+          .from("email_templates")
+          .select("*")
+          .eq("organization_id", orgId);
+
+        if (templates) {
+          setEmailTemplates(templates as EmailTemplateRow[]);
         }
+        toast.success("Email template saved.");
       }
-    } catch (error) {
-      console.error("Failed to save email template:", error);
+    } catch {
       toast.error("Failed to save email template.");
     } finally {
       setSavingTemplate(false);
@@ -449,15 +458,18 @@ export default function SettingsWhitelabelPage() {
                     </Badge>
                   )
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                  onClick={() => toast.info("Domain removal coming soon.")}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                  Remove
-                </Button>
+                {domain && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    onClick={() => setShowRemoveDomainDialog(true)}
+                    disabled={removingDomain}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    Remove
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => { if (domain) window.open(`https://${domain}`, "_blank"); }}>
                   <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                   Launch
@@ -705,6 +717,35 @@ export default function SettingsWhitelabelPage() {
           </Card>
         </div>
       </div>
+
+      {/* Remove Domain Confirmation */}
+      <AlertDialog open={showRemoveDomainDialog} onOpenChange={setShowRemoveDomainDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Domain</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the domain &quot;{domain}&quot;? Your white-label configuration will revert to the default domain.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removingDomain}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleRemoveDomain}
+              disabled={removingDomain}
+            >
+              {removingDomain ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove Domain"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -17,6 +17,20 @@ export async function PATCH(request: NextRequest) {
 
   const orgId = userData.organization_id;
 
+  // Handle organization name update
+  if (body.organization_name !== undefined) {
+    const { error: orgError } = await supabase
+      .from("organizations")
+      .update({ name: body.organization_name })
+      .eq("id", orgId);
+    if (orgError) {
+      console.error("DB error:", orgError.message);
+      return NextResponse.json({ error: "Failed to update organization name" }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  // Handle organization_settings updates
   const update: Record<string, unknown> = {};
 
   if (body.openai_api_key !== undefined) {

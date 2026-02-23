@@ -3,9 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { logIntegrationEvent } from "@/lib/integration-events";
 
 export async function POST(request: NextRequest) {
-  // W3: Verify webhook secret
-  const secret = request.headers.get("x-webhook-secret") ||
-    new URL(request.url).searchParams.get("secret");
+  // W3: Verify webhook secret (header only — no query param)
+  const secret = request.headers.get("x-webhook-secret");
   if (!secret || secret !== process.env.JOBBER_WEBHOOK_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

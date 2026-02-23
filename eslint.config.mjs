@@ -9,10 +9,24 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".claude/**",
     "out/**",
     "build/**",
     "next-env.d.ts",
   ]),
+  {
+    rules: {
+      // Legitimate patterns: fetching data in useEffect then calling setState,
+      // and assigning window.location.href for redirects.
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/immutability": "off",
+      // Allow underscore-prefixed variables to be unused (common convention).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

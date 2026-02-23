@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { retrieveSubscription, listInvoices, createBillingPortalSession } from "@/lib/stripe";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST — create a Stripe billing portal session
-export async function POST(request: NextRequest) {
+export async function POST() {
   const { user, supabase, response } = await requireAuth();
   if (response) return response;
 

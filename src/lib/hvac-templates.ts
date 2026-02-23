@@ -150,7 +150,7 @@ interface ProviderMapping {
  * Get default service→CRM category mappings for a provider.
  * Used to pre-populate service_category_mappings for new HVAC clients.
  */
-export function getHvacServiceMapping(provider: string): ProviderMapping[] {
+export function getHvacServiceMapping(_provider: string): ProviderMapping[] {
   // Default mappings that work for both Housecall Pro and Jobber
   return HVAC_SERVICE_CATEGORIES.map((cat) => ({
     internalName: cat.name,

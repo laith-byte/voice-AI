@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 
 // GET — List all recipes for the org (admin) or available recipes (client)
-export async function GET(request: NextRequest) {
+export async function GET() {
   const { user, supabase, response } = await requireAuth();
   if (response) return response;
 

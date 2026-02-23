@@ -6,7 +6,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const { user, supabase, response } = await requireAuth();
+    const { supabase, response } = await requireAuth();
     if (response) return response;
 
     const body = await request.json();

@@ -26,6 +26,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const allowedIndustries = ["hvac", "plumbing", "electrical", "landscaping", "roofing", "general", "other"];
+    if (industry && (typeof industry !== "string" || !allowedIndustries.includes(industry.toLowerCase()))) {
+      return NextResponse.json(
+        { error: "Invalid industry value" },
+        { status: 400 }
+      );
+    }
+
     const notifyTo = process.env.CONTACT_FORM_EMAIL || "sales@invarialabs.com";
 
     await sendEmail({

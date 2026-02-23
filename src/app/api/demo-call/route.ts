@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 // Map industry slugs to Retell agent IDs
 const AGENT_MAP: Record<string, string> = {
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     if (!retellRes.ok) {
       const errText = await retellRes.text();
-      console.error("Retell API error:", errText);
+      logger.error("Retell API error", { error: errText });
       return NextResponse.json(
         { error: "Failed to create demo call" },
         { status: 502 }
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ call_id: data.call_id });
   } catch (err) {
-    console.error("Demo call error:", err);
+    logger.error("Demo call error", { error: String(err) });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -29,7 +29,6 @@ import {
   XCircle,
   ArrowDownToLine,
   MessageSquare,
-  X,
   ChevronLeft,
   ChevronRight,
   ExternalLink,

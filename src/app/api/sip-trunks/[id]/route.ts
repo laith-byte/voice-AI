@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { encrypt } from "@/lib/crypto";
+import { logger } from "@/lib/logger";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
@@ -28,7 +29,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
@@ -54,7 +55,7 @@ export async function PATCH(
     .single();
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 
@@ -65,7 +66,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, supabase, response } = await requireAuth();
+  const { supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
@@ -77,7 +78,7 @@ export async function DELETE(
     .eq("id", id);
 
   if (error) {
-    console.error("DB error:", error.message);
+    logger.error("DB error", { error: error.message });
     return NextResponse.json({ error: "An unexpected error occurred" }, { status: 500 });
   }
 
