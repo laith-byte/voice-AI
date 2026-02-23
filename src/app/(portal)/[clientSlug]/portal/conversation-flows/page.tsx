@@ -61,6 +61,9 @@ import {
   Banknote,
   ArrowRight,
   Snowflake,
+  MessageSquare,
+  HelpCircle,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -225,6 +228,104 @@ const USE_CASE_NODE_COUNTS: Record<string, number> = {
 };
 
 
+// ---------------------------------------------------------------------------
+// Node type icons & colors for the active flow preview
+// ---------------------------------------------------------------------------
+
+const NODE_TYPE_DISPLAY: Record<
+  string,
+  { icon: typeof MessageSquare; color: string; dot: string }
+> = {
+  message: { icon: MessageSquare, color: "text-blue-500", dot: "bg-blue-500" },
+  question: { icon: HelpCircle, color: "text-indigo-500", dot: "bg-indigo-500" },
+  condition: { icon: GitBranch, color: "text-amber-500", dot: "bg-amber-500" },
+  transfer: { icon: PhoneForwarded, color: "text-orange-500", dot: "bg-orange-500" },
+  end: { icon: XCircle, color: "text-red-500", dot: "bg-red-500" },
+  check_availability: { icon: Calendar, color: "text-teal-500", dot: "bg-teal-500" },
+  book_appointment: { icon: CalendarCheck, color: "text-green-500", dot: "bg-green-500" },
+  crm_lookup: { icon: Search, color: "text-orange-500", dot: "bg-orange-500" },
+  webhook: { icon: Globe, color: "text-purple-500", dot: "bg-purple-500" },
+};
+
+// ---------------------------------------------------------------------------
+// Active Flow Preview — vertical step timeline
+// ---------------------------------------------------------------------------
+
+function ActiveFlowPreview({ nodes }: { nodes: FlowNode[] }) {
+  const MAX_VISIBLE = 6;
+  const visible = nodes.slice(0, MAX_VISIBLE);
+  const remaining = nodes.length - MAX_VISIBLE;
+
+  function getNodeLabel(node: FlowNode) {
+    const entry = NODE_TYPES.find((t) => t.value === node.type);
+    return entry?.label ?? node.type;
+  }
+
+  function getPreviewText(node: FlowNode) {
+    const text =
+      node.data.text ||
+      node.data.condition ||
+      node.data.transferNumber ||
+      node.data.webhookUrl ||
+      "";
+    return text.length > 60 ? text.slice(0, 60) + "..." : text;
+  }
+
+  return (
+    <div className="relative flex flex-col gap-0 max-h-[320px] overflow-y-auto pr-2">
+      {visible.map((node, idx) => {
+        const display = NODE_TYPE_DISPLAY[node.type] ?? {
+          icon: GitBranch,
+          color: "text-muted-foreground",
+          dot: "bg-muted-foreground",
+        };
+        const Icon = display.icon;
+        const preview = getPreviewText(node);
+
+        return (
+          <div key={node.id} className="flex items-start gap-3 relative">
+            {/* Vertical line */}
+            <div className="flex flex-col items-center">
+              <div className={`h-3 w-3 rounded-full ${display.dot} shrink-0 mt-0.5 ring-2 ring-background`} />
+              {idx < visible.length - 1 && (
+                <div className="w-px flex-1 min-h-[28px] bg-border" />
+              )}
+              {idx === visible.length - 1 && remaining > 0 && (
+                <div className="w-px flex-1 min-h-[28px] bg-border" />
+              )}
+            </div>
+
+            {/* Step content */}
+            <div className="pb-4 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono text-muted-foreground">{idx + 1}.</span>
+                <Icon className={`h-3.5 w-3.5 ${display.color} shrink-0`} />
+                <span className="text-xs font-medium">{getNodeLabel(node)}</span>
+              </div>
+              {preview && (
+                <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 truncate max-w-[240px]">
+                  {preview}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {remaining > 0 && (
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col items-center">
+            <div className="h-3 w-3 rounded-full bg-muted-foreground/30 shrink-0 ring-2 ring-background" />
+          </div>
+          <span className="text-[11px] text-muted-foreground font-medium">
+            +{remaining} more step{remaining !== 1 ? "s" : ""}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface FlowTemplate {
   industryKey: string;
   useCaseKey: string;
@@ -277,6 +378,11 @@ function ConversationFlowsContent() {
   const [flowToDelete, setFlowToDelete] = useState<string | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<string>("all");
+  const [pendingAction, setPendingAction] = useState<
+    | { type: "blank" }
+    | { type: "template"; template: FlowTemplate }
+    | null
+  >(null);
 
   // Editor state
   const [flowName, setFlowName] = useState("");
@@ -327,7 +433,13 @@ function ConversationFlowsContent() {
     fetchFlows();
   }, [fetchFlows]);
 
-  function openEditor(flow?: Flow) {
+  // Derived: active flow & its agent
+  const activeFlow = flows.find((f) => f.is_active) ?? null;
+  const activeAgent = activeFlow
+    ? agents.find((a) => a.id === activeFlow.agent_id) ?? null
+    : null;
+
+  function openEditorDirect(flow?: Flow) {
     if (flow) {
       setEditingFlow(flow);
       setFlowName(flow.name);
@@ -350,13 +462,45 @@ function ConversationFlowsContent() {
     setPromptPreview(null);
   }
 
+  function openEditor(flow?: Flow) {
+    if (flow) {
+      // Editing an existing flow — always open directly
+      openEditorDirect(flow);
+    } else {
+      // Creating blank flow — warn if active flow exists
+      if (activeFlow) {
+        setPendingAction({ type: "blank" });
+      } else {
+        openEditorDirect();
+      }
+    }
+  }
+
   function openFromTemplate(template: FlowTemplate) {
+    if (activeFlow) {
+      setPendingAction({ type: "template", template });
+    } else {
+      openFromTemplateDirect(template);
+    }
+  }
+
+  function openFromTemplateDirect(template: FlowTemplate) {
     setEditingFlow(null);
     setFlowName(template.name);
     setFlowAgentId("");
     setNodes(generateTemplateNodes(template.industryKey, template.useCaseKey));
     setCreating(true);
     setPromptPreview(null);
+  }
+
+  function confirmPendingAction() {
+    if (!pendingAction) return;
+    if (pendingAction.type === "blank") {
+      openEditorDirect();
+    } else {
+      openFromTemplateDirect(pendingAction.template);
+    }
+    setPendingAction(null);
   }
 
   function closeEditor() {
@@ -630,6 +774,106 @@ function ConversationFlowsContent() {
             Blank Flow
           </Button>
         </div>
+
+        {/* Active Flow Hero */}
+        {activeFlow && (
+          <section className="relative rounded-xl border-2 border-transparent bg-clip-padding overflow-hidden"
+            style={{
+              backgroundImage: "linear-gradient(var(--background), var(--background)), linear-gradient(135deg, rgb(59 130 246), rgb(6 182 212))",
+              backgroundOrigin: "padding-box, border-box",
+            }}
+          >
+            <div className="p-5 md:p-6">
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Left: Flow metadata */}
+                <div className="flex-1 min-w-0 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 pr-2.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                      </span>
+                      Currently Active
+                    </Badge>
+                  </div>
+
+                  <h2 className="text-xl font-bold tracking-tight">{activeFlow.name}</h2>
+
+                  {activeAgent && (
+                    <p className="text-sm text-muted-foreground">
+                      Agent: <span className="font-medium text-foreground">{activeAgent.name}</span>
+                    </p>
+                  )}
+
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      Deployed v{activeFlow.version}
+                    </span>
+                    <span>
+                      Updated {new Date(activeFlow.updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-8 text-xs"
+                      onClick={() => openEditorDirect(activeFlow)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-8 text-xs"
+                      onClick={() => {
+                        setEditingFlow(activeFlow);
+                        setFlowName(activeFlow.name);
+                        setFlowAgentId(activeFlow.agent_id || "");
+                        setNodes(activeFlow.nodes || []);
+                        setCreating(false);
+                        setPromptPreview(null);
+                        // Trigger deploy after a tick so editor state is set
+                        setTimeout(() => {
+                          const deployBtn = document.querySelector("[data-deploy-btn]") as HTMLButtonElement | null;
+                          deployBtn?.click();
+                        }, 100);
+                      }}
+                    >
+                      <Rocket className="h-3 w-3" />
+                      Re-deploy
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Right: Visual flow preview */}
+                <div className="lg:w-[300px] shrink-0">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+                    Flow Steps ({activeFlow.nodes?.length || 0})
+                  </p>
+                  {activeFlow.nodes && activeFlow.nodes.length > 0 ? (
+                    <ActiveFlowPreview nodes={activeFlow.nodes} />
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No nodes configured</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* No active flow banner (when flows exist but none active) */}
+        {flows.length > 0 && !activeFlow && (
+          <section className="rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 flex items-center gap-3">
+            <Rocket className="h-4 w-4 text-amber-500 shrink-0" />
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              No active flow deployed. Edit a flow and deploy it to your agent to go live.
+            </p>
+          </section>
+        )}
 
         {/* Existing Flows */}
         {flows.length === 0 && (
@@ -1115,6 +1359,7 @@ function ConversationFlowsContent() {
               </Button>
               {!creating && editingFlow && flowAgentId && (
                 <Button
+                  data-deploy-btn
                   variant="outline"
                   onClick={handleDeploy}
                   disabled={deploying}
@@ -1149,6 +1394,45 @@ function ConversationFlowsContent() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteFlow} className="bg-red-600 hover:bg-red-700">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Replace Active Flow AlertDialog */}
+      <AlertDialog
+        open={!!pendingAction && !!activeFlow}
+        onOpenChange={(open) => { if (!open) setPendingAction(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace Active Flow?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-sm text-muted-foreground space-y-2">
+                {pendingAction?.type === "blank" ? (
+                  <p>
+                    You currently have <span className="font-semibold text-foreground">{activeFlow?.name}</span>{" "}
+                    deployed{activeAgent ? <> to <span className="font-semibold text-foreground">{activeAgent.name}</span></> : null}{" "}
+                    (v{activeFlow?.version}). Creating a new blank flow and deploying it will replace your current
+                    active flow. Your existing flow will remain saved but will no longer be the active flow on your
+                    agent.
+                  </p>
+                ) : pendingAction?.type === "template" ? (
+                  <p>
+                    You currently have <span className="font-semibold text-foreground">{activeFlow?.name}</span>{" "}
+                    deployed. Using the{" "}
+                    <span className="font-semibold text-foreground">{pendingAction.template.name}</span> template
+                    will create a new flow that, when deployed, will replace your current active configuration.
+                    Your existing flow will remain saved.
+                  </p>
+                ) : null}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Current Flow</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPendingAction}>
+              {pendingAction?.type === "blank" ? "Create Blank Flow" : "Use Template"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
