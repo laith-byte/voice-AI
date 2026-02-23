@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -93,6 +94,15 @@ interface Flow {
 interface Agent {
   id: string;
   name: string;
+  conversation_flow_id?: string | null;
+}
+
+interface DeployedAgentFlow {
+  agentId: string;
+  agentName: string;
+  engineType: string;
+  nodes: Array<{ id: string; name: string; text: string }>;
+  nodeCount: number;
 }
 
 const NODE_TYPES = [
@@ -326,6 +336,53 @@ function ActiveFlowPreview({ nodes }: { nodes: FlowNode[] }) {
   );
 }
 
+function DeployedFlowPreview({ nodes }: { nodes: Array<{ id: string; name: string; text: string }> }) {
+  const MAX_VISIBLE = 6;
+  const visible = nodes.slice(0, MAX_VISIBLE);
+  const remaining = nodes.length - MAX_VISIBLE;
+
+  return (
+    <div className="relative flex flex-col gap-0 max-h-[320px] overflow-y-auto pr-2">
+      {visible.map((node, idx) => (
+        <div key={node.id} className="flex items-start gap-3 relative">
+          <div className="flex flex-col items-center">
+            <div className="h-3 w-3 rounded-full bg-blue-500 shrink-0 mt-0.5 ring-2 ring-background" />
+            {idx < visible.length - 1 && (
+              <div className="w-px flex-1 min-h-[28px] bg-border" />
+            )}
+            {idx === visible.length - 1 && remaining > 0 && (
+              <div className="w-px flex-1 min-h-[28px] bg-border" />
+            )}
+          </div>
+          <div className="pb-4 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-mono text-muted-foreground">{idx + 1}.</span>
+              <MessageSquare className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+              <span className="text-xs font-medium">{node.name}</span>
+            </div>
+            {node.text && (
+              <p className="text-[11px] text-muted-foreground leading-snug mt-0.5 truncate max-w-[240px]">
+                {node.text.length > 60 ? node.text.slice(0, 60) + "..." : node.text}
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {remaining > 0 && (
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col items-center">
+            <div className="h-3 w-3 rounded-full bg-muted-foreground/30 shrink-0 ring-2 ring-background" />
+          </div>
+          <span className="text-[11px] text-muted-foreground font-medium">
+            +{remaining} more step{remaining !== 1 ? "s" : ""}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface FlowTemplate {
   industryKey: string;
   useCaseKey: string;
@@ -367,8 +424,10 @@ export default function ConversationFlowsPage() {
 }
 
 function ConversationFlowsContent() {
+  const params = useParams<{ clientSlug: string }>();
   const [flows, setFlows] = useState<Flow[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [deployedAgentFlow, setDeployedAgentFlow] = useState<DeployedAgentFlow | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingFlow, setEditingFlow] = useState<Flow | null>(null);
   const [creating, setCreating] = useState(false);
@@ -395,10 +454,12 @@ function ConversationFlowsContent() {
     setLoading(true);
     try {
       // Fetch flows from API (scoped by getClientId)
+      let fetchedFlows: Flow[] = [];
       const flowsRes = await fetch("/api/conversation-flows");
       if (flowsRes.ok) {
         const data = await flowsRes.json();
-        setFlows(Array.isArray(data) ? data : []);
+        fetchedFlows = Array.isArray(data) ? data : [];
+        setFlows(fetchedFlows);
       } else if (flowsRes.status !== 401) {
         toast.error("Failed to load flows");
       }
@@ -416,10 +477,47 @@ function ConversationFlowsContent() {
         if (userData?.client_id) {
           const { data: agentsData } = await supabase
             .from("agents")
-            .select("id, name")
+            .select("id, name, conversation_flow_id")
             .eq("client_id", userData.client_id)
             .order("created_at", { ascending: false });
           setAgents(agentsData || []);
+
+          // Discover deployed flows on agents (Prompt Tree → Retell)
+          // that aren't already tracked in the conversation_flows table
+          const dbActiveAgentIds = new Set(
+            fetchedFlows.filter((f) => f.is_active && f.agent_id).map((f) => f.agent_id)
+          );
+
+          let foundDeployed: DeployedAgentFlow | null = null;
+          for (const agent of agentsData || []) {
+            if (dbActiveAgentIds.has(agent.id)) continue;
+            try {
+              const cfRes = await fetch(`/api/agents/${agent.id}/conversation-flow`);
+              if (!cfRes.ok) {
+                continue;
+              }
+              const cfData = await cfRes.json();
+              if (cfData.exists && cfData.flow?.nodes?.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const retellNodes = (cfData.flow.nodes as any[]) || [];
+                foundDeployed = {
+                  agentId: agent.id,
+                  agentName: agent.name,
+                  engineType: cfData.engine_type || "unknown",
+                  nodes: retellNodes.map((n) => ({
+                    id: n.id || n.name || "",
+                    name: n.name || n.id || "",
+                    text: n.instruction?.text || "",
+                  })),
+                  nodeCount: retellNodes.length,
+                };
+                break;
+              }
+            } catch {
+              // Silently continue — agent may not have Retell configured
+            }
+          }
+          setDeployedAgentFlow(foundDeployed);
         }
       }
     } catch {
@@ -462,13 +560,18 @@ function ConversationFlowsContent() {
     setPromptPreview(null);
   }
 
+  // Whether any flow is actively deployed (DB-based or agent-based)
+  const hasDeployedFlow = !!activeFlow || !!deployedAgentFlow;
+  const deployedFlowName = activeFlow?.name ?? (deployedAgentFlow ? `${deployedAgentFlow.agentName} Flow` : "");
+  const deployedAgentName = activeAgent?.name ?? deployedAgentFlow?.agentName ?? "";
+
   function openEditor(flow?: Flow) {
     if (flow) {
       // Editing an existing flow — always open directly
       openEditorDirect(flow);
     } else {
-      // Creating blank flow — warn if active flow exists
-      if (activeFlow) {
+      // Creating blank flow — warn if any deployed flow exists
+      if (hasDeployedFlow) {
         setPendingAction({ type: "blank" });
       } else {
         openEditorDirect();
@@ -477,7 +580,7 @@ function ConversationFlowsContent() {
   }
 
   function openFromTemplate(template: FlowTemplate) {
-    if (activeFlow) {
+    if (hasDeployedFlow) {
       setPendingAction({ type: "template", template });
     } else {
       openFromTemplateDirect(template);
@@ -865,8 +968,75 @@ function ConversationFlowsContent() {
           </section>
         )}
 
+        {/* Deployed Agent Flow Hero (from Prompt Tree / Retell) */}
+        {!activeFlow && deployedAgentFlow && (
+          <section className="relative rounded-xl border-2 border-transparent bg-clip-padding overflow-hidden"
+            style={{
+              backgroundImage: "linear-gradient(var(--background), var(--background)), linear-gradient(135deg, rgb(59 130 246), rgb(6 182 212))",
+              backgroundOrigin: "padding-box, border-box",
+            }}
+          >
+            <div className="p-5 md:p-6">
+              <div className="flex flex-col lg:flex-row gap-6">
+                {/* Left: Flow metadata */}
+                <div className="flex-1 min-w-0 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 pr-2.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                      </span>
+                      Currently Active
+                    </Badge>
+                  </div>
+
+                  <h2 className="text-xl font-bold tracking-tight">{deployedAgentFlow.agentName} Flow</h2>
+
+                  <p className="text-sm text-muted-foreground">
+                    Agent: <span className="font-medium text-foreground">{deployedAgentFlow.agentName}</span>
+                  </p>
+
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      Deployed via Prompt Tree
+                    </span>
+                    <span>{deployedAgentFlow.nodeCount} nodes</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-8 text-xs"
+                      onClick={() => {
+                        window.location.href = `/${params.clientSlug}/portal/agents/${deployedAgentFlow.agentId}/prompt-tree`;
+                      }}
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Edit in Prompt Tree
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Right: Visual flow preview */}
+                <div className="lg:w-[300px] shrink-0">
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+                    Flow Steps ({deployedAgentFlow.nodeCount})
+                  </p>
+                  {deployedAgentFlow.nodes.length > 0 ? (
+                    <DeployedFlowPreview nodes={deployedAgentFlow.nodes} />
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No nodes configured</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* No active flow banner (when flows exist but none active) */}
-        {flows.length > 0 && !activeFlow && (
+        {flows.length > 0 && !activeFlow && !deployedAgentFlow && (
           <section className="rounded-lg border border-dashed border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 flex items-center gap-3">
             <Rocket className="h-4 w-4 text-amber-500 shrink-0" />
             <p className="text-sm text-amber-700 dark:text-amber-300">
@@ -875,8 +1045,8 @@ function ConversationFlowsContent() {
           </section>
         )}
 
-        {/* Existing Flows */}
-        {flows.length === 0 && (
+        {/* Existing Flows — Empty State (only when no DB flows AND no deployed agent flow) */}
+        {flows.length === 0 && !deployedAgentFlow && (
           <section className="border border-dashed border-border rounded-lg py-12 flex flex-col items-center justify-center text-center">
             <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center mb-4">
               <GitBranch className="w-6 h-6 text-muted-foreground" />
@@ -1401,7 +1571,7 @@ function ConversationFlowsContent() {
 
       {/* Replace Active Flow AlertDialog */}
       <AlertDialog
-        open={!!pendingAction && !!activeFlow}
+        open={!!pendingAction && hasDeployedFlow}
         onOpenChange={(open) => { if (!open) setPendingAction(null); }}
       >
         <AlertDialogContent>
@@ -1411,15 +1581,15 @@ function ConversationFlowsContent() {
               <div className="text-sm text-muted-foreground space-y-2">
                 {pendingAction?.type === "blank" ? (
                   <p>
-                    You currently have <span className="font-semibold text-foreground">{activeFlow?.name}</span>{" "}
-                    deployed{activeAgent ? <> to <span className="font-semibold text-foreground">{activeAgent.name}</span></> : null}{" "}
-                    (v{activeFlow?.version}). Creating a new blank flow and deploying it will replace your current
+                    You currently have <span className="font-semibold text-foreground">{deployedFlowName}</span>{" "}
+                    deployed{deployedAgentName ? <> to <span className="font-semibold text-foreground">{deployedAgentName}</span></> : null}
+                    {activeFlow ? ` (v${activeFlow.version})` : ""}. Creating a new blank flow and deploying it will replace your current
                     active flow. Your existing flow will remain saved but will no longer be the active flow on your
                     agent.
                   </p>
                 ) : pendingAction?.type === "template" ? (
                   <p>
-                    You currently have <span className="font-semibold text-foreground">{activeFlow?.name}</span>{" "}
+                    You currently have <span className="font-semibold text-foreground">{deployedFlowName}</span>{" "}
                     deployed. Using the{" "}
                     <span className="font-semibold text-foreground">{pendingAction.template.name}</span> template
                     will create a new flow that, when deployed, will replace your current active configuration.
