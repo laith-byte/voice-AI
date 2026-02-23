@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,8 @@ export function ServiceMappingEditor({
   const [mappings, setMappings] = useState<ServiceMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dirtyRows, setDirtyRows] = useState<Set<number>>(new Set());
+  const savedSnapshot = useRef<string>("");
 
   const fetchMappings = useCallback(async () => {
     try {
@@ -38,7 +40,10 @@ export function ServiceMappingEditor({
       );
       if (res.ok) {
         const data = await res.json();
-        setMappings(data.mappings || []);
+        const fetched = data.mappings || [];
+        setMappings(fetched);
+        savedSnapshot.current = JSON.stringify(fetched);
+        setDirtyRows(new Set());
       }
     } catch {
       toast.error("Failed to load service mappings");
@@ -52,23 +57,28 @@ export function ServiceMappingEditor({
   }, [fetchMappings]);
 
   function addRow() {
-    setMappings((prev) => [
-      ...prev,
-      {
-        internal_service_name: "",
-        external_category_name: "",
-        external_category_id: null,
-        default_duration_minutes: 60,
-        default_price_cents: null,
-        isNew: true,
-      },
-    ]);
+    setMappings((prev) => {
+      const next = [
+        ...prev,
+        {
+          internal_service_name: "",
+          external_category_name: "",
+          external_category_id: null,
+          default_duration_minutes: 60,
+          default_price_cents: null,
+          isNew: true,
+        },
+      ];
+      setDirtyRows((d) => new Set(d).add(next.length - 1));
+      return next;
+    });
   }
 
   function updateRow(index: number, field: string, value: string | number | null) {
     setMappings((prev) =>
       prev.map((m, i) => (i === index ? { ...m, [field]: value } : m))
     );
+    setDirtyRows((prev) => new Set(prev).add(index));
   }
 
   async function saveRow(index: number) {
@@ -101,6 +111,11 @@ export function ServiceMappingEditor({
           i === index ? { ...data.mapping, isNew: false } : m
         )
       );
+      setDirtyRows((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
       toast.success("Mapping saved");
     } catch {
       toast.error("Failed to save mapping");
@@ -114,6 +129,14 @@ export function ServiceMappingEditor({
 
     if (mapping.isNew || !mapping.id) {
       setMappings((prev) => prev.filter((_, i) => i !== index));
+      setDirtyRows((prev) => {
+        const next = new Set<number>();
+        prev.forEach((idx) => {
+          if (idx < index) next.add(idx);
+          else if (idx > index) next.add(idx - 1);
+        });
+        return next;
+      });
       return;
     }
 
@@ -125,6 +148,14 @@ export function ServiceMappingEditor({
       if (!res.ok) throw new Error("Failed to delete");
 
       setMappings((prev) => prev.filter((_, i) => i !== index));
+      setDirtyRows((prev) => {
+        const next = new Set<number>();
+        prev.forEach((idx) => {
+          if (idx < index) next.add(idx);
+          else if (idx > index) next.add(idx - 1);
+        });
+        return next;
+      });
       toast.success("Mapping removed");
     } catch {
       toast.error("Failed to delete mapping");
@@ -169,85 +200,95 @@ export function ServiceMappingEditor({
           </p>
         ) : (
           <div className="space-y-2">
-            {/* Header */}
-            <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-1">
+            {/* Header — hidden on small screens */}
+            <div className="hidden sm:grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-1">
               <div className="col-span-3">Your Service</div>
               <div className="col-span-3">{providerLabel} Category</div>
               <div className="col-span-2">Duration (min)</div>
               <div className="col-span-2">Price ($)</div>
               <div className="col-span-2">Actions</div>
             </div>
-            {/* Rows */}
-            {mappings.map((mapping, index) => (
-              <div key={mapping.id || `new-${index}`} className="grid grid-cols-12 gap-2 items-center">
-                <Input
-                  className="col-span-3 h-8 text-sm"
-                  placeholder="e.g. AC Repair"
-                  value={mapping.internal_service_name}
-                  onChange={(e) =>
-                    updateRow(index, "internal_service_name", e.target.value)
-                  }
-                />
-                <Input
-                  className="col-span-3 h-8 text-sm"
-                  placeholder="CRM category"
-                  value={mapping.external_category_name || ""}
-                  onChange={(e) =>
-                    updateRow(index, "external_category_name", e.target.value)
-                  }
-                />
-                <Input
-                  className="col-span-2 h-8 text-sm"
-                  type="number"
-                  value={mapping.default_duration_minutes}
-                  onChange={(e) =>
-                    updateRow(
-                      index,
-                      "default_duration_minutes",
-                      parseInt(e.target.value) || 60
-                    )
-                  }
-                />
-                <Input
-                  className="col-span-2 h-8 text-sm"
-                  type="number"
-                  placeholder="0.00"
-                  value={
-                    mapping.default_price_cents
-                      ? (mapping.default_price_cents / 100).toFixed(2)
-                      : ""
-                  }
-                  onChange={(e) =>
-                    updateRow(
-                      index,
-                      "default_price_cents",
-                      e.target.value
-                        ? Math.round(parseFloat(e.target.value) * 100)
-                        : null
-                    )
-                  }
-                />
-                <div className="col-span-2 flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => saveRow(index)}
-                    disabled={saving}
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
-                    onClick={() => deleteRow(index)}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+            {/* Rows — stacked on mobile, grid on sm+ */}
+            {mappings.map((mapping, index) => {
+              const isDirty = dirtyRows.has(index);
+              return (
+                <div
+                  key={mapping.id || `new-${index}`}
+                  className="flex flex-col gap-2 sm:grid sm:grid-cols-12 sm:gap-2 sm:items-center border-b sm:border-0 pb-3 sm:pb-0"
+                >
+                  <Input
+                    className="sm:col-span-3 h-8 text-sm"
+                    placeholder="e.g. AC Repair"
+                    value={mapping.internal_service_name}
+                    onChange={(e) =>
+                      updateRow(index, "internal_service_name", e.target.value)
+                    }
+                  />
+                  <Input
+                    className="sm:col-span-3 h-8 text-sm"
+                    placeholder="CRM category"
+                    value={mapping.external_category_name || ""}
+                    onChange={(e) =>
+                      updateRow(index, "external_category_name", e.target.value)
+                    }
+                  />
+                  <div className="flex gap-2 sm:contents">
+                    <Input
+                      className="flex-1 sm:col-span-2 h-8 text-sm"
+                      type="number"
+                      placeholder="60"
+                      value={mapping.default_duration_minutes}
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "default_duration_minutes",
+                          parseInt(e.target.value) || 60
+                        )
+                      }
+                    />
+                    <Input
+                      className="flex-1 sm:col-span-2 h-8 text-sm"
+                      type="number"
+                      placeholder="0.00"
+                      value={
+                        mapping.default_price_cents
+                          ? (mapping.default_price_cents / 100).toFixed(2)
+                          : ""
+                      }
+                      onChange={(e) =>
+                        updateRow(
+                          index,
+                          "default_price_cents",
+                          e.target.value
+                            ? Math.round(parseFloat(e.target.value) * 100)
+                            : null
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="sm:col-span-2 flex items-center gap-1">
+                    <Button
+                      variant={isDirty ? "default" : "ghost"}
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() => saveRow(index)}
+                      disabled={saving}
+                      title={isDirty ? "Unsaved changes" : "Save"}
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
+                      onClick={() => deleteRow(index)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>

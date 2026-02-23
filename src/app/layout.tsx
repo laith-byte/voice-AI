@@ -15,7 +15,21 @@ export const metadata: Metadata = {
     default: "Invaria Labs | Enterprise Voice AI Platform",
     template: "%s | Invaria Labs",
   },
-  description: "Build, deploy, and manage intelligent voice AI agents for your business. Automate customer calls, boost engagement, and scale operations with Invaria Labs.",
+  description:
+    "Build, deploy, and manage intelligent voice AI agents for your business. Automate customer calls, boost engagement, and scale operations with Invaria Labs.",
+  openGraph: {
+    title: "Invaria Labs | Enterprise Voice AI Platform",
+    description:
+      "Build, deploy, and manage intelligent voice AI agents for your business. Automate customer calls, boost engagement, and scale operations with Invaria Labs.",
+    siteName: "Invaria Labs",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Invaria Labs | Enterprise Voice AI Platform",
+    description:
+      "Build, deploy, and manage intelligent voice AI agents for your business. Automate customer calls, boost engagement, and scale operations with Invaria Labs.",
+  },
 };
 
 export default function RootLayout({

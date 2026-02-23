@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   try {
     const accessToken = await getValidToken(client_id, "housecallpro");
 
-    // Get employees/technicians
+    // Get all employees/technicians
     const employeesRes = await fetch(
       "https://api.housecallpro.com/pro/v1/employees",
       {
@@ -48,42 +48,57 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check schedule for the first employee
-    const employeeId = employees[0].id;
-    const scheduleRes = await fetch(
-      `https://api.housecallpro.com/pro/v1/schedule?employee_id=${employeeId}&date=${date}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
+    // W12: Check schedule for ALL employees, not just the first one
+    const allBusySlots: { start: string; end: string }[] = [];
+
+    await Promise.all(
+      employees.map(async (employee: { id: string }) => {
+        try {
+          const scheduleRes = await fetch(
+            `https://api.housecallpro.com/pro/v1/schedule?employee_id=${employee.id}&date=${date}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          if (!scheduleRes.ok) return;
+
+          const scheduleData = await scheduleRes.json();
+          const events = scheduleData.events || scheduleData.jobs || [];
+          for (const event of events) {
+            allBusySlots.push({
+              start: event.start_time || event.scheduled_start,
+              end: event.end_time || event.scheduled_end,
+            });
+          }
+        } catch {
+          // Skip this employee on error — partial availability is better than none
+        }
+      })
     );
 
-    if (!scheduleRes.ok) {
-      throw new Error(`Housecall Pro schedule fetch failed: ${scheduleRes.status}`);
-    }
-
-    const scheduleData = await scheduleRes.json();
-
     // Generate available slots based on schedule gaps
-    const busySlots = scheduleData.events || scheduleData.jobs || [];
+    // A slot is available if ANY employee is free during that window
     const workStart = 8; // 8 AM
     const workEnd = 17; // 5 PM
     const slotDuration = 2; // 2-hour slots for field service
+    const employeeCount = employees.length;
 
     const availableSlots: string[] = [];
     for (let hour = workStart; hour < workEnd; hour += slotDuration) {
       const slotStart = `${date}T${String(hour).padStart(2, "0")}:00:00`;
       const slotEnd = `${date}T${String(hour + slotDuration).padStart(2, "0")}:00:00`;
 
-      const isConflict = busySlots.some((event: Record<string, string>) => {
-        const eventStart = event.start_time || event.scheduled_start;
-        const eventEnd = event.end_time || event.scheduled_end;
-        return eventStart < slotEnd && eventEnd > slotStart;
-      });
+      // Count how many employees are busy in this slot
+      const busyCount = allBusySlots.filter(
+        (busy) => busy.start < slotEnd && busy.end > slotStart
+      ).length;
 
-      if (!isConflict) {
+      // Available if at least one employee is free
+      if (busyCount < employeeCount) {
         availableSlots.push(
           `${String(hour).padStart(2, "0")}:00 - ${String(hour + slotDuration).padStart(2, "0")}:00`
         );

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CheckCircle2,
@@ -54,27 +55,38 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+const AUTO_REFRESH_MS = 60_000;
+
 export function RecentSyncsWidget() {
   const [events, setEvents] = useState<SyncEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
+
+  const fetchRecentSyncs = useCallback(async (isManual = false) => {
+    if (isManual) setRefreshing(true);
+    try {
+      const res = await fetch("/api/integrations/recent-syncs");
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(data.events || []);
+        setError(false);
+      } else {
+        setError(true);
+      }
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchRecentSyncs() {
-      try {
-        const res = await fetch("/api/integrations/recent-syncs");
-        if (res.ok) {
-          const data = await res.json();
-          setEvents(data.events || []);
-        }
-      } catch {
-        // silently fail — widget is non-critical
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchRecentSyncs();
-  }, []);
+    const interval = setInterval(() => fetchRecentSyncs(), AUTO_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [fetchRecentSyncs]);
 
   if (loading) {
     return (
@@ -98,16 +110,63 @@ export function RecentSyncsWidget() {
     );
   }
 
+  if (error && events.length === 0) {
+    return (
+      <Card className="glass-card rounded-xl">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-primary" />
+              <CardTitle className="text-lg font-semibold tracking-tight">Recent Syncs</CardTitle>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => fetchRecentSyncs(true)}
+              disabled={refreshing}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Failed to load sync events.{" "}
+            <button
+              className="text-primary underline underline-offset-2"
+              onClick={() => fetchRecentSyncs(true)}
+            >
+              Retry
+            </button>
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (events.length === 0) return null;
 
   return (
     <Card className="animate-fade-in-up glass-card rounded-xl">
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-primary" />
-          <CardTitle className="text-lg font-semibold tracking-tight">
-            Recent Syncs
-          </CardTitle>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-primary" />
+            <CardTitle className="text-lg font-semibold tracking-tight">
+              Recent Syncs
+            </CardTitle>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={() => fetchRecentSyncs(true)}
+            disabled={refreshing}
+            title="Refresh"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
         </div>
       </CardHeader>
       <CardContent>

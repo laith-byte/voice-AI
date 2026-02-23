@@ -69,6 +69,22 @@ const PHONE_REGEX = /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4
 const ADDRESS_REGEX = /\d+\s+[\w\s]+(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd|court|ct|place|pl|way|circle|cir)\b/i;
 
 /**
+ * Build a regex for a keyword that uses word boundaries for single-word
+ * keywords and plain includes-style matching for multi-word phrases.
+ */
+function buildKeywordRegex(keyword: string): RegExp {
+  // Multi-word phrases: escape and match literally (already specific enough)
+  if (keyword.includes(" ")) {
+    return new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  }
+  // Single-word: use word boundaries to avoid partial matches
+  return new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+}
+
+const EMERGENCY_PATTERNS = EMERGENCY_KEYWORDS.map(buildKeywordRegex);
+const URGENT_PATTERNS = URGENT_KEYWORDS.map(buildKeywordRegex);
+
+/**
  * Extract structured data from call transcript and analysis.
  * Checks post_call_analysis first (Retell AI output), then falls back to
  * regex/keyword matching on the transcript.
@@ -158,18 +174,17 @@ export function extractStructuredData(
 
 /**
  * Classify urgency based on keywords in text.
+ * Uses word-boundary matching for single-word keywords to avoid false positives.
  */
 export function classifyUrgency(
   text: string
 ): "emergency" | "urgent" | "routine" {
-  const lower = text.toLowerCase();
-
-  for (const keyword of EMERGENCY_KEYWORDS) {
-    if (lower.includes(keyword)) return "emergency";
+  for (const pattern of EMERGENCY_PATTERNS) {
+    if (pattern.test(text)) return "emergency";
   }
 
-  for (const keyword of URGENT_KEYWORDS) {
-    if (lower.includes(keyword)) return "urgent";
+  for (const pattern of URGENT_PATTERNS) {
+    if (pattern.test(text)) return "urgent";
   }
 
   return "routine";

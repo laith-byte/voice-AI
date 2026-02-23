@@ -13,7 +13,7 @@ import {
   Megaphone,
   Settings,
   ArrowLeft,
-  Bell,
+
   LogOut,
   Key,
   ChevronUp,
@@ -27,7 +27,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -330,17 +330,6 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
           </>
         )}
       </nav>
-
-      {/* Notification bell */}
-      <div className="px-4 py-2 border-t border-white/[0.06]">
-        <button className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-all duration-200">
-          <Bell className="w-4 h-4" />
-          Notifications
-          <Badge variant="secondary" className="ml-auto text-[10px] h-5 px-1.5 bg-primary/20 text-primary-foreground font-medium">
-            0
-          </Badge>
-        </button>
-      </div>
 
       {/* User profile */}
       <div className="p-3 border-t border-white/[0.06]">

@@ -21,6 +21,11 @@ const PROVIDER_LABELS: Record<string, string> = {
   slack: "Slack",
   hubspot: "HubSpot",
   quickbooks: "QuickBooks",
+  housecallpro: "Housecall Pro",
+  jobber: "Jobber",
+  salesforce: "Salesforce",
+  gohighlevel: "GoHighLevel",
+  calendly: "Calendly",
 };
 
 export function OAuthConnectButton({
