@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import {
   ReactFlow,
   MiniMap,
@@ -570,6 +571,14 @@ interface PromptTreeEditorProps {
 }
 
 export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const handleBack = useCallback(() => {
+    // Strip /prompt-tree from current path to navigate back to agent settings
+    const backPath = pathname.replace(/\/prompt-tree$/, "/agent-settings");
+    router.push(backPath);
+  }, [router, pathname]);
+
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<PromptTreeNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -581,8 +590,8 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Test call panel
-  const [showTestPanel, setShowTestPanel] = useState(false);
+  // Test call panel — visible by default
+  const [showTestPanel, setShowTestPanel] = useState(true);
 
   // Engine metadata for retell-llm compatibility
   const [engineType, setEngineType] = useState<"conversation-flow" | "retell-llm" | null>(null);
@@ -1325,6 +1334,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
     <div className="h-[calc(100vh-220px)] flex rounded-lg border overflow-hidden bg-white">
       <div className="flex-1 flex flex-col">
         <PromptTreeToolbar
+          onBack={handleBack}
           onSave={() => saveFlow()}
           saving={saving}
           lastSavedAt={lastSavedAt}

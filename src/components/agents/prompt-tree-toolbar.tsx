@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ArrowLeft,
   Plus,
   Save,
   Loader2,
@@ -46,6 +47,7 @@ import type { PromptTreeNodeType, ModelChoice } from "@/lib/prompt-tree-types";
 // ─── Props ──────────────────────────────────────────────────────────────────
 
 interface PromptTreeToolbarProps {
+  onBack?: () => void;
   onAddNode: (type: PromptTreeNodeType) => void;
   onSave: () => void;
   saving: boolean;
@@ -90,6 +92,7 @@ const MODEL_OPTIONS: Array<{ value: ModelChoice["model"]; label: string }> = [
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function PromptTreeToolbar({
+  onBack,
   onAddNode,
   onSave,
   saving,
@@ -109,6 +112,12 @@ export function PromptTreeToolbar({
 
   return (
     <div className="flex items-center gap-2 border-b bg-white px-4 py-2.5">
+      {/* Back Button */}
+      {onBack && (
+        <Button variant="ghost" size="icon" onClick={onBack} className="size-8 mr-1">
+          <ArrowLeft className="size-4" />
+        </Button>
+      )}
       {/* Add Node */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

@@ -78,7 +78,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { PrototypeCallDialog } from "@/components/agents/prototype-call-dialog";
+import { AgentTestPanel } from "@/components/agents/agent-test-panel";
 import { useRetellCall } from "@/hooks/use-retell-call";
 
 import { useDashboardTheme } from "@/components/portal/dashboard-theme-provider";
@@ -93,6 +93,7 @@ import {
   TELEPHONY_COST,
   ADDON_COSTS,
 } from "@/lib/retell-costs";
+import { PiiRedactionSettings } from "@/components/business-settings/pii-redaction-settings";
 
 interface Agent {
   id: string;
@@ -264,7 +265,7 @@ export default function AgentSettingsPage() {
   const [mcpServers, setMcpServers] = useState<
     { id: string; name: string; url: string }[]
   >([]);
-  const [prototypeOpen, setPrototypeOpen] = useState(false);
+  const [showTestPanel, setShowTestPanel] = useState(false);
 
   // Widget state
   const [widgetConfigId, setWidgetConfigId] = useState<string | null>(null);
@@ -963,8 +964,6 @@ export default function AgentSettingsPage() {
       },
       security_fallback: {
         data_storage_setting: dataStorage,
-        pii_redaction: piiRedaction,
-        ...(piiRedaction && piiCategories.length > 0 ? { pii_categories: piiCategories } : {}),
         secure_urls: secureUrls,
         ...(secureUrls ? { signed_url_expiration_hours: parseFloat(signedUrlExpiration) || 24 } : {}),
         ...(isChat ? {} : { fallback_voice_ids: parsedFallbackVoiceIds }),
@@ -1286,7 +1285,7 @@ export default function AgentSettingsPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setPrototypeOpen(true)} className="bg-white/80 dark:bg-background hover:bg-white dark:hover:bg-accent">
+            <Button variant="outline" onClick={() => setShowTestPanel((v) => !v)} className="bg-white/80 dark:bg-background hover:bg-white dark:hover:bg-accent">
               <Play className="w-4 h-4 mr-2" />
               {isChat ? "Test Chat" : "Test Call"}
             </Button>
@@ -1320,9 +1319,9 @@ export default function AgentSettingsPage() {
         </div>
 
         <TabsContent value="config" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className={`grid grid-cols-1 gap-6 ${showTestPanel ? "lg:grid-cols-[1fr_280px_300px]" : "lg:grid-cols-[2fr_1fr]"}`}>
             {/* Left - Main Config */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6">
               {/* Core Settings Card */}
               <Card className="overflow-hidden animate-fade-in-up stagger-1 glass-card rounded-xl">
                 <div className="bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-800/30 px-6 py-4 border-b">
@@ -3038,61 +3037,6 @@ export default function AgentSettingsPage() {
                         </Select>
                       </div>
                       <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-xs">PII Redaction</Label>
-                          {piiRedaction && (
-                            <p className="text-[10px] text-amber-600">+${ADDON_COSTS.piiRemoval.toFixed(3)}/min</p>
-                          )}
-                        </div>
-                        <Switch
-                          checked={piiRedaction}
-                          onCheckedChange={(checked) => {
-                            setPiiRedaction(checked);
-                            if (!checked) setPiiCategories([]);
-                          }}
-                        />
-                      </div>
-                      {piiRedaction && (
-                        <div className="space-y-2 pl-1 border-l-2 border-primary/20 ml-1 pl-3">
-                          <Label className="text-xs">PII Categories</Label>
-                          <p className="text-[10px] text-muted-foreground">
-                            Select categories to redact. Leave empty to redact all.
-                          </p>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {[
-                              { key: "person_name", label: "Person Name" },
-                              { key: "phone_number", label: "Phone Number" },
-                              { key: "email", label: "Email" },
-                              { key: "address", label: "Address" },
-                              { key: "ssn", label: "SSN" },
-                              { key: "date_of_birth", label: "Date of Birth" },
-                              { key: "credit_card", label: "Credit Card" },
-                              { key: "bank_account", label: "Bank Account" },
-                              { key: "driver_license", label: "Driver License" },
-                              { key: "passport", label: "Passport" },
-                              { key: "medical_id", label: "Medical ID" },
-                              { key: "password", label: "Password" },
-                              { key: "pin", label: "PIN" },
-                            ].map((cat) => (
-                              <label key={cat.key} className="flex items-center gap-1.5 text-[11px] cursor-pointer">
-                                <Checkbox
-                                  checked={piiCategories.includes(cat.key)}
-                                  onCheckedChange={(checked) => {
-                                    setPiiCategories((prev) =>
-                                      checked
-                                        ? [...prev, cat.key]
-                                        : prev.filter((c) => c !== cat.key)
-                                    );
-                                  }}
-                                  className="h-3.5 w-3.5"
-                                />
-                                {cat.label}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between">
                         <Label className="text-xs">Secure URLs</Label>
                         <Switch
                           checked={secureUrls}
@@ -3134,6 +3078,7 @@ export default function AgentSettingsPage() {
                           className="font-mono text-xs resize-y"
                         />
                       </div>
+                      <PiiRedactionSettings agentId={agentId} embedded />
                     </CardContent>
                   </CollapsibleContent>
                 </Card>
@@ -3395,6 +3340,21 @@ export default function AgentSettingsPage() {
                 </Card>
               </Collapsible>
             </div>
+
+            {/* Right - Inline Test Panel */}
+            {showTestPanel && (
+              <div className="hidden lg:block">
+                <div className="sticky top-6">
+                  <AgentTestPanel
+                    agentId={agentId}
+                    isChat={isChat}
+                    firstMessage={firstMessage}
+                    onClose={() => setShowTestPanel(false)}
+                  />
+                </div>
+              </div>
+            )}
+
           </div>
         </TabsContent>
 
@@ -3829,14 +3789,6 @@ export default function AgentSettingsPage() {
 
       </Tabs>
 
-      <PrototypeCallDialog
-        agentId={agentId}
-        agentName={agentName || "Agent"}
-        open={prototypeOpen}
-        onOpenChange={setPrototypeOpen}
-        isChat={isChat}
-        firstMessage={firstMessage}
-      />
     </div>
     </FeatureGate>
   );
