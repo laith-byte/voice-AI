@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { Sparkles, Zap } from "lucide-react";
+import { Sparkles, Zap, Lock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { RecipeCard } from "@/components/automations/recipe-card";
@@ -10,10 +10,6 @@ import { RecipeSetupModal } from "@/components/automations/recipe-setup-modal";
 import { ActiveAutomationCard } from "@/components/automations/active-automation-card";
 import { usePlanAccess } from "@/hooks/use-plan-access";
 import { UpgradeBanner } from "@/components/portal/upgrade-banner";
-import { ZapierConnectionCard } from "@/components/portal/zapier-connection-card";
-import { MakeConnectionCard } from "@/components/portal/make-connection-card";
-import { N8nConnectionCard } from "@/components/portal/n8n-connection-card";
-import { Lock } from "lucide-react";
 
 interface Recipe {
   id: string;
@@ -114,6 +110,28 @@ function isRecipeGated(recipeName: string, recipeCategory: string, planAccess: R
   return false;
 }
 
+const SECTION_ORDER = ["CRM", "Notes & Alerts", "General Follow-Up", "Invoice & Pricing"] as const;
+
+function getRecipeSection(recipe: Recipe): string {
+  const name = recipe.name.toLowerCase();
+  const cat = recipe.category.toLowerCase();
+
+  if (name.includes("crm") || cat === "crm") return "CRM";
+  if (name.includes("slack") || name.includes("notion") || name.includes("missed call")) return "Notes & Alerts";
+  if (name.includes("quickbooks") || name.includes("invoice")) return "Invoice & Pricing";
+  return "General Follow-Up";
+}
+
+function groupRecipesBySection(recipes: Recipe[]): Record<string, Recipe[]> {
+  const groups: Record<string, Recipe[]> = {};
+  for (const section of SECTION_ORDER) groups[section] = [];
+  for (const recipe of recipes) {
+    const section = getRecipeSection(recipe);
+    groups[section].push(recipe);
+  }
+  return groups;
+}
+
 export default function PortalAutomationsPage() {
   return (
     <Suspense fallback={<div className="space-y-6 p-6"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><Skeleton className="h-32" /><Skeleton className="h-32" /><Skeleton className="h-32" /></div><Skeleton className="h-64" /></div>}>
@@ -158,7 +176,7 @@ function PortalAutomationsContent() {
         setOauthConnections(data.connections || []);
       }
     } catch {
-      toast.error("Failed to load automations");
+      toast.error("Failed to load integrations");
     } finally {
       setLoading(false);
     }
@@ -234,10 +252,10 @@ function PortalAutomationsContent() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
-        throw new Error(err?.error || "Failed to enable automation");
+        throw new Error(err?.error || "Failed to enable integration");
       }
 
-      toast.success("Automation enabled!");
+      toast.success("Integration enabled!");
       setSetupRecipe(null);
       fetchData();
     } catch (err) {
@@ -259,7 +277,7 @@ function PortalAutomationsContent() {
 
       if (!res.ok) throw new Error("Failed to update");
 
-      toast.success("Automation updated!");
+      toast.success("Integration updated!");
       setEditingAutomation(null);
       fetchData();
     } catch (err) {
@@ -285,7 +303,7 @@ function PortalAutomationsContent() {
       });
 
       if (!res.ok) throw new Error("Failed to toggle");
-      toast.success(enabled ? "Automation enabled" : "Automation disabled", { duration: 2000 });
+      toast.success(enabled ? "Integration enabled" : "Integration disabled", { duration: 2000 });
     } catch {
       // Revert
       setAutomations((prev) =>
@@ -293,7 +311,7 @@ function PortalAutomationsContent() {
           a.id === automationId ? { ...a, is_enabled: !enabled } : a
         )
       );
-      toast.error("Failed to update automation");
+      toast.error("Failed to update integration");
     }
   }
 
@@ -328,7 +346,7 @@ function PortalAutomationsContent() {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Automations</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Integrations</h1>
               <p className="text-sm text-muted-foreground">
                 Supercharge your AI agent with one-click integrations.
               </p>
@@ -382,27 +400,34 @@ function PortalAutomationsContent() {
           <UpgradeBanner
             feature="Recipe Limit Reached"
             plan="Professional"
-            description={`Your plan allows up to ${maxRecipes} active automations. Upgrade for unlimited recipes.`}
+            description={`Your plan allows up to ${maxRecipes} active integrations. Upgrade for unlimited integrations.`}
           />
         )}
 
-        {/* Available Recipes Gallery */}
-        {availableRecipes.length > 0 && (
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Available Recipes
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
-              {availableRecipes.map((recipe) => (
-                <RecipeCard
-                  key={recipe.id}
-                  recipe={recipe}
-                  onSetup={() => atRecipeLimit ? toast.error("Recipe limit reached. Upgrade your plan for more automations.") : setSetupRecipe(recipe)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+        {/* Available Recipes — grouped by section */}
+        {availableRecipes.length > 0 && (() => {
+          const grouped = groupRecipesBySection(availableRecipes);
+          return SECTION_ORDER.map((section) => {
+            const sectionRecipes = grouped[section];
+            if (!sectionRecipes || sectionRecipes.length === 0) return null;
+            return (
+              <section key={section}>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  {section}
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-fr">
+                  {sectionRecipes.map((recipe) => (
+                    <RecipeCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      onSetup={() => atRecipeLimit ? toast.error("Recipe limit reached. Upgrade your plan for more integrations.") : setSetupRecipe(recipe)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          });
+        })()}
 
         {/* Gated Recipes (locked by plan) */}
         {gatedRecipes.length > 0 && (
@@ -445,29 +470,15 @@ function PortalAutomationsContent() {
           </section>
         )}
 
-        {/* Integrations */}
-        {clientId && (
-          <section>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              Integrations
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <ZapierConnectionCard clientId={clientId} />
-              <MakeConnectionCard clientId={clientId} />
-              <N8nConnectionCard clientId={clientId} />
-            </div>
-          </section>
-        )}
-
         {/* Empty state */}
         {recipes.length === 0 && automations.length === 0 && (
           <div className="text-center py-16">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 mb-4">
               <Sparkles className="w-8 h-8 text-violet-600 dark:text-violet-400" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">No automations available yet</h3>
+            <h3 className="text-lg font-semibold mb-2">No integrations available yet</h3>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Automation recipes will appear here once your administrator sets them up. Check back soon!
+              Integrations will appear here once your administrator sets them up. Check back soon!
             </p>
           </div>
         )}

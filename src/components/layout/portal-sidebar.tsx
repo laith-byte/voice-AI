@@ -301,7 +301,7 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
               style={pathname === `/${clientSlug}/portal/automations` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
             >
               <Sparkles className="w-4 h-4" />
-              Automations
+              Integrations
             </Link>
             <Link
               href={`/${clientSlug}/portal/settings/business`}

@@ -91,20 +91,8 @@ export const INDUSTRIES: Record<string, IndustryConfig> = {
     dispatchItem: "driver",
     dispatchTimeframe: "2 hours",
   },
-  home_services: {
-    label: "Home Services",
-    specialist: "service coordinator",
-    servicePlural: "home services",
-    customer: "homeowner",
-    appointmentTerm: "service appointment",
-    leadOptions: ["Plumbing", "Electrical", "HVAC", "General maintenance"],
-    supportOptions: ["Repair status", "Warranty questions", "Reschedule service", "Billing issues"],
-    receptionistOptions: ["Schedule a service call", "Get an estimate", "Emergency repair", "Speak with a technician"],
-    dispatchItem: "technician",
-    dispatchTimeframe: "45 minutes",
-  },
   hvac: {
-    label: "HVAC",
+    label: "Home Services",
     specialist: "HVAC technician",
     servicePlural: "heating, cooling, and air quality services",
     customer: "homeowner",
@@ -269,7 +257,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 - Be flexible: "If mornings aren't your thing, I also have some afternoon slots."
 
 **Time zone awareness:** Always confirm: "And just to make sure — you're in [timezone], correct?"`,
-            provider: "google",
+
           },
         },
         {
@@ -285,7 +273,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 - What to prepare: "If you have any [relevant documents/information], it's helpful to have those handy, but not required."
 
 **Send confirmation:** "You'll get a confirmation email at [their email] with all the details and a calendar invite."`,
-            provider: "google",
+
           },
         },
         {
@@ -430,7 +418,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 **Present options:** "I have openings on [Day] at [Time] and [Day] at [Time]. What works best for your schedule?"
 **Be accommodating:** If those don't work, offer more options. "I understand — let me look at [alternative days]."
 **Set expectations:** "During the follow-up, [specialist] will [what will happen]. It typically takes about [duration]."`,
-            provider: "google",
+
           },
         },
         {
@@ -446,7 +434,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 - "You'll receive a confirmation at [email/phone]."
 
 **Link it to their issue:** "This follow-up is specifically to address the [issue they called about], so [specialist] will already have all the context from today's call."`,
-            provider: "google",
+
           },
         },
         {
@@ -572,7 +560,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 - Type of ${ind.appointmentTerm}: "And what's the ${ind.appointmentTerm} for? [Service type options]"
 - Duration: If relevant, confirm expected duration.
 - Special requirements: "Is there anything special we should prepare or note for your visit?"`,
-            provider: "google",
+
           },
         },
         {
@@ -589,7 +577,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 - Confirmation delivery: "I'm sending a confirmation to [email/phone] with all the details."
 
 **Cancellation policy (if applicable):** "Just a heads up — if you need to reschedule or cancel, we just ask for [X hours/days] notice. But we totally understand that things come up!"`,
-            provider: "google",
+
           },
         },
         {
@@ -805,7 +793,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 - Offer specific windows: "I have a window on [Day] between [Time-Time], or [Day] between [Time-Time]. Which would you prefer?"
 - Service window transparency: "Our service windows are typically [X hours]. The ${ind.dispatchItem} will call you [30 minutes] before arrival with a more exact time."
 - Access requirements: "Will someone be available at the location during that window, or do we have a way to access the property?"`,
-            provider: "google",
+
           },
         },
         {
@@ -823,7 +811,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
 **Preparation instructions:**
 - "If possible, please [clear access to the area / have the affected equipment accessible / etc.]."
 - "If you need to reschedule, just call us with at least [X hours] notice and we'll find a new time."`,
-            provider: "google",
+
           },
         },
         {

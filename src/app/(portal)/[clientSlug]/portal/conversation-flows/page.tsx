@@ -61,7 +61,6 @@ import {
   Plane,
   Banknote,
   ArrowRight,
-  Snowflake,
   MessageSquare,
   HelpCircle,
   XCircle,
@@ -192,13 +191,6 @@ const INDUSTRY_STYLES: Record<
     border: "border-amber-200 dark:border-amber-800",
     icon: Truck,
   },
-  home_services: {
-    gradient: "from-emerald-500 to-emerald-600",
-    bg: "bg-emerald-50 dark:bg-emerald-950/30",
-    text: "text-emerald-700 dark:text-emerald-300",
-    border: "border-emerald-200 dark:border-emerald-800",
-    icon: Wrench,
-  },
   retail: {
     gradient: "from-purple-500 to-purple-600",
     bg: "bg-purple-50 dark:bg-purple-950/30",
@@ -221,11 +213,11 @@ const INDUSTRY_STYLES: Record<
     icon: Banknote,
   },
   hvac: {
-    gradient: "from-cyan-500 to-blue-600",
-    bg: "bg-cyan-50 dark:bg-cyan-950/30",
-    text: "text-cyan-700 dark:text-cyan-300",
-    border: "border-cyan-200 dark:border-cyan-800",
-    icon: Snowflake,
+    gradient: "from-emerald-500 to-emerald-600",
+    bg: "bg-emerald-50 dark:bg-emerald-950/30",
+    text: "text-emerald-700 dark:text-emerald-300",
+    border: "border-emerald-200 dark:border-emerald-800",
+    icon: Wrench,
   },
 };
 
@@ -437,11 +429,7 @@ function ConversationFlowsContent() {
   const [flowToDelete, setFlowToDelete] = useState<string | null>(null);
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<string>("all");
-  const [pendingAction, setPendingAction] = useState<
-    | { type: "blank" }
-    | { type: "template"; template: FlowTemplate }
-    | null
-  >(null);
+  const [confirmDeploy, setConfirmDeploy] = useState(false);
 
   // Editor state
   const [flowName, setFlowName] = useState("");
@@ -560,31 +548,12 @@ function ConversationFlowsContent() {
     setPromptPreview(null);
   }
 
-  // Whether any flow is actively deployed (DB-based or agent-based)
-  const hasDeployedFlow = !!activeFlow || !!deployedAgentFlow;
-  const deployedFlowName = activeFlow?.name ?? (deployedAgentFlow ? `${deployedAgentFlow.agentName} Flow` : "");
-  const deployedAgentName = activeAgent?.name ?? deployedAgentFlow?.agentName ?? "";
-
   function openEditor(flow?: Flow) {
-    if (flow) {
-      // Editing an existing flow — always open directly
-      openEditorDirect(flow);
-    } else {
-      // Creating blank flow — warn if any deployed flow exists
-      if (hasDeployedFlow) {
-        setPendingAction({ type: "blank" });
-      } else {
-        openEditorDirect();
-      }
-    }
+    openEditorDirect(flow);
   }
 
   function openFromTemplate(template: FlowTemplate) {
-    if (hasDeployedFlow) {
-      setPendingAction({ type: "template", template });
-    } else {
-      openFromTemplateDirect(template);
-    }
+    openFromTemplateDirect(template);
   }
 
   function openFromTemplateDirect(template: FlowTemplate) {
@@ -594,16 +563,6 @@ function ConversationFlowsContent() {
     setNodes(generateTemplateNodes(template.industryKey, template.useCaseKey));
     setCreating(true);
     setPromptPreview(null);
-  }
-
-  function confirmPendingAction() {
-    if (!pendingAction) return;
-    if (pendingAction.type === "blank") {
-      openEditorDirect();
-    } else {
-      openFromTemplateDirect(pendingAction.template);
-    }
-    setPendingAction(null);
   }
 
   function closeEditor() {
@@ -711,8 +670,20 @@ function ConversationFlowsContent() {
     }
   }
 
+  function requestDeploy() {
+    if (!editingFlow || deploying) return;
+    // If there's an existing active flow (DB or Retell) that isn't this flow, warn first
+    const hasOtherActive = (activeFlow && activeFlow.id !== editingFlow.id) || (!activeFlow && !!deployedAgentFlow);
+    if (hasOtherActive) {
+      setConfirmDeploy(true);
+    } else {
+      handleDeploy();
+    }
+  }
+
   async function handleDeploy() {
     if (!editingFlow || deploying) return;
+    setConfirmDeploy(false);
 
     // Validate nodes before deploying
     const emptyWebhooks = nodes.filter((n) => n.type === "webhook" && !n.data.webhookUrl);
@@ -1439,16 +1410,16 @@ function ConversationFlowsContent() {
                               <Label className="text-xs">Calendar Provider</Label>
                             </div>
                             <Select
-                              value={node.data.provider || "google"}
+                              value={node.data.provider ?? ""}
                               onValueChange={(value) =>
                                 updateNodeData(node.id, { provider: value as "google" | "calendly" })
                               }
                             >
                               <SelectTrigger className="h-7 text-xs w-36">
-                                <SelectValue />
+                                <SelectValue placeholder="Select provider" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="google">Google Calendar</SelectItem>
+                                <SelectItem value="google">Calendar</SelectItem>
                                 <SelectItem value="calendly">Calendly</SelectItem>
                               </SelectContent>
                             </Select>
@@ -1460,7 +1431,7 @@ function ConversationFlowsContent() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-1.5 mb-1">
                             <Search className="h-3.5 w-3.5 text-orange-500" />
-                            <span className="text-xs text-muted-foreground">Looks up the caller in HubSpot by phone number</span>
+                            <span className="text-xs text-muted-foreground">Looks up the caller in your CRM by phone number</span>
                           </div>
                           <Textarea
                             value={node.data.text || ""}
@@ -1531,7 +1502,7 @@ function ConversationFlowsContent() {
                 <Button
                   data-deploy-btn
                   variant="outline"
-                  onClick={handleDeploy}
+                  onClick={requestDeploy}
                   disabled={deploying}
                   className="gap-2"
                 >
@@ -1569,44 +1540,29 @@ function ConversationFlowsContent() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Replace Active Flow AlertDialog */}
-      <AlertDialog
-        open={!!pendingAction && hasDeployedFlow}
-        onOpenChange={(open) => { if (!open) setPendingAction(null); }}
-      >
+      {/* Replace Active Flow — Deploy Confirmation */}
+      <AlertDialog open={confirmDeploy} onOpenChange={(open) => { if (!open) setConfirmDeploy(false); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Replace Active Flow?</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="text-sm text-muted-foreground space-y-2">
-                {pendingAction?.type === "blank" ? (
-                  <p>
-                    You currently have <span className="font-semibold text-foreground">{deployedFlowName}</span>{" "}
-                    deployed{deployedAgentName ? <> to <span className="font-semibold text-foreground">{deployedAgentName}</span></> : null}
-                    {activeFlow ? ` (v${activeFlow.version})` : ""}. Creating a new blank flow and deploying it will replace your current
-                    active flow. Your existing flow will remain saved but will no longer be the active flow on your
-                    agent.
-                  </p>
-                ) : pendingAction?.type === "template" ? (
-                  <p>
-                    You currently have <span className="font-semibold text-foreground">{deployedFlowName}</span>{" "}
-                    deployed. Using the{" "}
-                    <span className="font-semibold text-foreground">{pendingAction.template.name}</span> template
-                    will create a new flow that, when deployed, will replace your current active configuration.
-                    Your existing flow will remain saved.
-                  </p>
-                ) : null}
-              </div>
+            <AlertDialogDescription>
+              You currently have{" "}
+              <span className="font-semibold text-foreground">
+                {activeFlow?.name ?? (deployedAgentFlow ? `${deployedAgentFlow.agentName} Flow` : "an active flow")}
+              </span>{" "}
+              deployed. Deploying this flow will replace it as the active configuration on your agent.
+              Your existing flow will remain saved.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep Current Flow</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPendingAction}>
-              {pendingAction?.type === "blank" ? "Create Blank Flow" : "Use Template"}
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeploy}>
+              Replace &amp; Deploy
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
     </div>
   );
 }
