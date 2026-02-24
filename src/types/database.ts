@@ -714,3 +714,27 @@ export interface UsageAlertSetting {
   last_triggered_at: string | null;
   created_at: string;
 }
+
+// --- Callback Pipeline ---
+
+export interface PendingCallback {
+  id: string;
+  client_id: string;
+  agent_id: string;
+  caller_phone: string;
+  caller_name: string | null;
+  question: string;
+  original_call_id: string | null;
+  original_call_log_id: string | null;
+  status: "pending" | "answered" | "calling_back" | "completed" | "failed" | "expired";
+  business_owner_answer: string | null;
+  callback_retell_call_id: string | null;
+  attempts: number;
+  max_attempts: number;
+  next_attempt_at: string | null;
+  timezone: string;
+  created_at: string;
+  updated_at: string;
+  answered_at: string | null;
+  completed_at: string | null;
+}

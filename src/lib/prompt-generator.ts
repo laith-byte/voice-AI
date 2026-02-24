@@ -23,7 +23,7 @@ function formatTime(time: string | null): string {
 }
 
 const BEHAVIOR_LABELS: Record<string, string> = {
-  callback: "let the caller know you'll find the answer and get back to them soon",
+  callback: "use the request_callback tool to email the business owner and arrange a callback with the answer",
   message: "take a message and email it to the business owner",
   hours: "tell them the business hours and suggest they call back",
   transfer: "warm transfer the call to the escalation phone number",
@@ -100,12 +100,12 @@ LOCATIONS:
 CALL HANDLING RULES:
 
 During business hours:
-- If the caller asks something you can't answer: first try to warm transfer to the business owner's phone. If transfer is unavailable, let the caller know you'll find the answer and get back to them soon. As a last resort, take a detailed message and email it to the business owner.
+- If the caller asks something you can't answer: first try to warm transfer to the business owner's phone. If transfer is unavailable, use the request_callback tool to arrange a callback with the answer. As a last resort, take a detailed message and email it to the business owner.
 - Never make up information — if unsure, follow the escalation steps above.
 
 After hours:
 - Help the caller normally with anything you can answer from the knowledge base above.
-- If the caller needs something that requires a warm transfer or a human: tell the caller you'll get back to them soon. Internally, email a detailed summary to the business owner. If the business owner responds with an answer, call the caller back that evening. If the caller doesn't pick up, try again at 9 AM their local time. The caller should never know a human was involved — keep the experience seamless as if you handled it yourself.
+- If the caller needs something that requires a warm transfer or a human: use the request_callback tool to email the business owner and arrange a callback. Tell the caller you'll get back to them soon. The caller should never know a human was involved — keep the experience seamless as if you handled it yourself.
 
 General:
 - Keep calls concise and under {{max_call_duration}} minutes
@@ -421,7 +421,14 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
   }
 
   const agentTypeStr = agent.platform === "retell-sms" ? "sms" : isChat ? "chat" : "voice";
-  const generatedPrompt = await generatePrompt(clientId, promptTemplate, agentTypeStr);
+  let generatedPrompt = await generatePrompt(clientId, promptTemplate, agentTypeStr);
+
+  // Append Retell dynamic variable for callback context (voice agents only).
+  // {{callback_context}} is empty for normal calls, filled by the outbound callback cron.
+  // This MUST be appended AFTER Handlebars compilation so Handlebars doesn't consume it.
+  if (!isChat) {
+    generatedPrompt += "\n\n{{callback_context}}";
+  }
 
   // Get knowledge base settings for max_call_duration and escalation phone
   const { data: settings } = await supabase
@@ -520,13 +527,50 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
       }
     }
 
-    // Merge transfer tool: remove any old transfer_to_human, add new one if configured
-    const toolsWithoutOldTransfer = existingTools.filter(
-      (t) => t.name !== "transfer_to_human"
+    // Build request_callback tool for callback pipeline
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
+    const callbackTool = {
+      type: "custom" as const,
+      name: "request_callback",
+      description:
+        "Use this when you cannot answer a caller's question and need to get the answer from the business owner. This emails the business owner and arranges a callback. You MUST collect the caller's phone number before using this tool.",
+      url: `${APP_URL}/api/tools/callback?client_id=${clientId}`,
+      method: "POST",
+      header: { Authorization: `Bearer ${process.env.RETELL_TOOLS_API_KEY}` },
+      speak_during_execution: true,
+      execution_message_description:
+        "Let the caller know you are looking into their question",
+      speak_after_execution: true,
+      timeout_ms: 5000,
+      parameters: {
+        type: "object",
+        properties: {
+          question: {
+            type: "string",
+            description: "The caller's question that you cannot answer",
+          },
+          caller_phone: {
+            type: "string",
+            description: "The caller's phone number — ask them before calling this tool",
+          },
+          caller_name: {
+            type: "string",
+            description: "The caller's name if provided",
+          },
+        },
+        required: ["question", "caller_phone"],
+      },
+    };
+
+    // Merge tools: remove old transfer_to_human and request_callback, add new ones
+    const toolsWithoutOld = existingTools.filter(
+      (t) => t.name !== "transfer_to_human" && t.name !== "request_callback"
     );
-    const mergedTools = transferTool
-      ? [...toolsWithoutOldTransfer, transferTool]
-      : toolsWithoutOldTransfer;
+    const mergedTools = [
+      ...toolsWithoutOld,
+      ...(transferTool ? [transferTool] : []),
+      callbackTool,
+    ];
 
     if (usesLlmId && llmId) {
       // Push prompt + tools to the standalone LLM

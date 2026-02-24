@@ -1428,7 +1428,8 @@ export default function OnboardingWizardPage() {
                             Find out and get back to them
                           </span>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI lets the visitor know it will get back to them soon with an answer.
+                            The AI emails you the question, you reply with the
+                            answer, and we follow up with the visitor automatically.
                           </p>
                         </div>
                       </label>
@@ -1591,8 +1592,8 @@ export default function OnboardingWizardPage() {
                             Find out and get back to the caller
                           </span>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI tells the caller it will get back to them
-                            soon with an answer.
+                            The AI emails you the question, you reply with the
+                            answer, and we automatically call the caller back.
                           </p>
                         </div>
                       </label>

@@ -11,16 +11,19 @@ export async function sendEmail({
   subject,
   html,
   from,
+  replyTo,
 }: {
   to: string;
   subject: string;
   html: string;
   from?: string;
+  replyTo?: string;
 }) {
   return getResend().emails.send({
     from: from || "Invaria Labs <noreply@invarialabs.com>",
     to,
     subject,
     html,
+    ...(replyTo ? { reply_to: replyTo } : {}),
   });
 }

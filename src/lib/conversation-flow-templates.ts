@@ -14,7 +14,8 @@ export interface FlowNode {
     | "check_availability"
     | "book_appointment"
     | "crm_lookup"
-    | "webhook";
+    | "webhook"
+    | "request_callback";
   data: {
     text?: string;
     nextNodeId?: string;

@@ -140,6 +140,74 @@ export async function POST(request: NextRequest) {
               : new Date().toISOString(),
           })
           .eq("retell_call_id", call.call_id);
+
+        // Handle callback call completion
+        if (call.metadata?.source === "callback" && call.metadata?.pending_callback_id) {
+          const pendingCallbackId = call.metadata.pending_callback_id as string;
+          const durationSeconds = Math.round(durationMs / 1000);
+          const failReasons = ["dial_no_answer", "dial_busy", "voicemail_reached", "machine_detected"];
+          const callFailed = failReasons.includes(call.disconnection_reason) || durationSeconds < 10;
+
+          if (!callFailed) {
+            // Call was successfully connected — mark completed
+            await supabase
+              .from("pending_callbacks")
+              .update({
+                status: "completed",
+                completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", pendingCallbackId);
+          } else {
+            // Call failed — check retry eligibility
+            const { data: cb } = await supabase
+              .from("pending_callbacks")
+              .select("attempts, max_attempts, timezone")
+              .eq("id", pendingCallbackId)
+              .single();
+
+            if (cb && cb.attempts < cb.max_attempts) {
+              // Schedule retry for 9 AM next day in caller's timezone
+              const tomorrow = new Date();
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              let tomorrowHour: number;
+              try {
+                tomorrowHour = parseInt(
+                  new Intl.DateTimeFormat("en-US", {
+                    hour: "numeric",
+                    hour12: false,
+                    timeZone: cb.timezone,
+                  }).format(tomorrow)
+                );
+              } catch {
+                tomorrowHour = tomorrow.getUTCHours();
+              }
+              const hoursToAdd = (9 - tomorrowHour + 24) % 24;
+              tomorrow.setHours(tomorrow.getHours() + hoursToAdd);
+              tomorrow.setMinutes(0, 0, 0);
+
+              await supabase
+                .from("pending_callbacks")
+                .update({
+                  status: "answered",
+                  next_attempt_at: tomorrow.toISOString(),
+                  callback_retell_call_id: null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", pendingCallbackId);
+            } else {
+              // Max attempts reached — mark as failed
+              await supabase
+                .from("pending_callbacks")
+                .update({
+                  status: "failed",
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", pendingCallbackId);
+            }
+          }
+        }
+
         break;
       }
 

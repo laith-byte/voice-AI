@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  PhoneOutgoing,
 } from "lucide-react";
 import type { FlowNode } from "@/lib/conversation-flow-templates";
 
@@ -83,6 +84,12 @@ const NODE_META: Record<
     label: "Webhook",
     color: "text-purple-600",
     bgColor: "bg-purple-50",
+  },
+  request_callback: {
+    icon: PhoneOutgoing,
+    label: "Request Callback",
+    color: "text-cyan-600",
+    bgColor: "bg-cyan-50",
   },
 };
 
@@ -301,6 +308,8 @@ export function ConversationFlowEditor({
                       "Books appointment for caller"}
                     {node.type === "webhook" &&
                       `Calls: ${node.data.webhookUrl || "webhook endpoint"}`}
+                    {node.type === "request_callback" &&
+                      "Emails you the question, calls back with your answer"}
                   </p>
                 </div>
               )}
