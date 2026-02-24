@@ -16,7 +16,7 @@ const FEATURE_TO_PLAN_FIELD: Record<string, string> = {
   campaigns: "campaign_outbound",
   analytics: "analytics_full",
   ai_analysis: "ai_evaluation",
-  automations: "sms_notification",
+  integrations: "sms_notification",
   conversation_flows: "conversation_flows",
 };
 
@@ -26,7 +26,7 @@ const FEATURE_UPGRADE_PLAN: Record<string, string> = {
   agent_settings: "Professional",
   campaigns: "Professional",
   ai_analysis: "Professional",
-  automations: "Professional",
+  integrations: "Professional",
 };
 
 export function FeatureGate({

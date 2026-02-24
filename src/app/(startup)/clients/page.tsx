@@ -115,10 +115,25 @@ export default function ClientsPage() {
 
   const fetchClients = useCallback(async () => {
     const supabase = createClient();
+
+    // Get the current user's organization_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+    if (!userData?.organization_id) return;
+
+    const orgId = userData.organization_id;
+
     const [clientsResult, onboardingResult] = await Promise.all([
       supabase
         .from("clients")
         .select("*, agents(id)")
+        .eq("organization_id", orgId)
         .order("created_at", { ascending: false }),
       supabase
         .from("client_onboarding")

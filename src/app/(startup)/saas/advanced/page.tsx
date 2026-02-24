@@ -61,19 +61,18 @@ export default function SaaSAdvancedPage() {
     if (!orgId) return;
     setSaving(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("organization_settings")
-        .upsert(
-          {
-            organization_id: orgId,
-            payment_success_redirect_url: redirectUrl.trim() || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "organization_id" }
-        );
+      const res = await fetch("/api/admin/org-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payment_success_redirect_url: redirectUrl,
+        }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save settings");
+      }
 
       toast.success("Settings saved successfully");
     } catch (err) {

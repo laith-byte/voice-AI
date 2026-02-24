@@ -156,6 +156,46 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    case "change-password": {
+      const { currentPassword, newPassword } = body;
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user?.email) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+      if (verifyError) {
+        return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
+      }
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        return NextResponse.json({ error: "Failed to update password" }, { status: 400 });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    case "setup-account": {
+      const { password: newPwd, businessName, clientId: cId } = body;
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const { error: passwordError } = await supabase.auth.updateUser({ password: newPwd });
+      if (passwordError) {
+        return NextResponse.json({ error: passwordError.message }, { status: 400 });
+      }
+      if (cId) {
+        const { error: clientError } = await supabase.from("clients").update({ name: businessName }).eq("id", cId);
+        if (clientError) {
+          return NextResponse.json({ error: "Failed to update business name" }, { status: 500 });
+        }
+      }
+      await supabase.auth.updateUser({ data: { full_name: businessName } });
+      return NextResponse.json({ success: true });
+    }
+
     default:
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }

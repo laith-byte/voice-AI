@@ -53,10 +53,10 @@ import { TestCallReport } from "@/components/onboarding/test-call-report";
 import { QuickFixModal } from "@/components/onboarding/quick-fix-modal";
 import { TestChatInline } from "@/components/onboarding/test-chat-inline";
 
-import { HoursEditor } from "@/components/business-settings/hours-editor";
-import { ServicesList } from "@/components/business-settings/services-list";
-import { FaqsList } from "@/components/business-settings/faqs-list";
-import { PoliciesList } from "@/components/business-settings/policies-list";
+import { HoursEditor } from "@/components/knowledge-base/hours-editor";
+import { ServicesList } from "@/components/knowledge-base/services-list";
+import { FaqsList } from "@/components/knowledge-base/faqs-list";
+import { PoliciesList } from "@/components/knowledge-base/policies-list";
 import { INDUSTRIES, generateTemplateNodes, type FlowNode } from "@/lib/conversation-flow-templates";
 import { ConversationFlowEditor } from "@/components/onboarding/conversation-flow-editor";
 
@@ -1193,7 +1193,7 @@ export default function OnboardingWizardPage() {
           )}
 
           {/* ================================================================= */}
-          {/* STEP 3: Business Settings                                         */}
+          {/* STEP 3: Knowledge Base                                             */}
           {/* ================================================================= */}
           {step === 3 && (
             <div className="space-y-6">

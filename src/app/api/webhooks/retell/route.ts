@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { executePostCallActions } from "@/lib/post-call-actions";
-import { executeRecipes } from "@/lib/automation-recipes";
+import { executeRecipes } from "@/lib/integration-recipes";
 import { redactTranscript, redactText } from "@/lib/pii-redaction";
 import { dispatchZapierEvent } from "@/lib/zapier";
 import { dispatchMakeEvent } from "@/lib/make";
@@ -171,11 +171,25 @@ export async function POST(request: NextRequest) {
     if (clientId && event === "call_analyzed") {
       // Apply PII redaction if configured for this client
       try {
-        const { data: piiConfig } = await supabase
-          .from("pii_redaction_configs")
-          .select("*")
-          .eq("client_id", clientId)
-          .single();
+        let piiConfig = null;
+        if (internalAgentId) {
+          const { data } = await supabase
+            .from("pii_redaction_configs")
+            .select("*")
+            .eq("client_id", clientId)
+            .eq("agent_id", internalAgentId)
+            .single();
+          piiConfig = data;
+        }
+        if (!piiConfig) {
+          const { data } = await supabase
+            .from("pii_redaction_configs")
+            .select("*")
+            .eq("client_id", clientId)
+            .is("agent_id", null)
+            .single();
+          piiConfig = data;
+        }
 
         if (piiConfig?.enabled) {
           const redactedUpdate: Record<string, unknown> = {};
@@ -216,7 +230,7 @@ export async function POST(request: NextRequest) {
       if (callLogRow) {
         // Run post-call actions, automation recipes, and Zapier dispatch in parallel
         await Promise.all([
-          executePostCallActions(callLogRow, clientId).catch((err) =>
+          executePostCallActions(callLogRow, clientId, internalAgentId).catch((err) =>
             console.error("Post-call actions error:", err)
           ),
           executeRecipes(callLogRow, clientId).catch((err) =>

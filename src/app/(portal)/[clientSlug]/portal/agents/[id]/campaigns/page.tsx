@@ -422,49 +422,33 @@ export default function CampaignsPage() {
         totalLeadsCount = csvLeads.length;
       }
 
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setCreating(false);
-        return;
-      }
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!userData) {
-        setCreating(false);
-        return;
-      }
-
-      const { error } = await supabase.from("campaigns").insert({
-        organization_id: userData.organization_id,
-        agent_id: agentId,
-        name: campaignName.trim(),
-        status: "draft",
-        start_date: startDate || null,
-        calling_days: callingDays,
-        calling_hours_start: callingHoursStart,
-        calling_hours_end: callingHoursEnd,
-        timezone_mode: timezoneMode,
-        timezone: timezoneMode === "fixed" ? timezone : null,
-        retry_attempts: retryAttempts,
-        retry_interval_hours: retryIntervalHours,
-        calling_rate: callingRate,
-        calling_rate_minutes: callingRateMinutes,
-        phone_number_ids: selectedPhoneNumberIds,
-        cycle_numbers: cycleNumbers,
-        leads_source: leadsSource,
-        leads_tag_filter: leadsTagFilter === "all" ? null : leadsTagFilter,
-        total_leads: totalLeadsCount,
-        completed_leads: 0,
+      const campaignRes = await fetch("/api/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_id: agentId,
+          name: campaignName.trim(),
+          start_date: startDate || null,
+          calling_days: callingDays,
+          calling_hours_start: callingHoursStart,
+          calling_hours_end: callingHoursEnd,
+          timezone_mode: timezoneMode,
+          timezone: timezoneMode === "fixed" ? timezone : null,
+          retry_attempts: retryAttempts,
+          retry_interval_hours: retryIntervalHours,
+          calling_rate: callingRate,
+          calling_rate_minutes: callingRateMinutes,
+          phone_number_ids: selectedPhoneNumberIds,
+          cycle_numbers: cycleNumbers,
+          leads_source: leadsSource,
+          leads_tag_filter: leadsTagFilter === "all" ? null : leadsTagFilter,
+          total_leads: totalLeadsCount,
+        }),
       });
 
-      if (error) {
-        toast.error("Failed to create campaign");
+      if (!campaignRes.ok) {
+        const err = await campaignRes.json().catch(() => null);
+        toast.error(err?.error ?? "Failed to create campaign");
       } else {
         toast.success("Campaign created successfully!");
         setCreateOpen(false);

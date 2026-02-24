@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -60,32 +59,17 @@ export default function AiAnalysisPage() {
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("ai_analysis_config")
-      .select("*")
-      .eq("agent_id", agentId)
-      .single();
 
-    let config: AiAnalysisConfig | null = data;
-
-    // If no config exists, create defaults
-    if (!config || error) {
-      const { data: newConfig, error: insertError } = await supabase
-        .from("ai_analysis_config")
-        .insert({ agent_id: agentId })
-        .select()
-        .single();
-
-      if (insertError) {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/ai-analysis`);
+      if (!res.ok) {
         toast.error("Failed to initialize AI analysis config");
         setLoading(false);
         return;
       }
-      config = newConfig;
-    }
 
-    if (config) {
+      const config: AiAnalysisConfig = await res.json();
+
       setConfigId(config.id);
       setSummaryEnabled(config.summary_enabled ?? true);
       setSummaryPrompt(
@@ -104,6 +88,8 @@ export default function AiAnalysisPage() {
           "Analyze the conversation and assign relevant topic tags. Consider the main subject discussed, the type of inquiry, and any specific products or services mentioned."
       );
       setMisunderstoodEnabled(config.misunderstood_queries_enabled ?? false);
+    } catch {
+      toast.error("Failed to load AI analysis config");
     }
 
     setLoading(false);
@@ -119,26 +105,33 @@ export default function AiAnalysisPage() {
       return;
     }
     setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("ai_analysis_config")
-      .update({
-        summary_enabled: summaryEnabled,
-        summary_custom_prompt: summaryPrompt,
-        evaluation_enabled: evaluationEnabled,
-        evaluation_custom_prompt: evaluationPrompt,
-        auto_tagging_enabled: autoTaggingEnabled,
-        auto_tagging_mode: autoTaggingMode,
-        auto_tagging_custom_prompt: autoTaggingPrompt,
-        misunderstood_queries_enabled: misunderstoodEnabled,
-      })
-      .eq("id", configId);
 
-    if (error) {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/ai-analysis`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configId,
+          summary_enabled: summaryEnabled,
+          summary_custom_prompt: summaryPrompt,
+          evaluation_enabled: evaluationEnabled,
+          evaluation_custom_prompt: evaluationPrompt,
+          auto_tagging_enabled: autoTaggingEnabled,
+          auto_tagging_mode: autoTaggingMode,
+          auto_tagging_custom_prompt: autoTaggingPrompt,
+          misunderstood_queries_enabled: misunderstoodEnabled,
+        }),
+      });
+
+      if (!res.ok) {
+        toast.error("Failed to save AI analysis config");
+      } else {
+        toast.success("AI analysis config saved");
+      }
+    } catch {
       toast.error("Failed to save AI analysis config");
-    } else {
-      toast.success("AI analysis config saved");
     }
+
     setSaving(false);
   };
 

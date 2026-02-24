@@ -26,7 +26,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allowedIndustries = ["hvac", "plumbing", "electrical", "landscaping", "roofing", "general", "other"];
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (typeof email !== "string" || !emailRegex.test(email)) {
+      return NextResponse.json(
+        { error: "Invalid email address" },
+        { status: 400 }
+      );
+    }
+
+    const allowedIndustries = ["home_services", "healthcare", "real_estate", "insurance", "financial_services", "legal", "automotive", "other"];
     if (industry && (typeof industry !== "string" || !allowedIndustries.includes(industry.toLowerCase()))) {
       return NextResponse.json(
         { error: "Invalid industry value" },

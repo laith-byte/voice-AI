@@ -37,16 +37,33 @@ interface PostCallAction {
 
 export async function executePostCallActions(
   callLog: CallLog,
-  clientId: string
+  clientId: string,
+  agentId?: string | null
 ) {
   const supabase = await createServiceClient();
 
-  // 1. Fetch all enabled actions for this client
-  const { data: actions } = await supabase
-    .from("post_call_actions")
-    .select("*")
-    .eq("client_id", clientId)
-    .eq("is_enabled", true);
+  // 1. Fetch enabled actions — prefer agent-specific, fall back to client-level
+  let actions: PostCallAction[] | null = null;
+
+  if (agentId) {
+    const { data } = await supabase
+      .from("post_call_actions")
+      .select("*")
+      .eq("client_id", clientId)
+      .eq("agent_id", agentId)
+      .eq("is_enabled", true);
+    actions = data;
+  }
+
+  if (!actions?.length) {
+    const { data } = await supabase
+      .from("post_call_actions")
+      .select("*")
+      .eq("client_id", clientId)
+      .is("agent_id", null)
+      .eq("is_enabled", true);
+    actions = data;
+  }
 
   if (!actions?.length) return;
 
@@ -78,9 +95,6 @@ export async function executePostCallActions(
           break;
         case "caller_followup_email":
           await sendCallerFollowup(callLog, config, businessName);
-          break;
-        case "webhook":
-          await sendWebhook(callLog, config);
           break;
         // daily_digest is handled by a cron job, not per-call
       }
@@ -249,46 +263,6 @@ async function sendCallerFollowup(
       from: fromAddress,
     });
   }
-}
-
-// ---------------------------------------------------------------------------
-// Webhook
-// ---------------------------------------------------------------------------
-
-async function sendWebhook(
-  callLog: CallLog,
-  config: Record<string, unknown>
-) {
-  const url = config.url as string;
-  if (!url) return;
-
-  const events = (config.events as string[]) || ["completed", "missed"];
-  const callEvent =
-    callLog.status === "missed" ? "missed" : "completed";
-
-  if (!events.includes(callEvent) && !events.includes("all")) return;
-
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      event: `call.${callEvent}`,
-      call_id: callLog.retell_call_id,
-      from: callLog.from_number,
-      to: callLog.to_number,
-      direction: callLog.direction,
-      duration_seconds: callLog.duration_seconds,
-      status: callLog.status,
-      summary: callLog.summary,
-      transcript: callLog.transcript,
-      recording_url: callLog.recording_url,
-      started_at: callLog.started_at,
-      ended_at: callLog.ended_at,
-      post_call_analysis: callLog.post_call_analysis,
-      metadata: callLog.metadata,
-      timestamp: new Date().toISOString(),
-    }),
-  });
 }
 
 // ---------------------------------------------------------------------------

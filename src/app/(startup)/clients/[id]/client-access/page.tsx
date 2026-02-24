@@ -7,7 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Save, Shield, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
 interface FeatureAccess {
@@ -94,41 +93,23 @@ export default function ClientAccessPage() {
   const [saving, setSaving] = useState(false);
 
   const fetchFeatures = useCallback(async () => {
-    const supabase = createClient();
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("client_access")
-      .select("*")
-      .eq("client_id", clientId);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/client-access`);
 
-    if (error) {
-      console.error("Error fetching client access:", error);
-      setLoading(false);
-      return;
-    }
-
-    if (!data || data.length === 0) {
-      // No records yet -- seed defaults
-      const inserts = featureKeys.map((key) => ({
-        client_id: clientId,
-        feature: key,
-        enabled: defaultEnabledMap[key],
-      }));
-
-      const { data: inserted, error: insertError } = await supabase
-        .from("client_access")
-        .insert(inserts)
-        .select();
-
-      if (insertError) {
-        console.error("Error seeding client access defaults:", insertError);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Error fetching client access:", data.error);
         setLoading(false);
         return;
       }
 
+      const { features: records } = await res.json();
+
+      // Build feature list from records, preserving the canonical order
       const mapped = featureKeys.map((key) => {
-        const record = inserted?.find((r: { feature: string }) => r.feature === key);
+        const record = records?.find((r: { feature: string }) => r.feature === key);
         return {
           key,
           label: featureMeta[key].label,
@@ -138,19 +119,8 @@ export default function ClientAccessPage() {
       });
 
       setFeatures(mapped);
-    } else {
-      // Build feature list from existing records, preserving the canonical order
-      const mapped = featureKeys.map((key) => {
-        const record = data.find((r: { feature: string }) => r.feature === key);
-        return {
-          key,
-          label: featureMeta[key].label,
-          description: featureMeta[key].description,
-          enabled: record ? record.enabled : defaultEnabledMap[key],
-        };
-      });
-
-      setFeatures(mapped);
+    } catch (err) {
+      console.error("Error fetching client access:", err);
     }
 
     setLoading(false);
@@ -168,26 +138,28 @@ export default function ClientAccessPage() {
   };
 
   const handleSave = async () => {
-    const supabase = createClient();
     setSaving(true);
 
-    const upserts = features.map((f) => ({
-      client_id: clientId,
-      agent_id: null,
-      feature: f.key,
-      enabled: f.enabled,
-    }));
+    try {
+      const res = await fetch(`/api/clients/${clientId}/client-access`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          features: features.map((f) => ({ key: f.key, enabled: f.enabled })),
+        }),
+      });
 
-    const { error } = await supabase
-      .from("client_access")
-      .upsert(upserts, { onConflict: "client_id,feature" });
-
-    if (error) {
-      console.error("Error saving client access:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Error saving client access:", data.error);
+        toast.error("Failed to save permissions. Please try again.");
+      } else {
+        setHasChanges(false);
+        toast.success("Feature permissions saved.");
+      }
+    } catch (err) {
+      console.error("Error saving client access:", err);
       toast.error("Failed to save permissions. Please try again.");
-    } else {
-      setHasChanges(false);
-      toast.success("Feature permissions saved.");
     }
 
     setSaving(false);

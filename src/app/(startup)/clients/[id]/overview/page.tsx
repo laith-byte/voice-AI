@@ -192,23 +192,29 @@ export default function ClientOverviewPage() {
     if (!client) return;
     setSaving(true);
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("clients")
-      .update({
-        name: client.name,
-        slug: client.slug,
-        status: client.status,
-        language: client.language,
-        dashboard_theme: client.dashboard_theme,
-      })
-      .eq("id", id);
+    try {
+      const res = await fetch(`/api/clients/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: client.name,
+          slug: client.slug,
+          status: client.status,
+          language: client.language,
+          dashboard_theme: client.dashboard_theme,
+        }),
+      });
 
-    if (error) {
-      console.error("Failed to save client:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Failed to save client:", data.error);
+        toast.error("Failed to save changes. Please try again.");
+      } else {
+        toast.success("Client updated successfully.");
+      }
+    } catch (err) {
+      console.error("Failed to save client:", err);
       toast.error("Failed to save changes. Please try again.");
-    } else {
-      toast.success("Client updated successfully.");
     }
 
     setSaving(false);
@@ -221,39 +227,49 @@ export default function ClientOverviewPage() {
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("users")
-      .delete()
-      .eq("id", memberId);
+    try {
+      const res = await fetch(`/api/clients/${id}/members/${memberId}`, {
+        method: "DELETE",
+      });
 
-    if (error) {
-      console.error("Failed to remove member:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Failed to remove member:", data.error);
+        toast.error("Failed to remove member. Please try again.");
+        return;
+      }
+
+      setMembers((prev) => prev.filter((m) => m.id !== memberId));
+      toast.success("Member removed.");
+    } catch (err) {
+      console.error("Failed to remove member:", err);
       toast.error("Failed to remove member. Please try again.");
-      return;
     }
-
-    setMembers((prev) => prev.filter((m) => m.id !== memberId));
-    toast.success("Member removed.");
   };
 
   const handleResetOnboarding = async (memberId: string) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("users")
-      .update({ onboarding_completed_at: null })
-      .eq("id", memberId);
+    try {
+      const res = await fetch(`/api/clients/${id}/members/${memberId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ onboarding_completed_at: null }),
+      });
 
-    if (error) {
-      console.error("Failed to reset onboarding:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Failed to reset onboarding:", data.error);
+        toast.error("Failed to reset onboarding. Please try again.");
+      } else {
+        toast.success("Onboarding reset successfully.");
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === memberId ? { ...m, onboarding_completed_at: null } : m
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to reset onboarding:", err);
       toast.error("Failed to reset onboarding. Please try again.");
-    } else {
-      toast.success("Onboarding reset successfully.");
-      setMembers((prev) =>
-        prev.map((m) =>
-          m.id === memberId ? { ...m, onboarding_completed_at: null } : m
-        )
-      );
     }
   };
 

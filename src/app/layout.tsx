@@ -24,6 +24,7 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://invarialabs.com"),
   title: {
     default: "Invaria Labs | Enterprise Voice AI Platform",
     template: "%s | Invaria Labs",

@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   const url = new URL(request.url);
   const provider = url.searchParams.get("provider");
-  const redirectPath = url.searchParams.get("redirect") || "/portal/automations";
+  const redirectPath = url.searchParams.get("redirect") || "/portal/integrations";
 
   if (!provider || !SUPPORTED_PROVIDERS.includes(provider)) {
     return NextResponse.json(

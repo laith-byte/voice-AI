@@ -155,7 +155,7 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Block client users from admin routes
-    const adminRoutes = ["/agents", "/clients", "/settings", "/billing", "/saas", "/automations", "/workflows"];
+    const adminRoutes = ["/agents", "/clients", "/settings", "/billing", "/saas", "/integrations", "/workflows"];
     if (isClientUser && adminRoutes.some((r) => pathname.startsWith(r))) {
       const slug = await getClientSlug(supabase, user.id);
       const url = request.nextUrl.clone();

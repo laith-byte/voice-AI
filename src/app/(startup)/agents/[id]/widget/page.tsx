@@ -197,30 +197,35 @@ export default function WidgetPage() {
         setBackgroundImageUrl(data.background_image_url ?? "");
         setLauncherImageUrl(data.launcher_image_url ?? "");
       } else {
-        // Create default row
-        const { data: newConfig, error: insertError } = await supabase
-          .from("widget_config")
-          .insert({
-            agent_id: agentId,
-            widget_layout: "bottom-right",
-            description: "Your AI-powered voice assistant",
-            branding: "Powered by Invaria Labs",
-            google_font_name: "Inter",
-            color_preset: "#2563eb",
-            custom_css: "/* Custom CSS overrides */\n.widget-container {\n  /* your styles */\n}",
-            autolaunch_popup: false,
-            launch_message: "Need help? Click to talk!",
-            launch_message_enabled: true,
-            popup_message: "Hi there! I can help you with any questions.",
-            popup_message_enabled: true,
-          })
-          .select()
-          .single();
+        // Create default row via API route
+        try {
+          const res = await fetch(`/api/agents/${agentId}/widget-config`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              widget_layout: "bottom-right",
+              description: "Your AI-powered voice assistant",
+              google_font_name: "Inter",
+              color_preset: "#2563eb",
+              custom_css: "/* Custom CSS overrides */\n.widget-container {\n  /* your styles */\n}",
+              autolaunch_popup: false,
+              launch_message: "Need help? Click to talk!",
+              launch_message_enabled: true,
+              popup_message: "Hi there! I can help you with any questions.",
+              popup_message_enabled: true,
+            }),
+          });
 
-        if (insertError) {
-          console.error("Error creating default widget_config:", insertError);
-        } else if (newConfig) {
-          setConfigId(newConfig.id);
+          if (res.ok) {
+            const newConfig = await res.json();
+            if (newConfig?.id) {
+              setConfigId(newConfig.id);
+            }
+          } else {
+            console.error("Error creating default widget_config");
+          }
+        } catch (err) {
+          console.error("Error creating default widget_config:", err);
         }
       }
 
@@ -231,44 +236,51 @@ export default function WidgetPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 
-  // Save config to Supabase
+  // Save config via API route
   const saveConfig = useCallback(async () => {
     if (!configId) return;
     setSaving(true);
 
-    const { error } = await supabase
-      .from("widget_config")
-      .update({
-        widget_layout: widgetLayout,
-        description,
-        branding: branding || null,
-        google_font_name: googleFontName,
-        color_preset: selectedColor,
-        custom_css: customCss || null,
-        autolaunch_popup: autolaunchPopup,
-        launch_message: launchMessage,
-        launch_message_enabled: launchMessageEnabled,
-        popup_message: popupMessage,
-        popup_message_enabled: popupMessageEnabled,
-        terms_of_service_url: tosUrl || null,
-        privacy_policy_url: privacyUrl || null,
-        agent_image_url: agentImageUrl || null,
-        background_image_url: backgroundImageUrl || null,
-        launcher_image_url: launcherImageUrl || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", configId);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/widget-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: configId,
+          widget_layout: widgetLayout,
+          description,
+          branding: branding || null,
+          google_font_name: googleFontName,
+          color_preset: selectedColor,
+          custom_css: customCss || null,
+          autolaunch_popup: autolaunchPopup,
+          launch_message: launchMessage,
+          launch_message_enabled: launchMessageEnabled,
+          popup_message: popupMessage,
+          popup_message_enabled: popupMessageEnabled,
+          terms_of_service_url: tosUrl || null,
+          privacy_policy_url: privacyUrl || null,
+          agent_image_url: agentImageUrl || null,
+          background_image_url: backgroundImageUrl || null,
+          launcher_image_url: launcherImageUrl || null,
+        }),
+      });
 
-    if (error) {
-      console.error("Error saving widget_config:", error);
+      if (!res.ok) {
+        console.error("Error saving widget_config");
+        toast.error("Failed to save widget configuration.");
+      } else {
+        toast.success("Widget configuration saved.");
+      }
+    } catch (err) {
+      console.error("Error saving widget_config:", err);
       toast.error("Failed to save widget configuration.");
-    } else {
-      toast.success("Widget configuration saved.");
     }
 
     setSaving(false);
   }, [
     configId,
+    agentId,
     widgetLayout,
     description,
     branding,
@@ -285,7 +297,6 @@ export default function WidgetPage() {
     agentImageUrl,
     backgroundImageUrl,
     launcherImageUrl,
-    supabase,
   ]);
 
   function togglePanel(panel: string) {

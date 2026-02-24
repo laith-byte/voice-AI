@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { FeatureGate } from "@/components/portal/feature-gate";
-import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,17 +72,13 @@ export default function TopicsPage() {
   const [topicToDelete, setTopicToDelete] = useState<string | null>(null);
 
   const fetchTopics = useCallback(async () => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("topics")
-      .select("*")
-      .eq("agent_id", agentId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      toast.error("Failed to load topics");
-    } else if (data) {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/topics`);
+      if (!res.ok) throw new Error("Failed to load topics");
+      const data = await res.json();
       setTopics(data);
+    } catch {
+      toast.error("Failed to load topics");
     }
     setLoading(false);
   }, [agentId]);
@@ -95,20 +90,25 @@ export default function TopicsPage() {
   const handleAddTopic = async () => {
     if (!newTopicName.trim()) return;
     setCreating(true);
-    const supabase = createClient();
-    const { error } = await supabase.from("topics").insert({
-      agent_id: agentId,
-      name: newTopicName.trim(),
-      description: newTopicDescription.trim() || null,
-    });
-
-    if (error) {
-      toast.error("Failed to create topic");
-    } else {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newTopicName.trim(),
+          description: newTopicDescription.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to create topic");
+      }
       setDialogOpen(false);
       setNewTopicName("");
       setNewTopicDescription("");
       fetchTopics();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create topic");
     }
     setCreating(false);
   };
@@ -119,13 +119,18 @@ export default function TopicsPage() {
 
   const confirmDeleteTopic = async () => {
     if (!topicToDelete) return;
-    const supabase = createClient();
-    const { error } = await supabase.from("topics").delete().eq("id", topicToDelete);
-    if (error) {
-      toast.error("Failed to delete topic");
-    } else {
+    try {
+      const res = await fetch(`/api/agents/${agentId}/topics?topicId=${topicToDelete}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to delete topic");
+      }
       toast.success("Topic deleted");
       fetchTopics();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete topic");
     }
     setTopicToDelete(null);
   };

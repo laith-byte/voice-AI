@@ -86,7 +86,7 @@ export async function PATCH(
     }
 
     case 3: {
-      // Business settings are saved directly via /api/business-settings routes.
+      // Knowledge base settings are saved directly via /api/knowledge-base routes.
       // Nothing extra to save here — just advance the step.
       break;
     }

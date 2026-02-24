@@ -196,7 +196,7 @@ const COMPARISON_CATEGORIES = [
       { label: "Slack Integration", key: "slack_integration", type: "boolean" as const },
       { label: "CRM Integration", key: "crm_integration", type: "boolean" as const },
       { label: "Webhook Forwarding", key: "webhook_forwarding", type: "boolean" as const },
-      { label: "Automation Recipes", key: "max_recipes", type: "recipes" as const },
+      { label: "Integration Recipes", key: "max_recipes", type: "recipes" as const },
     ],
   },
   {

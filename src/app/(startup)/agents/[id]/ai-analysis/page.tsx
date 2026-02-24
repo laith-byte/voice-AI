@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Plus, Info, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,45 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Topic } from "@/types/database";
+
+function AnalysisSection({
+  label,
+  description,
+  enabled,
+  onToggle,
+  children,
+}: {
+  label: string;
+  description: string;
+  enabled: boolean;
+  onToggle: (checked: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="border border-[#e5e7eb] rounded-lg p-4">
+      <div className="flex items-start gap-3">
+        <Checkbox
+          checked={enabled}
+          onCheckedChange={onToggle}
+          className="mt-0.5"
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-sm font-medium text-[#111827]">{label}</h3>
+          </div>
+          <p className="text-xs text-[#6b7280] mb-3">{description}</p>
+          {enabled && children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AiAnalysisPage() {
   const params = useParams();
   const agentId = params.id as string;
-  const supabase = useMemo(() => createClient(), []);
 
   // Loading state
   const [loading, setLoading] = useState(true);
@@ -68,101 +99,79 @@ export default function AiAnalysisPage() {
     async function fetchData() {
       setLoading(true);
 
-      // Fetch ai_analysis_config
-      const { data: configData, error: configError } = await supabase
-        .from("ai_analysis_config")
-        .select("*")
-        .eq("agent_id", agentId)
-        .maybeSingle();
-
-      if (configError) {
-        console.error("Error fetching ai_analysis_config:", configError);
-      }
-
-      if (configData) {
-        setConfigId(configData.id);
-        setSummaryEnabled(configData.summary_enabled);
-        setSummaryPrompt(configData.summary_custom_prompt ?? "");
-        setEvaluationEnabled(configData.evaluation_enabled);
-        setEvaluationPrompt(configData.evaluation_custom_prompt ?? "");
-        setAutoTaggingEnabled(configData.auto_tagging_enabled);
-        setAutoTaggingMode(configData.auto_tagging_mode === "manual" ? "manual" : "auto");
-        setAutoTaggingPrompt(configData.auto_tagging_custom_prompt ?? "");
-        setMisunderstoodEnabled(configData.misunderstood_queries_enabled);
-      } else {
-        // Create default row
-        const { data: newConfig, error: insertError } = await supabase
-          .from("ai_analysis_config")
-          .insert({
-            agent_id: agentId,
-            summary_enabled: true,
-            summary_custom_prompt: summaryPrompt,
-            evaluation_enabled: true,
-            evaluation_custom_prompt: evaluationPrompt,
-            auto_tagging_enabled: false,
-            auto_tagging_mode: "auto",
-            auto_tagging_custom_prompt: autoTaggingPrompt,
-            misunderstood_queries_enabled: false,
-          })
-          .select()
-          .single();
-
-        if (insertError) {
-          console.error("Error creating default ai_analysis_config:", insertError);
-        } else if (newConfig) {
-          setConfigId(newConfig.id);
+      try {
+        // Fetch ai_analysis_config via API (creates default if missing)
+        const configRes = await fetch(`/api/agents/${agentId}/ai-analysis`);
+        if (configRes.ok) {
+          const configData = await configRes.json();
+          setConfigId(configData.id);
+          setSummaryEnabled(configData.summary_enabled);
+          setSummaryPrompt(configData.summary_custom_prompt ?? "");
+          setEvaluationEnabled(configData.evaluation_enabled);
+          setEvaluationPrompt(configData.evaluation_custom_prompt ?? "");
+          setAutoTaggingEnabled(configData.auto_tagging_enabled);
+          setAutoTaggingMode(configData.auto_tagging_mode === "manual" ? "manual" : "auto");
+          setAutoTaggingPrompt(configData.auto_tagging_custom_prompt ?? "");
+          setMisunderstoodEnabled(configData.misunderstood_queries_enabled);
+        } else {
+          console.error("Error fetching ai_analysis_config");
         }
-      }
 
-      // Fetch topics
-      const { data: topicsData, error: topicsError } = await supabase
-        .from("topics")
-        .select("*")
-        .eq("agent_id", agentId)
-        .order("created_at", { ascending: true });
-
-      if (topicsError) {
-        console.error("Error fetching topics:", topicsError);
-      } else if (topicsData) {
-        setTopics(topicsData as Topic[]);
+        // Fetch topics via API
+        const topicsRes = await fetch(`/api/agents/${agentId}/topics`);
+        if (topicsRes.ok) {
+          const topicsData = await topicsRes.json();
+          setTopics(topicsData as Topic[]);
+        } else {
+          console.error("Error fetching topics");
+        }
+      } catch (err) {
+        console.error("Error fetching data:", err);
       }
 
       setLoading(false);
     }
 
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId]);
 
-  // Save config to Supabase
+  // Save config via API
   const saveConfig = useCallback(async () => {
     if (!configId) return;
     setSaving(true);
 
-    const { error } = await supabase
-      .from("ai_analysis_config")
-      .update({
-        summary_enabled: summaryEnabled,
-        summary_custom_prompt: summaryPrompt || null,
-        evaluation_enabled: evaluationEnabled,
-        evaluation_custom_prompt: evaluationPrompt || null,
-        auto_tagging_enabled: autoTaggingEnabled,
-        auto_tagging_mode: autoTaggingMode,
-        auto_tagging_custom_prompt: autoTaggingPrompt || null,
-        misunderstood_queries_enabled: misunderstoodEnabled,
-      })
-      .eq("id", configId);
+    try {
+      const res = await fetch(`/api/agents/${agentId}/ai-analysis`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configId,
+          summary_enabled: summaryEnabled,
+          summary_custom_prompt: summaryPrompt || null,
+          evaluation_enabled: evaluationEnabled,
+          evaluation_custom_prompt: evaluationPrompt || null,
+          auto_tagging_enabled: autoTaggingEnabled,
+          auto_tagging_mode: autoTaggingMode,
+          auto_tagging_custom_prompt: autoTaggingPrompt || null,
+          misunderstood_queries_enabled: misunderstoodEnabled,
+        }),
+      });
 
-    if (error) {
-      console.error("Error saving ai_analysis_config:", error);
+      if (!res.ok) {
+        console.error("Error saving ai_analysis_config");
+        toast.error("Failed to save configuration. Please try again.");
+      } else {
+        toast.success("Configuration saved.");
+      }
+    } catch (err) {
+      console.error("Error saving ai_analysis_config:", err);
       toast.error("Failed to save configuration. Please try again.");
-    } else {
-      toast.success("Configuration saved.");
     }
 
     setSaving(false);
   }, [
     configId,
+    agentId,
     summaryEnabled,
     summaryPrompt,
     evaluationEnabled,
@@ -171,31 +180,34 @@ export default function AiAnalysisPage() {
     autoTaggingMode,
     autoTaggingPrompt,
     misunderstoodEnabled,
-    supabase,
   ]);
 
   async function addTopic() {
     if (!newTopicName.trim()) return;
 
-    const { data, error } = await supabase
-      .from("topics")
-      .insert({
-        agent_id: agentId,
-        name: newTopicName.trim(),
-        description: newTopicDescription.trim() || null,
-      })
-      .select()
-      .single();
+    try {
+      const res = await fetch(`/api/agents/${agentId}/topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newTopicName.trim(),
+          description: newTopicDescription.trim() || null,
+        }),
+      });
 
-    if (error) {
-      console.error("Error adding topic:", error);
-      toast.error("Failed to add topic. Please try again.");
-      return;
-    }
+      if (!res.ok) {
+        console.error("Error adding topic");
+        toast.error("Failed to add topic. Please try again.");
+        return;
+      }
 
-    if (data) {
+      const data = await res.json();
       setTopics((prev) => [...prev, data as Topic]);
       toast.success("Topic added.");
+    } catch (err) {
+      console.error("Error adding topic:", err);
+      toast.error("Failed to add topic. Please try again.");
+      return;
     }
 
     setNewTopicName("");
@@ -204,16 +216,24 @@ export default function AiAnalysisPage() {
   }
 
   async function removeTopic(id: string) {
-    const { error } = await supabase.from("topics").delete().eq("id", id);
+    try {
+      const res = await fetch(
+        `/api/agents/${agentId}/topics?topicId=${id}`,
+        { method: "DELETE" }
+      );
 
-    if (error) {
-      console.error("Error removing topic:", error);
+      if (!res.ok) {
+        console.error("Error removing topic");
+        toast.error("Failed to remove topic. Please try again.");
+        return;
+      }
+
+      setTopics((prev) => prev.filter((t) => t.id !== id));
+      toast.success("Topic removed.");
+    } catch (err) {
+      console.error("Error removing topic:", err);
       toast.error("Failed to remove topic. Please try again.");
-      return;
     }
-
-    setTopics((prev) => prev.filter((t) => t.id !== id));
-    toast.success("Topic removed.");
   }
 
   function formatDate(dateStr: string) {
@@ -222,39 +242,6 @@ export default function AiAnalysisPage() {
       month: "short",
       day: "numeric",
     });
-  }
-
-  function AnalysisSection({
-    label,
-    description,
-    enabled,
-    onToggle,
-    children,
-  }: {
-    label: string;
-    description: string;
-    enabled: boolean;
-    onToggle: (checked: boolean) => void;
-    children?: React.ReactNode;
-  }) {
-    return (
-      <div className="border border-[#e5e7eb] rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <Checkbox
-            checked={enabled}
-            onCheckedChange={onToggle}
-            className="mt-0.5"
-          />
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-sm font-medium text-[#111827]">{label}</h3>
-            </div>
-            <p className="text-xs text-[#6b7280] mb-3">{description}</p>
-            {enabled && children}
-          </div>
-        </div>
-      </div>
-    );
   }
 
   if (loading) {

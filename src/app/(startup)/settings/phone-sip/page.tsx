@@ -176,9 +176,23 @@ export default function PhoneSipSettingsPage() {
 
   const fetchAgentsAndClients = useCallback(async () => {
     const supabase = createClient();
+
+    // Get the current user's organization_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+    if (!userData?.organization_id) return;
+
+    const orgId = userData.organization_id;
+
     const [agentsRes, clientsRes] = await Promise.all([
-      supabase.from("agents").select("id, name").order("name"),
-      supabase.from("clients").select("id, name").order("name"),
+      supabase.from("agents").select("id, name").eq("organization_id", orgId).order("name"),
+      supabase.from("clients").select("id, name").eq("organization_id", orgId).order("name"),
     ]);
     if (agentsRes.data) setAgents(agentsRes.data);
     if (clientsRes.data) setClients(clientsRes.data);

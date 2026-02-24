@@ -71,33 +71,15 @@ function BillingConnectContent() {
     const handleOAuthReturn = async () => {
       if (searchParams.get("connected") !== "true") return;
 
-      const supabase = createClient();
+      // Mark connection as complete via API route
+      const res = await fetch("/api/admin/stripe-connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "mark_connected" }),
+      });
 
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) return;
-
-      const { data: currentUser } = await supabase
-        .from("users")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-      if (!currentUser?.organization_id) return;
-
-      // Check if a connection row exists
-      const { data: existing } = await supabase
-        .from("stripe_connections")
-        .select("id")
-        .eq("organization_id", currentUser.organization_id)
-        .single();
-
-      if (existing) {
-        await supabase
-          .from("stripe_connections")
-          .update({ is_connected: true, connected_at: new Date().toISOString() })
-          .eq("organization_id", currentUser.organization_id);
+      if (!res.ok) {
+        console.error("Failed to mark Stripe connection as complete");
       }
 
       // Re-check connection state
@@ -123,25 +105,20 @@ function BillingConnectContent() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      // Upsert the stripe_connections row
-      const supabase = createClient();
-      const { data: existing } = await supabase
-        .from("stripe_connections")
-        .select("id")
-        .eq("organization_id", organizationId)
-        .single();
-
-      if (existing) {
-        await supabase
-          .from("stripe_connections")
-          .update({ stripe_account_id: data.accountId, is_connected: false })
-          .eq("organization_id", organizationId);
-      } else {
-        await supabase.from("stripe_connections").insert({
-          organization_id: organizationId,
+      // Upsert the stripe_connections row via API route
+      const upsertRes = await fetch("/api/admin/stripe-connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "upsert_connection",
           stripe_account_id: data.accountId,
           is_connected: false,
-        });
+        }),
+      });
+
+      if (!upsertRes.ok) {
+        const errData = await upsertRes.json();
+        throw new Error(errData.error || "Failed to save connection");
       }
 
       // Redirect to Stripe onboarding
@@ -158,11 +135,17 @@ function BillingConnectContent() {
     if (!organizationId) return;
     setActionLoading(true);
     try {
-      const supabase = createClient();
-      await supabase
-        .from("stripe_connections")
-        .update({ is_connected: false })
-        .eq("organization_id", organizationId);
+      const res = await fetch("/api/admin/stripe-connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disconnect_keep_account" }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to disconnect");
+      }
+
       setIsConnected(false);
       toast.success("Stripe account disconnected.");
     } catch (error) {

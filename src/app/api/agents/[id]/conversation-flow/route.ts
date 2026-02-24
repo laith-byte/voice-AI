@@ -622,9 +622,7 @@ export async function PUT(
       }
 
       // Flow no longer exists on Retell — clear the stale ID
-      console.log(
-        `[conversation-flow] Flow ${existingFlowId} not found, creating new one`
-      );
+      // Flow no longer exists on Retell — clear the stale ID and create a new one
       existingFlowId = null;
     }
 

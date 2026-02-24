@@ -10,11 +10,20 @@ export async function GET(request: NextRequest) {
   const { clientId, error } = await getClientId(user!, supabase, request);
   if (error) return error;
 
-  const { data: actions, error: dbError } = await supabase
+  const agentId = request.nextUrl.searchParams.get("agent_id");
+
+  let query = supabase
     .from("post_call_actions")
     .select("*")
-    .eq("client_id", clientId)
-    .order("created_at", { ascending: true });
+    .eq("client_id", clientId);
+
+  if (agentId) {
+    query = query.eq("agent_id", agentId);
+  }
+
+  const { data: actions, error: dbError } = await query.order("created_at", {
+    ascending: true,
+  });
 
   if (dbError) {
     return NextResponse.json({ error: dbError.message }, { status: 500 });
@@ -32,7 +41,7 @@ export async function PUT(request: NextRequest) {
   if (error) return error;
 
   const body = await request.json();
-  const { action_type, is_enabled, config } = body;
+  const { action_type, is_enabled, config, agent_id } = body;
 
   if (!action_type) {
     return NextResponse.json(
@@ -46,7 +55,6 @@ export async function PUT(request: NextRequest) {
     "sms_notification",
     "caller_followup_email",
     "daily_digest",
-    "webhook",
   ];
   if (!validTypes.includes(action_type)) {
     return NextResponse.json(
@@ -55,18 +63,20 @@ export async function PUT(request: NextRequest) {
     );
   }
 
+  const upsertPayload: Record<string, unknown> = {
+    client_id: clientId,
+    action_type,
+    is_enabled: is_enabled ?? false,
+    config: config ?? {},
+    updated_at: new Date().toISOString(),
+  };
+  if (agent_id) {
+    upsertPayload.agent_id = agent_id;
+  }
+
   const { data, error: dbError } = await supabase
     .from("post_call_actions")
-    .upsert(
-      {
-        client_id: clientId,
-        action_type,
-        is_enabled: is_enabled ?? false,
-        config: config ?? {},
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "client_id,action_type" }
-    )
+    .upsert(upsertPayload, { onConflict: "client_id,agent_id,action_type" })
     .select()
     .single();
 

@@ -482,8 +482,8 @@ export default function FeaturesPage() {
                     <div className="space-y-3">
                       {[
                         { name: "HubSpot", desc: "Contacts, deals, and tickets synced", color: "from-orange-400 to-orange-500" },
-                        { name: "Salesforce", desc: "Leads, opportunities, and activities logged", color: "from-blue-400 to-blue-500", soon: true },
-                        { name: "GoHighLevel", desc: "Contacts, pipelines, and automations", color: "from-emerald-400 to-emerald-500", soon: true },
+                        { name: "Salesforce", desc: "Leads, opportunities, and activities logged", color: "from-blue-400 to-blue-500" },
+                        { name: "GoHighLevel", desc: "Contacts, pipelines, and integrations", color: "from-emerald-400 to-emerald-500" },
                         { name: "Custom Webhook", desc: "Send data to any endpoint via REST API", color: "from-purple-400 to-purple-500" },
                       ].map((crm, i) => (
                         <motion.div
@@ -501,14 +501,8 @@ export default function FeaturesPage() {
                             <p className="text-[11px] text-white/40">{crm.desc}</p>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {crm.soon ? (
-                              <span className="text-[10px] font-semibold text-amber-400">Coming Soon</span>
-                            ) : (
-                              <>
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                <span className="text-[10px] font-semibold text-emerald-400">Live</span>
-                              </>
-                            )}
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            <span className="text-[10px] font-semibold text-emerald-400">Live</span>
                           </div>
                         </motion.div>
                       ))}

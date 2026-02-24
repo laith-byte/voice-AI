@@ -149,42 +149,54 @@ export default function AssignedAgentsPage() {
   const handleAssign = async () => {
     if (!selectedAgentId) return;
 
-    const supabase = createClient();
     setAssigning(true);
 
-    const { error } = await supabase
-      .from("agents")
-      .update({ client_id: clientId })
-      .eq("id", selectedAgentId);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/assigned-agents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: selectedAgentId }),
+      });
 
-    if (error) {
-      console.error("Error assigning agent:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Error assigning agent:", data.error);
+        toast.error("Failed to assign agent. Please try again.");
+      } else {
+        setAssignDialogOpen(false);
+        setSelectedAgentId("");
+        toast.success("Agent assigned.");
+        await fetchAgents();
+      }
+    } catch (err) {
+      console.error("Error assigning agent:", err);
       toast.error("Failed to assign agent. Please try again.");
-    } else {
-      setAssignDialogOpen(false);
-      setSelectedAgentId("");
-      toast.success("Agent assigned.");
-      await fetchAgents();
     }
 
     setAssigning(false);
   };
 
   const handleUnassign = async (agentId: string) => {
-    const supabase = createClient();
     setUnassigningId(agentId);
 
-    const { error } = await supabase
-      .from("agents")
-      .update({ client_id: null })
-      .eq("id", agentId);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/assigned-agents`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_id: agentId }),
+      });
 
-    if (error) {
-      console.error("Error unassigning agent:", error);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Error unassigning agent:", data.error);
+        toast.error("Failed to unassign agent. Please try again.");
+      } else {
+        toast.success("Agent unassigned.");
+        await fetchAgents();
+      }
+    } catch (err) {
+      console.error("Error unassigning agent:", err);
       toast.error("Failed to unassign agent. Please try again.");
-    } else {
-      toast.success("Agent unassigned.");
-      await fetchAgents();
     }
 
     setUnassigningId(null);

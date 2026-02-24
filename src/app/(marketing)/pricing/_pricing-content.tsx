@@ -139,7 +139,7 @@ const faqs = [
   },
   {
     question: "What\u2019s included in all plans?",
-    answer: "Every plan includes the full platform: analytics, AI evaluation, automations, CRM integrations, advanced agent configuration, HIPAA compliance, priority support, and more. You only upgrade when you need more agents, minutes, or phone numbers.",
+    answer: "Every plan includes the full platform: analytics, AI evaluation, integrations, CRM connections, advanced agent configuration, HIPAA compliance, priority support, and more. You only upgrade when you need more agents, minutes, or phone numbers.",
   },
   {
     question: "What\u2019s the difference between Verified and Branded Caller ID?",

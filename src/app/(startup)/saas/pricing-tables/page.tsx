@@ -121,24 +121,28 @@ export default function SaaSPricingTablesPage() {
     if (!orgId || !formData.name.trim()) return;
     setCreating(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from("pricing_tables").insert({
-        organization_id: orgId,
-        name: formData.name.trim(),
-        plan_ids: formData.plan_ids,
-        default_view: formData.default_view,
-        button_shape: formData.button_shape,
-        background_color: formData.background_color || null,
-        button_color: formData.button_color,
-        highlight_enabled: formData.highlight_enabled,
-        highlight_plan_id: formData.highlight_plan_id || null,
-        highlight_label: formData.highlight_label,
-        highlight_color: formData.highlight_color,
-        badge_color: formData.badge_color,
-        is_active: true,
+      const res = await fetch("/api/admin/pricing-tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          plan_ids: formData.plan_ids,
+          default_view: formData.default_view,
+          button_shape: formData.button_shape,
+          background_color: formData.background_color || null,
+          button_color: formData.button_color,
+          highlight_enabled: formData.highlight_enabled,
+          highlight_plan_id: formData.highlight_plan_id || null,
+          highlight_label: formData.highlight_label,
+          highlight_color: formData.highlight_color,
+          badge_color: formData.badge_color,
+        }),
       });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to create pricing table");
+      }
 
       toast.success("Pricing table created successfully");
       setDialogOpen(false);
@@ -156,13 +160,14 @@ export default function SaaSPricingTablesPage() {
   const handleDeleteTable = async (id: string) => {
     setDeleting(id);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("pricing_tables")
-        .delete()
-        .eq("id", id);
+      const res = await fetch(`/api/admin/pricing-tables/${id}`, {
+        method: "DELETE",
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to delete pricing table");
+      }
 
       toast.success("Pricing table deleted");
       setPricingTables((prev) => prev.filter((t) => t.id !== id));
@@ -177,13 +182,16 @@ export default function SaaSPricingTablesPage() {
 
   const handleToggleActive = async (table: PricingTable) => {
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("pricing_tables")
-        .update({ is_active: !table.is_active })
-        .eq("id", table.id);
+      const res = await fetch(`/api/admin/pricing-tables/${table.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: !table.is_active }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to update status");
+      }
 
       setPricingTables((prev) =>
         prev.map((t) =>

@@ -43,7 +43,7 @@ export default function ClientDetailLayout({
     { label: "Phone Numbers", href: `/clients/${id}/phone-numbers` },
     { label: "Solutions", href: `/clients/${id}/solutions` },
     { label: "Client Access", href: `/clients/${id}/client-access` },
-    { label: "Business Settings", href: `/clients/${id}/business-settings` },
+    { label: "Knowledge Base", href: `/clients/${id}/knowledge-base` },
   ];
 
   return (

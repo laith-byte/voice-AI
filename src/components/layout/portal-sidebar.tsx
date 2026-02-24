@@ -20,11 +20,12 @@ import {
   Menu,
   HelpCircle,
   Palette,
-  Building2,
   CreditCard,
   Sparkles,
   BookOpen,
   GitBranch,
+  Zap,
+  PhoneCall,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -72,6 +73,8 @@ const agentNavItems = [
   { label: "Leads", href: "leads", icon: UserPlus, featureKey: "leads" },
   { label: "Campaigns", href: "campaigns", icon: Megaphone, featureKey: "campaigns" },
   { label: "Agent Settings", href: "agent-settings", icon: Settings, featureKey: "agent_settings" },
+  { label: "Post-Call Actions", href: "post-call-actions", icon: Zap, featureKey: "agent_settings" },
+  { label: "Call Handling", href: "call-handling", icon: PhoneCall, featureKey: "agent_settings" },
 ];
 
 export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
@@ -292,28 +295,28 @@ export function PortalSidebar({ clientSlug }: { clientSlug: string }) {
               </Link>
             )}
             <Link
-              href={`/${clientSlug}/portal/automations`}
+              href={`/${clientSlug}/portal/knowledge-base`}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                pathname === `/${clientSlug}/portal/automations`
+                pathname === `/${clientSlug}/portal/knowledge-base`
                   ? "bg-white/10 text-white font-medium"
                   : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
               }`}
-              style={pathname === `/${clientSlug}/portal/automations` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+              style={pathname === `/${clientSlug}/portal/knowledge-base` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
+            >
+              <BookOpen className="w-4 h-4" />
+              Knowledge Base
+            </Link>
+            <Link
+              href={`/${clientSlug}/portal/integrations`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                pathname === `/${clientSlug}/portal/integrations`
+                  ? "bg-white/10 text-white font-medium"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+              }`}
+              style={pathname === `/${clientSlug}/portal/integrations` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
             >
               <Sparkles className="w-4 h-4" />
               Integrations
-            </Link>
-            <Link
-              href={`/${clientSlug}/portal/settings/business`}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
-                pathname === `/${clientSlug}/portal/settings/business`
-                  ? "bg-white/10 text-white font-medium"
-                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
-              }`}
-              style={pathname === `/${clientSlug}/portal/settings/business` ? { boxShadow: 'inset 3px 0 0 0 var(--primary, #2563eb)' } : undefined}
-            >
-              <Building2 className="w-4 h-4" />
-              Business Settings
             </Link>
             <Link
               href={`/${clientSlug}/portal/billing`}

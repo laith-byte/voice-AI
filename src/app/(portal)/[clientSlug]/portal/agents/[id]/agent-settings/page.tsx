@@ -71,8 +71,6 @@ import {
   Phone,
   PhoneOff,
   BrainCircuit,
-  Shield,
-  Plug,
   Sparkles,
   Check,
   RotateCcw,
@@ -81,8 +79,6 @@ import {
   Info,
   Send,
   DollarSign,
-  History,
-  BookOpen,
   Undo2,
   GitBranch,
   ArrowRight,
@@ -116,7 +112,7 @@ import {
   TELEPHONY_COST,
   ADDON_COSTS,
 } from "@/lib/retell-costs";
-import { PiiRedactionSettings } from "@/components/business-settings/pii-redaction-settings";
+import { PiiRedactionSettings } from "@/components/knowledge-base/pii-redaction-settings";
 
 interface Agent {
   id: string;
@@ -304,7 +300,7 @@ export default function AgentSettingsPage() {
   // Security fallback state
   const [dataStorage, setDataStorage] = useState("everything");
   const [piiRedaction, setPiiRedaction] = useState(false);
-  const [piiCategories, setPiiCategories] = useState<string[]>([]);
+  const [_piiCategories, setPiiCategories] = useState<string[]>([]);
   const [secureUrls, setSecureUrls] = useState(false);
   const [signedUrlExpiration, setSignedUrlExpiration] = useState("24");
   const [fallbackVoiceIds, setFallbackVoiceIds] = useState("");
@@ -749,43 +745,40 @@ export default function AgentSettingsPage() {
 
   // Fetch widget config
   const fetchWidgetConfig = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("widget_config")
-      .select("*")
-      .eq("agent_id", agentId)
-      .single();
+    const res = await fetch(`/api/agents/${agentId}/widget-config`);
+    if (!res.ok) return;
+    let config = await res.json();
 
-    if (data) {
-      setWidgetConfigId(data.id);
-      setWidgetDescription(data.description ?? "Our assistant is here to help.");
-    } else {
-      const { data: newConfig } = await supabase
-        .from("widget_config")
-        .insert({ agent_id: agentId })
-        .select()
-        .single();
-      if (newConfig) setWidgetConfigId(newConfig.id);
+    if (!config) {
+      // Initialize a default config via the API
+      const initRes = await fetch(`/api/agents/${agentId}/widget-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (initRes.ok) config = await initRes.json();
+    }
+
+    if (config) {
+      setWidgetConfigId(config.id);
+      setWidgetDescription(config.description ?? "Our assistant is here to help.");
     }
   }, [agentId]);
 
   // Fetch AI analysis config
   const fetchAiConfig = useCallback(async () => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("ai_analysis_config")
-      .select("*")
-      .eq("agent_id", agentId)
-      .single();
+    const res = await fetch(`/api/agents/${agentId}/ai-analysis-config`);
+    if (!res.ok) return;
+    let config = await res.json();
 
-    let config = data;
-    if (!config || error) {
-      const { data: newConfig } = await supabase
-        .from("ai_analysis_config")
-        .insert({ agent_id: agentId })
-        .select()
-        .single();
-      config = newConfig;
+    if (!config) {
+      // Initialize a default config via the API
+      const initRes = await fetch(`/api/agents/${agentId}/ai-analysis-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (initRes.ok) config = await initRes.json();
     }
 
     if (config) {
@@ -858,15 +851,15 @@ export default function AgentSettingsPage() {
   // Widget save
   const handleWidgetSave = async () => {
     setWidgetSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("widget_config")
-      .upsert({
+    const res = await fetch(`/api/agents/${agentId}/widget-config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         ...(widgetConfigId ? { id: widgetConfigId } : {}),
-        agent_id: agentId,
         description: widgetDescription,
-      });
-    if (error) {
+      }),
+    });
+    if (!res.ok) {
       toast.error("Failed to save widget settings");
     } else {
       toast.success("Widget settings saved");
@@ -877,10 +870,11 @@ export default function AgentSettingsPage() {
   // AI Analysis save
   const handleAiSave = async () => {
     setAiSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("ai_analysis_config")
-      .update({
+    const res = await fetch(`/api/agents/${agentId}/ai-analysis-config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(aiConfigId ? { id: aiConfigId } : {}),
         summary_enabled: summaryEnabled,
         summary_custom_prompt: summaryPrompt,
         evaluation_enabled: evaluationEnabled,
@@ -889,10 +883,10 @@ export default function AgentSettingsPage() {
         auto_tagging_mode: autoTaggingMode,
         auto_tagging_custom_prompt: autoTaggingPrompt,
         misunderstood_queries_enabled: misunderstoodEnabled,
-      })
-      .eq("id", aiConfigId!);
+      }),
+    });
 
-    if (error) {
+    if (!res.ok) {
       toast.error("Failed to save AI analysis config");
     } else {
       toast.success("AI analysis config saved");
@@ -989,16 +983,16 @@ export default function AgentSettingsPage() {
   // Save agent name to Supabase + publish config
   const handleSave = async () => {
     setSaving(true);
-    const supabase = createClient();
 
     // Save name if changed
     if (agentName && agentName !== agent?.name) {
-      const { error } = await supabase
-        .from("agents")
-        .update({ name: agentName })
-        .eq("id", agentId);
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: agentName }),
+      });
 
-      if (error) {
+      if (!res.ok) {
         toast.error("Failed to save name");
         setSaving(false);
         return;
@@ -1196,12 +1190,12 @@ export default function AgentSettingsPage() {
   const handleNameBlur = async () => {
     setIsEditingName(false);
     if (agentName && agentName !== agent?.name) {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("agents")
-        .update({ name: agentName })
-        .eq("id", agentId);
-      if (error) {
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: agentName }),
+      });
+      if (!res.ok) {
         toast.error("Failed to save name");
       } else {
         setAgent((prev) => (prev ? { ...prev, name: agentName } : prev));

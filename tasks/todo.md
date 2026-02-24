@@ -1,68 +1,42 @@
-# Platform Vet — Pre-Ship Audit
+# Audit #8 — Two-Model Verification (Self-Serve + Admin-Fulfillment)
 
-## Status: ALL FIXES COMPLETE — SHIP 10/10
+## Status: COMPLETE — DO NOT SHIP (8.5/10)
 
-**Verdict: SHIP** (0 blockers, 0 warnings, 0 regressions, 0 cosmetic issues remaining)
-**Confidence: 10/10**
-**Full report:** `docs/platform-vet/VERDICT.md`
+## Context
+Audit #8 verified both interaction models: self-serve and admin-fulfillment. 5 blockers prevent 10/10.
 
----
+## Results
 
-## Final Verification (2026-02-22)
-- `npm run build` — PASS (zero errors)
-- `npx vitest run` — 99/99 tests PASS
-- `npx eslint src/` — 0 errors, 0 warnings
+### Phase 1: Parallel Audit (5 teammates)
+- [x] **Teammate 1 (Client Platform)**: 1 blocker, 3 warnings, 3 cosmetic. Previous fixes: 12/12 PASS.
+- [x] **Teammate 2 (Admin Dashboard)**: 4 blockers, 10 warnings, 3 cosmetic. Previous fixes: 3/3 PASS.
+- [x] **Teammate 3 (Marketing Website)**: 0 blockers, 2 warnings, 1 cosmetic. Previous fixes: 5/5 PASS.
+- [x] **Teammate 4 (E2E Journeys)**: 6/6 PASS
+- [x] **Teammate 5 (Build/Security)**: 0 blockers, 3 warnings, 2 cosmetic. Build: 0/0. Lint: 0/0.
 
----
+### Phase 2: Synthesis
+- [x] Collected all 5 audit reports
+- [x] Wrote docs/audit-8/VERDICT.md with all 11 sections
+- [x] Updated tasks/lessons.md with 4 new patterns
 
-## Phase 1: Blockers Fixed (6/6)
-1. [x] B-1: Added `organization_id` filter to dashboard onboarding query
-2. [x] B-2: Workflows toggle/create now use `/api/solutions` (PATCH/POST)
-3. [x] B-3: SaaS templates create/delete now use `/api/agent-templates` (POST/DELETE)
-4. [x] B-4: Whitelabel branding + email templates now use `/api/whitelabel` (PATCH)
-5. [x] B-5: Startup org name save now uses `/api/settings` (PATCH)
-6. [x] B-6: Added `.claude/**` to ESLint `globalIgnores`
+## Verdict: 8.5/10 — DO NOT SHIP
 
-## Phase 2: Warnings Fixed (19/19, 2 skipped per user decision)
+**5 blockers (deduplicated across teammates):**
+1. Change-password component bypasses API route (direct supabase.auth calls)
+2. 4 admin pages have direct Supabase mutations (saas/advanced, agents/layout, campaigns, widget)
+3. "Automations" text in 5 admin UI-facing locations
+4. Setup-account page has direct Supabase mutation (borderline)
 
-### Security (CRITICAL)
-- [x] W-1: Server-side auth guard for startup layout
-- [x] W-19: Rate limiting on `/api/checkout`
-- [x] W-20: Zapier/Make/n8n auth — hash-verified API keys, insecure fallback removed
-- [x] W-21: Vercel migration check (no issues found)
+**6/6 E2E journeys PASS**
+**All 12 previous fixes VERIFIED — ZERO regressions**
+**Build: 0 errors, 0 warnings. Lint: 0 errors, 0 warnings.**
+**Self-serve: ALL FEATURES WORK**
+**Admin-fulfillment: FULL REQUEST CHAIN VERIFIED**
+**Security: STRONG (130+ routes, 4 webhook verifications, zero client secrets)**
 
-### Admin Functionality
-- [x] W-3: Embed URL functional save
-- [x] W-5/W-6: Subscription cancel functionality (UI + API + Stripe)
-- [x] W-7/W-8: Invoice creation dialog (UI + API + Stripe)
-- [x] W-9: Confirmation dialog for API key removal
-- [x] W-10: Integration configuration dialogs
-- [x] W-11: Member role management and removal
-- [x] W-12: Pagination for members table
-- [x] W-13: Domain removal with confirmation
-- [x] W-15: Provider selector state leak fixed
+**To reach 10/10:** Fix all 11 items in VERDICT.md punch list. ~3 hours total.
+- Quick wins (items 1-2): ~25 min
+- Direct mutation fixes (items 3-7): ~2h
+- Verification (items 8-11): ~10 min
 
-### Marketing & SEO
-- [x] W-16: Pricing meta description updated
-- [x] W-17: Server-side industry validation (allowlist)
-- [x] W-18: All ESLint errors fixed (zero remaining)
-
-### Skipped
-- W-4: Keep as-is (per user decision)
-- W-14: HIPAA — deferred (per user decision)
-
-## Phase 2: Regression Fixed (1/1)
-- [x] OG image — copied to `public/og-image.png`, metadata in root layout
-
-## Phase 2: Cosmetic Fixed (11/11)
-- [x] C-1: Pagination on all admin tables
-- [x] C-2: Standardized loading spinners
-- [x] C-3: "Coming Soon" buttons updated
-- [x] C-4: Shared Stripe Connect component extracted
-- [x] C-5: Contact sidebar contrast fixed
-- [x] C-6: Webhook `?secret=` query param removed (header-only)
-- [x] C-7: Webhook errors logged to webhook_logs table
-- [x] C-8: delay_minutes functional (scheduled_emails + cron)
-- [x] C-9: Structured JSON logging across all API routes
-- [x] C-10: All unused variable warnings fixed
-- [x] C-11: Missing alt attributes added
+**Full report:** `docs/audit-8/VERDICT.md`

@@ -42,7 +42,7 @@ const navItems = [
   { label: "Home", href: "/dashboard", icon: Home },
   { label: "Clients", href: "/clients", icon: Users },
   { label: "Agents", href: "/agents", icon: Bot },
-  { label: "Automations", href: "/automations", icon: Workflow },
+  { label: "Integrations", href: "/integrations", icon: Workflow },
   { label: "Stripe Billing", href: "/billing/connect", icon: CreditCard },
   { label: "SaaS Configurator", href: "/saas/connect", icon: Puzzle },
   { label: "Settings", href: "/settings/startup", icon: Settings },

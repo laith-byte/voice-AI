@@ -75,22 +75,21 @@ export default function SaaSConnectPage() {
 
       const { accountId, url } = await res.json();
 
-      // Upsert stripe_connections row
-      const { data: dbUser } = await supabase
-        .from("users")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-      if (!dbUser) throw new Error("User not found");
-
-      await supabase.from("stripe_connections").upsert(
-        {
-          organization_id: dbUser.organization_id,
+      // Upsert stripe_connections row via API route
+      const upsertRes = await fetch("/api/admin/stripe-connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "upsert_connection",
           stripe_account_id: accountId,
           is_connected: false,
-        },
-        { onConflict: "organization_id" }
-      );
+        }),
+      });
+
+      if (!upsertRes.ok) {
+        const errData = await upsertRes.json();
+        throw new Error(errData.error || "Failed to save connection");
+      }
 
       // Redirect to Stripe onboarding
       window.location.href = url;
@@ -106,29 +105,16 @@ export default function SaaSConnectPage() {
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const res = await fetch("/api/admin/stripe-connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "disconnect" }),
+      });
 
-      const { data: dbUser } = await supabase
-        .from("users")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-      if (!dbUser) throw new Error("User not found");
-
-      const { error } = await supabase
-        .from("stripe_connections")
-        .update({
-          is_connected: false,
-          stripe_account_id: null,
-          connected_at: null,
-        })
-        .eq("organization_id", dbUser.organization_id);
-
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to disconnect");
+      }
 
       setIsConnected(false);
       setStripeAccountId(null);
@@ -180,29 +166,16 @@ export default function SaaSConnectPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("connected") === "true") {
       (async () => {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        const res = await fetch("/api/admin/stripe-connections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark_connected" }),
+        });
 
-        const { data: dbUser } = await supabase
-          .from("users")
-          .select("organization_id")
-          .eq("id", user.id)
-          .single();
-        if (!dbUser) return;
-
-        await supabase
-          .from("stripe_connections")
-          .update({
-            is_connected: true,
-            connected_at: new Date().toISOString(),
-          })
-          .eq("organization_id", dbUser.organization_id);
-
-        setIsConnected(true);
-        toast.success("Stripe account connected successfully!");
+        if (res.ok) {
+          setIsConnected(true);
+          toast.success("Stripe account connected successfully!");
+        }
         // Clean the URL
         window.history.replaceState({}, "", window.location.pathname);
       })();

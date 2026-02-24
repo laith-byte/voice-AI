@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
-import { regeneratePrompt } from "@/lib/prompt-generator";
+import { regenerateKnowledgeBase } from "@/lib/knowledge-base-generator";
 
 export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -50,10 +50,10 @@ export async function POST(request: NextRequest) {
 
   // 3. Make sure the agent's prompt is up to date
   try {
-    await regeneratePrompt(clientId!);
+    await regenerateKnowledgeBase(clientId!);
   } catch (promptErr) {
     // Non-fatal: log but don't block the go-live
-    console.error("Prompt regeneration failed during go-live:", promptErr);
+    console.error("KB regeneration failed during go-live:", promptErr);
   }
 
   return NextResponse.json({ success: true, onboarding: data });

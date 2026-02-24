@@ -86,37 +86,32 @@ export default function SetupAccountPage() {
 
     setLoading(true);
 
-    const supabase = createClient();
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "setup-account",
+          password,
+          businessName: businessName.trim(),
+          clientId,
+        }),
+      });
 
-    // 1. Set the password
-    const { error: passwordError } = await supabase.auth.updateUser({
-      password,
-    });
+      const data = await res.json();
 
-    if (passwordError) {
-      setError(passwordError.message);
+      if (!res.ok) {
+        setError(data.error || "Failed to set up account");
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setError("An error occurred. Please try again.");
       setLoading(false);
       return;
     }
 
-    // 2. Update business name on the client record
-    if (clientId) {
-      const { error: updateError } = await supabase
-        .from("clients")
-        .update({ name: businessName.trim() })
-        .eq("id", clientId);
-
-      if (updateError) {
-        setError("Failed to update business name. You can change it later in settings.");
-      }
-    }
-
-    // 3. Update the user's full name metadata
-    await supabase.auth.updateUser({
-      data: { full_name: businessName.trim() },
-    });
-
-    // 4. Redirect to portal
+    // Redirect to portal
     if (clientSlug) {
       router.push(`/${clientSlug}/portal/onboarding`);
     } else {

@@ -188,7 +188,13 @@ export default function DashboardHomePage() {
 
       // Integration requests
       if (integrationRequestsResult.data) {
-        setPendingRequests(integrationRequestsResult.data);
+        // Supabase returns joined tables as arrays; normalize to single objects
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setPendingRequests((integrationRequestsResult.data as any[]).map((r) => ({
+          ...r,
+          clients: Array.isArray(r.clients) ? r.clients[0] ?? null : r.clients,
+          automation_recipes: Array.isArray(r.automation_recipes) ? r.automation_recipes[0] ?? null : r.automation_recipes,
+        })));
       }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
@@ -400,7 +406,7 @@ export default function DashboardHomePage() {
                 </Badge>
               </div>
               <Button variant="ghost" size="sm" className="text-xs" asChild>
-                <Link href="/automations">
+                <Link href="/integrations">
                   View All
                   <ArrowRight className="w-3 h-3 ml-1" />
                 </Link>

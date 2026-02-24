@@ -14,6 +14,86 @@ async function retellFetch(path: string, apiKey: string, options?: RequestInit) 
   });
 }
 
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { user, supabase, response } = await requireAuth();
+  if (response) return response;
+
+  const { data: userData } = await supabase
+    .from("users")
+    .select("organization_id")
+    .eq("id", user.id)
+    .single();
+  if (!userData)
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+
+  const { id } = await params;
+
+  // Verify agent belongs to user's org
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("organization_id")
+    .eq("id", id)
+    .eq("organization_id", userData.organization_id)
+    .single();
+
+  if (!agent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  const body = await request.json();
+
+  // Only allow updating the name for now
+  const allowedFields = new Set(["name"]);
+  const safeBody: Record<string, unknown> = {};
+  for (const key of Object.keys(body)) {
+    if (allowedFields.has(key)) {
+      safeBody[key] = body[key];
+    }
+  }
+
+  if (Object.keys(safeBody).length === 0) {
+    return NextResponse.json(
+      { error: "No valid fields to update" },
+      { status: 400 }
+    );
+  }
+
+  // Validate name
+  if ("name" in safeBody) {
+    if (
+      typeof safeBody.name !== "string" ||
+      safeBody.name.trim().length === 0
+    ) {
+      return NextResponse.json(
+        { error: "Name must be a non-empty string" },
+        { status: 400 }
+      );
+    }
+    safeBody.name = safeBody.name.trim();
+  }
+
+  const { data, error } = await supabase
+    .from("agents")
+    .update(safeBody)
+    .eq("id", id)
+    .eq("organization_id", userData.organization_id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("DB error:", error.message);
+    return NextResponse.json(
+      { error: "An unexpected error occurred" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json(data);
+}
+
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

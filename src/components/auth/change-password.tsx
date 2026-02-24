@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,37 +44,33 @@ export function ChangePassword({ onClose }: { onClose?: () => void }) {
     }
 
     setLoading(true);
-    const supabase = createClient();
 
-    // Verify current password by re-signing in
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.email) {
-      toast.error("Unable to verify current user");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "change-password",
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Failed to change password");
+        setLoading(false);
+        return;
+      }
+
+      toast.success("Password updated successfully");
       setLoading(false);
-      return;
-    }
-
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email,
-      password: currentPassword,
-    });
-
-    if (signInError) {
-      toast.error("Current password is incorrect");
+      onClose?.();
+    } catch {
+      toast.error("An error occurred. Please try again.");
       setLoading(false);
-      return;
     }
-
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) {
-      toast.error(error.message);
-      setLoading(false);
-      return;
-    }
-
-    toast.success("Password updated successfully");
-    setLoading(false);
-    onClose?.();
   }
 
   return (

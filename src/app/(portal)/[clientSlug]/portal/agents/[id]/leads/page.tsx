@@ -409,29 +409,7 @@ export default function LeadsPage() {
     setImporting(true);
 
     try {
-      const supabase = createClient();
-
-      // Get the current user's organization_id
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error("You must be logged in to import leads");
-        return;
-      }
-
-      const { data: userData } = await supabase
-        .from("users")
-        .select("organization_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!userData?.organization_id) {
-        toast.error("Organization not found");
-        return;
-      }
-
-      // Also deduplicate against existing leads for this agent
+      // Deduplicate against existing leads for this agent
       const existingPhones = new Set(leads.map((l) => l.phone.replace(/\s+/g, "")));
       const newLeads = parsedLeads.filter(
         (lead) => !existingPhones.has(lead.phone.replace(/\s+/g, ""))
@@ -444,38 +422,31 @@ export default function LeadsPage() {
         return;
       }
 
-      // Insert in batches of 100
-      const batchSize = 100;
-      let successCount = 0;
-      let errorCount = 0;
+      const res = await fetch("/api/leads/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_id: agentId,
+          leads: newLeads.map((lead) => ({
+            phone: lead.phone,
+            name: lead.name || null,
+            tags: lead.tags,
+            dynamic_vars:
+              Object.keys(lead.dynamic_vars).length > 0
+                ? lead.dynamic_vars
+                : null,
+          })),
+        }),
+      });
 
-      for (let i = 0; i < newLeads.length; i += batchSize) {
-        const batch = newLeads.slice(i, i + batchSize);
-
-        const { data, error } = await supabase
-          .from("leads")
-          .upsert(
-            batch.map((lead) => ({
-              organization_id: userData.organization_id,
-              agent_id: agentId,
-              phone: lead.phone,
-              name: lead.name || null,
-              tags: lead.tags,
-              dynamic_vars:
-                Object.keys(lead.dynamic_vars).length > 0
-                  ? lead.dynamic_vars
-                  : null,
-            })),
-            { onConflict: "phone,agent_id" }
-          )
-          .select();
-
-        if (error) {
-          errorCount += batch.length;
-        } else {
-          successCount += data.length;
-        }
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Failed to import leads");
       }
+
+      const result = await res.json();
+      const successCount = result.imported ?? 0;
+      const errorCount = result.errors ?? 0;
 
       if (successCount > 0) {
         toast.success(
@@ -500,8 +471,8 @@ export default function LeadsPage() {
 
       // Refresh leads list
       await fetchLeads();
-    } catch {
-      toast.error("Something went wrong during import. Please try again.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong during import. Please try again.");
     } finally {
       setImporting(false);
     }

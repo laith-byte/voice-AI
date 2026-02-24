@@ -9,11 +9,31 @@ export async function GET(request: NextRequest) {
   const { clientId, error: clientError } = await getClientId(user!, supabase, request);
   if (clientError) return clientError;
 
-  const { data, error } = await supabase
-    .from("pii_redaction_configs")
-    .select("*")
-    .eq("client_id", clientId)
-    .single();
+  const agentId = request.nextUrl.searchParams.get("agent_id");
+
+  let data = null;
+  let error = null;
+
+  if (agentId) {
+    const result = await supabase
+      .from("pii_redaction_configs")
+      .select("*")
+      .eq("client_id", clientId)
+      .eq("agent_id", agentId)
+      .single();
+    data = result.data;
+    error = result.error;
+  }
+
+  if (!data) {
+    const result = await supabase
+      .from("pii_redaction_configs")
+      .select("*")
+      .eq("client_id", clientId)
+      .single();
+    data = result.data;
+    error = result.error;
+  }
 
   if (error && error.code !== "PGRST116") {
     console.error("DB error:", error.message);
@@ -32,22 +52,25 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
+  const upsertPayload: Record<string, unknown> = {
+    client_id: clientId,
+    enabled: body.enabled ?? false,
+    redact_phone_numbers: body.redact_phone_numbers ?? true,
+    redact_emails: body.redact_emails ?? true,
+    redact_ssn: body.redact_ssn ?? true,
+    redact_credit_cards: body.redact_credit_cards ?? true,
+    redact_names: body.redact_names ?? false,
+    custom_patterns: body.custom_patterns || [],
+    updated_at: new Date().toISOString(),
+  };
+
+  if (body.agent_id) {
+    upsertPayload.agent_id = body.agent_id;
+  }
+
   const { data, error } = await supabase
     .from("pii_redaction_configs")
-    .upsert(
-      {
-        client_id: clientId,
-        enabled: body.enabled ?? false,
-        redact_phone_numbers: body.redact_phone_numbers ?? true,
-        redact_emails: body.redact_emails ?? true,
-        redact_ssn: body.redact_ssn ?? true,
-        redact_credit_cards: body.redact_credit_cards ?? true,
-        redact_names: body.redact_names ?? false,
-        custom_patterns: body.custom_patterns || [],
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "client_id" }
-    )
+    .upsert(upsertPayload, { onConflict: "client_id,agent_id" })
     .select()
     .single();
 

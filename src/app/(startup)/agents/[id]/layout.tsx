@@ -69,14 +69,20 @@ export default function AgentDetailLayout({
     setIsEditingName(false);
     if (!agent || editedName === agent.name) return;
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("agents")
-      .update({ name: editedName })
-      .eq("id", agent.id);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editedName }),
+      });
 
-    if (error) {
-      console.error("Failed to update agent name:", error);
+      if (!res.ok) {
+        console.error("Failed to update agent name");
+        setEditedName(agent.name);
+        return;
+      }
+    } catch {
+      console.error("Failed to update agent name");
       setEditedName(agent.name);
       return;
     }

@@ -362,7 +362,7 @@ async function generatePrompt(
 
 /**
  * Regenerates the system prompt for a client's agent and pushes it to Retell.
- * Called after any Business Settings save.
+ * Called after any Knowledge Base save.
  */
 export async function regeneratePrompt(clientId: string): Promise<void> {
   const supabase = await createServerClient();
@@ -402,7 +402,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
   const agentTypeStr = agent.platform === "retell-sms" ? "sms" : isChat ? "chat" : "voice";
   const generatedPrompt = await generatePrompt(clientId, promptTemplate, agentTypeStr);
 
-  // Get business settings for max_call_duration and escalation phone
+  // Get knowledge base settings for max_call_duration and escalation phone
   const { data: settings } = await supabase
     .from("business_settings")
     .select("max_call_duration_minutes, unanswerable_behavior, escalation_phone")

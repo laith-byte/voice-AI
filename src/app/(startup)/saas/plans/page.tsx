@@ -223,14 +223,13 @@ function planToFormData(plan: ClientPlan): PlanFormData {
   };
 }
 
-function formDataToDbPayload(data: PlanFormData, orgId: string) {
+function formDataToDbPayload(data: PlanFormData) {
   const featuresArr = data.features
     .split(",")
     .map((f) => f.trim())
     .filter(Boolean);
 
   return {
-    organization_id: orgId,
     name: data.name.trim(),
     slug: data.slug.trim() || null,
     tagline: data.tagline.trim() || null,
@@ -367,12 +366,19 @@ export default function SaaSPlansPage() {
     if (!orgId || !formData.name.trim()) return;
     setCreating(true);
     try {
-      const supabase = createClient();
-      const payload = formDataToDbPayload(formData, orgId);
+      const payload = formDataToDbPayload(formData);
       payload.sort_order = plans.length;
 
-      const { error } = await supabase.from("client_plans").insert(payload);
-      if (error) throw error;
+      const res = await fetch("/api/admin/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to create plan");
+      }
 
       toast.success("Plan created successfully");
       setDialogOpen(false);
@@ -397,17 +403,18 @@ export default function SaaSPlansPage() {
     if (!editingPlan || !orgId || !editFormData.name.trim()) return;
     setSaving(true);
     try {
-      const supabase = createClient();
-      const payload = formDataToDbPayload(editFormData, orgId);
-      // Remove organization_id from update payload
-      const { organization_id: _organization_id, ...updatePayload } = payload;
+      const payload = formDataToDbPayload(editFormData);
 
-      const { error } = await supabase
-        .from("client_plans")
-        .update(updatePayload)
-        .eq("id", editingPlan.id);
+      const res = await fetch(`/api/admin/plans/${editingPlan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to update plan");
+      }
 
       toast.success("Plan updated successfully");
       setEditDialogOpen(false);
@@ -425,13 +432,14 @@ export default function SaaSPlansPage() {
   const handleDeletePlan = async (id: string) => {
     setDeleting(id);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("client_plans")
-        .delete()
-        .eq("id", id);
+      const res = await fetch(`/api/admin/plans/${id}`, {
+        method: "DELETE",
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to delete plan");
+      }
 
       toast.success("Plan deleted");
       setPlans((prev) => prev.filter((p) => p.id !== id));
@@ -446,13 +454,16 @@ export default function SaaSPlansPage() {
 
   const handleToggleActive = async (plan: ClientPlan) => {
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("client_plans")
-        .update({ is_active: !plan.is_active })
-        .eq("id", plan.id);
+      const res = await fetch(`/api/admin/plans/${plan.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: !plan.is_active }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to update plan status");
+      }
 
       setPlans((prev) =>
         prev.map((p) =>
@@ -472,15 +483,22 @@ export default function SaaSPlansPage() {
   const handleDuplicate = async (plan: ClientPlan) => {
     if (!orgId) return;
     try {
-      const supabase = createClient();
       const formCopy = planToFormData(plan);
       formCopy.name = `${plan.name} (Copy)`;
       formCopy.is_active = false;
-      const payload = formDataToDbPayload(formCopy, orgId);
+      const payload = formDataToDbPayload(formCopy);
       payload.sort_order = plans.length;
 
-      const { error } = await supabase.from("client_plans").insert(payload);
-      if (error) throw error;
+      const res = await fetch("/api/admin/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to duplicate plan");
+      }
 
       toast.success("Plan duplicated");
       fetchPlans();
@@ -702,7 +720,7 @@ export default function SaaSPlansPage() {
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Automations</h4>
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-2">Integrations</h4>
             <div className="space-y-1 border rounded-lg p-3">
               <FeatureToggle label="SMS Notification" checked={data.sms_notification} onChange={(v) => setData({ ...data, sms_notification: v })} />
               <FeatureToggle label="Caller Follow-up Email" checked={data.caller_followup_email} onChange={(v) => setData({ ...data, caller_followup_email: v })} />

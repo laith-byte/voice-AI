@@ -73,26 +73,23 @@ export default function CampaignsPage() {
         setFixedCalls(String(data.fixed_calls));
         setFixedMinutes(String(data.fixed_minutes));
       } else {
-        // Create default row
-        const { data: newConfig, error: insertError } = await supabase
-          .from("campaign_config")
-          .insert({
-            agent_id: agentId,
-            rate_mode: "min_max",
-            min_calls: 1,
-            max_calls: 10,
-            min_minutes: 1,
-            max_minutes: 30,
-            fixed_calls: 5,
-            fixed_minutes: 15,
-          })
-          .select()
-          .single();
+        // Create default row via API route
+        try {
+          const res = await fetch(`/api/agents/${agentId}/campaign-config`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
 
-        if (insertError) {
-          console.error("Error creating default campaign_config:", insertError);
-        } else if (newConfig) {
-          setConfigId(newConfig.id);
+          if (res.ok) {
+            const newConfig = await res.json();
+            if (newConfig?.id) {
+              setConfigId(newConfig.id);
+            }
+          } else {
+            console.error("Error creating default campaign_config");
+          }
+        } catch (err) {
+          console.error("Error creating default campaign_config:", err);
         }
       }
 
@@ -112,21 +109,28 @@ export default function CampaignsPage() {
     const timer = setTimeout(async () => {
       setSaving(true);
 
-      const { error } = await supabase
-        .from("campaign_config")
-        .update({
-          rate_mode: rateMode,
-          min_calls: parseInt(minCalls) || 1,
-          max_calls: parseInt(maxCalls) || 10,
-          min_minutes: parseInt(minMinutes) || 1,
-          max_minutes: parseInt(maxMinutes) || 30,
-          fixed_calls: parseInt(fixedCalls) || 5,
-          fixed_minutes: parseInt(fixedMinutes) || 15,
-        })
-        .eq("id", configId);
+      try {
+        const res = await fetch(`/api/agents/${agentId}/campaign-config`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            config_id: configId,
+            rate_mode: rateMode,
+            min_calls: parseInt(minCalls) || 1,
+            max_calls: parseInt(maxCalls) || 10,
+            min_minutes: parseInt(minMinutes) || 1,
+            max_minutes: parseInt(maxMinutes) || 30,
+            fixed_calls: parseInt(fixedCalls) || 5,
+            fixed_minutes: parseInt(fixedMinutes) || 15,
+          }),
+        });
 
-      if (error) {
-        console.error("Error saving campaign_config:", error);
+        if (!res.ok) {
+          console.error("Error saving campaign_config");
+          toast.error("Failed to save campaign configuration.");
+        }
+      } catch (err) {
+        console.error("Error saving campaign_config:", err);
         toast.error("Failed to save campaign configuration.");
       }
 

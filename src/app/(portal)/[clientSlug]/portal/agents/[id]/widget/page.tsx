@@ -131,50 +131,59 @@ export default function WidgetPage() {
     setLoading(true);
     const supabase = createClient();
 
-    const [agentRes, configRes] = await Promise.all([
-      supabase.from("agents").select("name, platform").eq("id", agentId).single(),
-      supabase.from("widget_config").select("*").eq("agent_id", agentId).single(),
-    ]);
+    // Fetch agent info (read-only via RLS)
+    const { data: agentData } = await supabase
+      .from("agents")
+      .select("name, platform")
+      .eq("id", agentId)
+      .single();
 
-    if (agentRes.data) {
-      setAgentName(agentRes.data.name ?? "");
-      setAgentPlatform(agentRes.data.platform ?? "retell");
+    if (agentData) {
+      setAgentName(agentData.name ?? "");
+      setAgentPlatform(agentData.platform ?? "retell");
     }
 
-    let config = configRes.data;
+    // Fetch widget config via API route
+    try {
+      const res = await fetch(`/api/agents/${agentId}/widget-config`);
+      if (!res.ok) throw new Error("Failed to load widget config");
+      let config = await res.json();
 
-    if (!config) {
-      const { data: newConfig, error: insertError } = await supabase
-        .from("widget_config")
-        .insert({ agent_id: agentId })
-        .select()
-        .single();
-
-      if (insertError) {
-        toast.error("Failed to initialize widget config");
-        setLoading(false);
-        return;
+      if (!config) {
+        // Initialize a default config via the API
+        const initRes = await fetch(`/api/agents/${agentId}/widget-config`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!initRes.ok) {
+          toast.error("Failed to initialize widget config");
+          setLoading(false);
+          return;
+        }
+        config = await initRes.json();
       }
-      config = newConfig;
-    }
 
-    if (config) {
-      setConfigId(config.id);
-      setDescription(config.description ?? "Our assistant is here to help.");
-      setWidgetLayout(config.widget_layout ?? "default");
-      setAgentImageUrl(config.agent_image_url ?? "");
-      setBackgroundImageUrl(config.background_image_url ?? "");
-      setLauncherImageUrl(config.launcher_image_url ?? "");
-      setGoogleFontName(config.google_font_name ?? "");
-      setColorPresetName(config.color_preset ?? "");
-      setCustomCss(config.custom_css ?? "");
-      setAutolaunchPopup(config.autolaunch_popup ?? false);
-      setLaunchMessage(config.launch_message ?? "");
-      setLaunchMessageEnabled(config.launch_message_enabled ?? false);
-      setPopupMessage(config.popup_message ?? "");
-      setPopupMessageEnabled(config.popup_message_enabled ?? false);
-      setTermsOfServiceUrl(config.terms_of_service_url ?? "");
-      setPrivacyPolicyUrl(config.privacy_policy_url ?? "");
+      if (config) {
+        setConfigId(config.id);
+        setDescription(config.description ?? "Our assistant is here to help.");
+        setWidgetLayout(config.widget_layout ?? "default");
+        setAgentImageUrl(config.agent_image_url ?? "");
+        setBackgroundImageUrl(config.background_image_url ?? "");
+        setLauncherImageUrl(config.launcher_image_url ?? "");
+        setGoogleFontName(config.google_font_name ?? "");
+        setColorPresetName(config.color_preset ?? "");
+        setCustomCss(config.custom_css ?? "");
+        setAutolaunchPopup(config.autolaunch_popup ?? false);
+        setLaunchMessage(config.launch_message ?? "");
+        setLaunchMessageEnabled(config.launch_message_enabled ?? false);
+        setPopupMessage(config.popup_message ?? "");
+        setPopupMessageEnabled(config.popup_message_enabled ?? false);
+        setTermsOfServiceUrl(config.terms_of_service_url ?? "");
+        setPrivacyPolicyUrl(config.privacy_policy_url ?? "");
+      }
+    } catch {
+      toast.error("Failed to load widget config");
     }
 
     setLoading(false);
@@ -205,38 +214,42 @@ export default function WidgetPage() {
     }
 
     setSaving(true);
-    const supabase = createClient();
 
-    // Save all widget config fields
-    const { error } = await supabase
-      .from("widget_config")
-      .upsert({
-        ...(configId ? { id: configId } : {}),
-        agent_id: agentId,
-        description,
-        widget_layout: widgetLayout || null,
-        agent_image_url: agentImageUrl || null,
-        background_image_url: backgroundImageUrl || null,
-        launcher_image_url: launcherImageUrl || null,
-        google_font_name: googleFontName || null,
-        color_preset: colorPresetName || null,
-        custom_css: customCss || null,
-        autolaunch_popup: autolaunchPopup,
-        launch_message: launchMessage || null,
-        launch_message_enabled: launchMessageEnabled,
-        popup_message: popupMessage || null,
-        popup_message_enabled: popupMessageEnabled,
-        terms_of_service_url: termsOfServiceUrl || null,
-        privacy_policy_url: privacyPolicyUrl || null,
+    try {
+      const res = await fetch(`/api/agents/${agentId}/widget-config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(configId ? { id: configId } : {}),
+          description,
+          widget_layout: widgetLayout || null,
+          agent_image_url: agentImageUrl || null,
+          background_image_url: backgroundImageUrl || null,
+          launcher_image_url: launcherImageUrl || null,
+          google_font_name: googleFontName || null,
+          color_preset: colorPresetName || null,
+          custom_css: customCss || null,
+          autolaunch_popup: autolaunchPopup,
+          launch_message: launchMessage || null,
+          launch_message_enabled: launchMessageEnabled,
+          popup_message: popupMessage || null,
+          popup_message_enabled: popupMessageEnabled,
+          terms_of_service_url: termsOfServiceUrl || null,
+          privacy_policy_url: privacyPolicyUrl || null,
+        }),
       });
 
-    // Save dashboard color globally for the client
-    await saveColor(accentColor);
+      // Save dashboard color globally for the client
+      await saveColor(accentColor);
 
-    if (error) {
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.error ?? "Failed to save widget config");
+      } else {
+        toast.success("Settings saved — dashboard color updated globally");
+      }
+    } catch {
       toast.error("Failed to save widget config");
-    } else {
-      toast.success("Settings saved — dashboard color updated globally");
     }
     setSaving(false);
   };

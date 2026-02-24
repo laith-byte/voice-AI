@@ -5,12 +5,13 @@ import { Mail, Clock, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const industryOptions = [
-  { label: "HVAC", value: "hvac" },
-  { label: "Plumbing", value: "plumbing" },
-  { label: "Electrical", value: "electrical" },
-  { label: "Landscaping", value: "landscaping" },
-  { label: "Roofing", value: "roofing" },
-  { label: "General", value: "general" },
+  { label: "Home Services", value: "home_services" },
+  { label: "Healthcare", value: "healthcare" },
+  { label: "Real Estate", value: "real_estate" },
+  { label: "Insurance", value: "insurance" },
+  { label: "Financial Services", value: "financial_services" },
+  { label: "Legal", value: "legal" },
+  { label: "Automotive", value: "automotive" },
   { label: "Other", value: "other" },
 ];
 

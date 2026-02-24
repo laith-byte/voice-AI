@@ -50,7 +50,6 @@ import {
   FileUp,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-
 interface KBSource {
   id: string;
   source_type: "text" | "url" | "file";

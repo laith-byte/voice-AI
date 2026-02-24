@@ -50,9 +50,24 @@ export default function AgentsPage() {
 
   const fetchAgents = useCallback(async () => {
     const supabase = createClient();
+
+    // Get the current user's organization_id
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+
+    const { data: userData } = await supabase
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single();
+    if (!userData?.organization_id) { setLoading(false); return; }
+
+    const orgId = userData.organization_id;
+
     const { data, error } = await supabase
       .from("agents")
       .select("id, name, platform, client_id, created_at, clients(name)")
+      .eq("organization_id", orgId)
       .order("created_at", { ascending: false });
 
     if (error) {

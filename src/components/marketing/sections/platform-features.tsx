@@ -205,7 +205,6 @@ const integrations = [
     name: "Salesforce",
     abbr: "SF",
     category: "CRM",
-    comingSoon: true,
     description: "Push call outcomes and transcripts to any Salesforce object",
     bg: "bg-[#00A1E0]/10",
     text: "text-[#00A1E0]",
@@ -216,7 +215,6 @@ const integrations = [
     name: "GoHighLevel",
     abbr: "GL",
     category: "CRM",
-    comingSoon: true,
     description: "Trigger workflows and update pipelines on every call",
     bg: "bg-[#4CAF50]/10",
     text: "text-[#4CAF50]",
@@ -386,15 +384,12 @@ export function Integrations() {
                 intg.ring
               )}
             >
-              {intg.comingSoon && (
-                <span className="absolute top-2.5 right-2.5 text-[9px] font-bold uppercase tracking-wide text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Soon</span>
-              )}
               <div className="flex items-start gap-3 mb-3">
-                <div className={cn("w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm transition-transform duration-300 group-hover:scale-110", intg.bg, intg.text, intg.comingSoon && "opacity-60")}>
+                <div className={cn("w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm transition-transform duration-300 group-hover:scale-110", intg.bg, intg.text)}>
                   {intg.abbr}
                 </div>
                 <div className="min-w-0">
-                  <h3 className={cn("text-sm font-semibold text-navy-900 truncate", intg.comingSoon && "opacity-60")}>{intg.name}</h3>
+                  <h3 className="text-sm font-semibold text-navy-900 truncate">{intg.name}</h3>
                   <span className={cn(
                     "inline-block text-[9px] font-bold uppercase tracking-widest mt-0.5 px-1.5 py-0.5 rounded",
                     categoryStyles[intg.category]
@@ -403,7 +398,7 @@ export function Integrations() {
                   </span>
                 </div>
               </div>
-              <p className={cn("text-xs text-gray-500 leading-relaxed", intg.comingSoon && "opacity-60")}>{intg.description}</p>
+              <p className="text-xs text-gray-500 leading-relaxed">{intg.description}</p>
 
               {/* Hover connector line */}
               <div className="absolute -bottom-px left-1/2 -translate-x-1/2 w-0 group-hover:w-1/2 h-0.5 rounded-full bg-gradient-to-r from-transparent via-navy-300 to-transparent transition-all duration-500" />

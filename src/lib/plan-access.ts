@@ -27,7 +27,7 @@ export interface PlanAccess {
   analytics_export: boolean;
   custom_reporting: boolean;
 
-  // Automation gates
+  // Integration gates
   sms_notification: boolean;
   caller_followup_email: boolean;
   max_recipes: number | null;

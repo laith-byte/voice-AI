@@ -141,15 +141,21 @@ export default function SolutionsPage() {
     if (!selectedSolutionId) return;
     setMutating(true);
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("client_solutions")
-      .insert({ client_id: clientId, solution_id: selectedSolutionId });
+    try {
+      const res = await fetch(`/api/clients/${clientId}/solutions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solution_id: selectedSolutionId }),
+      });
 
-    if (error) {
-      console.error("Error adding solution:", error);
-    } else {
-      await fetchData();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Error adding solution:", data.error);
+      } else {
+        await fetchData();
+      }
+    } catch (err) {
+      console.error("Error adding solution:", err);
     }
 
     setMutating(false);
@@ -160,17 +166,21 @@ export default function SolutionsPage() {
   const handleRemoveSolution = async (solutionId: string) => {
     setMutating(true);
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("client_solutions")
-      .delete()
-      .eq("client_id", clientId)
-      .eq("solution_id", solutionId);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/solutions`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ solution_id: solutionId }),
+      });
 
-    if (error) {
-      console.error("Error removing solution:", error);
-    } else {
-      await fetchData();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Error removing solution:", data.error);
+      } else {
+        await fetchData();
+      }
+    } catch (err) {
+      console.error("Error removing solution:", err);
     }
 
     setMutating(false);
@@ -192,7 +202,7 @@ export default function SolutionsPage() {
             <div>
               <CardTitle className="text-base">Assigned Solutions</CardTitle>
               <p className="text-sm text-[#6b7280] mt-1">
-                Automations and integrations enabled for this client
+                Integrations enabled for this client
               </p>
             </div>
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>

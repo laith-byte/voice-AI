@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
-import { regeneratePrompt } from "@/lib/prompt-generator";
+import { regenerateKnowledgeBase } from "@/lib/knowledge-base-generator";
 import { encrypt, decrypt } from "@/lib/crypto";
 import Retell from "retell-sdk";
 
@@ -397,10 +397,10 @@ export async function POST(request: NextRequest) {
 
     // 16. Generate the initial prompt and push to Retell
     try {
-      await regeneratePrompt(clientId!);
+      await regenerateKnowledgeBase(clientId!);
     } catch (promptErr) {
       // Non-fatal: the prompt can be regenerated later
-      console.error("Initial prompt generation failed:", promptErr);
+      console.error("Initial KB generation failed:", promptErr);
     }
 
     return NextResponse.json({

@@ -14,13 +14,13 @@ export async function GET(request: NextRequest) {
   if (errorParam) {
     console.error("OAuth error from provider:", errorParam);
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/portal/automations?oauth_error=${errorParam}`
+      `${process.env.NEXT_PUBLIC_APP_URL}/portal/integrations?oauth_error=${errorParam}`
     );
   }
 
   if (!code || !stateParam) {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/portal/automations?oauth_error=missing_params`
+      `${process.env.NEXT_PUBLIC_APP_URL}/portal/integrations?oauth_error=missing_params`
     );
   }
 
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     state = parseOAuthState(stateParam);
   } catch {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/portal/automations?oauth_error=invalid_state`
+      `${process.env.NEXT_PUBLIC_APP_URL}/portal/integrations?oauth_error=invalid_state`
     );
   }
 
@@ -306,7 +306,7 @@ export async function GET(request: NextRequest) {
       // Slug lookup failed — fall back to original redirectPath (middleware will handle it)
     }
 
-    // Redirect back to the automations page with success indicator
+    // Redirect back to the integrations page with success indicator
     return NextResponse.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}${finalRedirectPath}?connected=${provider}`
     );
