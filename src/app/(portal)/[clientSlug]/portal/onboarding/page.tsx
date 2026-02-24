@@ -53,11 +53,11 @@ import { TestCallReport } from "@/components/onboarding/test-call-report";
 import { QuickFixModal } from "@/components/onboarding/quick-fix-modal";
 import { TestChatInline } from "@/components/onboarding/test-chat-inline";
 
-import { HoursEditor } from "@/components/knowledge-base/hours-editor";
+import { HoursEditor, type HoursEditorHandle } from "@/components/knowledge-base/hours-editor";
 import { ServicesList } from "@/components/knowledge-base/services-list";
 import { FaqsList } from "@/components/knowledge-base/faqs-list";
 import { PoliciesList } from "@/components/knowledge-base/policies-list";
-import { INDUSTRIES, generateTemplateNodes, type FlowNode } from "@/lib/conversation-flow-templates";
+import { INDUSTRIES, generateTemplateNodes, replaceFlowPlaceholders, AGENT_NAMES, type FlowNode } from "@/lib/conversation-flow-templates";
 import { ConversationFlowEditor } from "@/components/onboarding/conversation-flow-editor";
 
 // ---------------------------------------------------------------------------
@@ -170,6 +170,7 @@ export default function OnboardingWizardPage() {
 
   // Step 7 state (Test Call)
   const retellClient = useRef<RetellWebClient | null>(null);
+  const hoursEditorRef = useRef<HoursEditorHandle>(null);
   const [callActive, setCallActive] = useState(false);
   const [callStarting, setCallStarting] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
@@ -181,7 +182,7 @@ export default function OnboardingWizardPage() {
 
   // Step 5 state (Conversation Flow)
   const [flowNodes, setFlowNodes] = useState<FlowNode[]>([]);
-  const [flowGenerated, setFlowGenerated] = useState(false);
+  const [flowGeneratedWith, setFlowGeneratedWith] = useState<{ businessName: string; selectedTemplate: string | null } | null>(null);
 
   // Step 7 state (Go Live)
   const [assignedPhoneNumber, setAssignedPhoneNumber] = useState<string | null>(null);
@@ -308,25 +309,28 @@ export default function OnboardingWizardPage() {
 
   // Auto-generate flow nodes when entering step 5
   useEffect(() => {
-    if (step !== 5 || flowGenerated || loading) return;
+    if (step !== 5 || loading) return;
+    // Skip if flow was already generated with the same inputs
+    if (flowGeneratedWith && flowGeneratedWith.businessName === businessName && flowGeneratedWith.selectedTemplate === selectedTemplate) return;
     const currentTemplate = templates.find((t) => t.id === selectedTemplate);
     const industryKey = selectedIndustry || currentTemplate?.industry;
     const useCaseKey = currentTemplate?.use_case;
     if (industryKey && useCaseKey) {
-      const nodes = generateTemplateNodes(industryKey, useCaseKey);
-      if (nodes.length) {
-        setFlowNodes(nodes);
+      const rawNodes = generateTemplateNodes(industryKey, useCaseKey);
+      if (rawNodes.length) {
+        const agentName = AGENT_NAMES[`${industryKey}_${useCaseKey}`];
+        setFlowNodes(replaceFlowPlaceholders(rawNodes, businessName, agentName));
       }
     }
-    // Mark as generated even if no nodes were produced so the spinner doesn't hang
-    setFlowGenerated(true);
-  }, [step, flowGenerated, loading, templates, selectedTemplate, selectedIndustry]);
+    // Track what inputs were used so we regenerate when they change
+    setFlowGeneratedWith({ businessName, selectedTemplate });
+  }, [step, flowGeneratedWith, loading, templates, selectedTemplate, selectedIndustry, businessName]);
 
   // Fetch agent config when entering step 6 (Agent Settings)
   useEffect(() => {
     if (step !== 6 || !chatAgentId) return;
     setLoadingAgentConfig(true);
-    fetch(`/api/agents/${chatAgentId}/config`)
+    fetch(`/api/agents/${chatAgentId}/config`, { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch agent config");
         return res.json();
@@ -445,6 +449,7 @@ export default function OnboardingWizardPage() {
   async function handleStep3Continue() {
     setSaving(true);
     try {
+      await hoursEditorRef.current?.save();
       await saveStep(3, {});
       setStep(4);
     } catch {
@@ -495,8 +500,8 @@ export default function OnboardingWizardPage() {
   }
 
   async function handleStep5Continue() {
-    // Deploy flow if nodes exist and not already deployed
-    if (flowNodes.length > 0 && !flowDeployed) {
+    // Always deploy (or re-deploy) the flow to pick up edits and update the system prompt
+    if (flowNodes.length > 0) {
       setDeployingFlow(true);
       try {
         await deployConversationFlowFromNodes(flowNodes);
@@ -1294,7 +1299,7 @@ export default function OnboardingWizardPage() {
               </div>
 
               <div className="space-y-6">
-                <HoursEditor />
+                <HoursEditor ref={hoursEditorRef} />
                 <ServicesList />
                 <FaqsList />
                 <PoliciesList />
@@ -1966,7 +1971,7 @@ export default function OnboardingWizardPage() {
                     industryKey={industryKey}
                     useCaseKey={useCaseKey}
                   />
-                ) : !flowGenerated ? (
+                ) : !flowGeneratedWith ? (
                   <Card className="glass-card">
                     <CardContent className="p-8 text-center">
                       <Loader2 className="w-6 h-6 text-primary animate-spin mx-auto mb-3" />
@@ -2027,7 +2032,7 @@ export default function OnboardingWizardPage() {
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <>
-                          {flowDeployed ? "Continue" : "Deploy & Continue"}
+                          {deployingFlow ? "Deploying…" : "Deploy & Continue"}
                           <ArrowRight className="w-4 h-4" />
                         </>
                       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,10 @@ interface DayHours {
   open: string;
   close: string;
   status: "open" | "closed";
+}
+
+export interface HoursEditorHandle {
+  save: () => Promise<void>;
 }
 
 interface HoursEditorProps {
@@ -81,11 +85,15 @@ function apiUrl(path: string, clientId?: string) {
   return clientId ? `${base}?client_id=${clientId}` : base;
 }
 
-export function HoursEditor({ clientId }: HoursEditorProps) {
+export const HoursEditor = forwardRef<HoursEditorHandle, HoursEditorProps>(function HoursEditor({ clientId }, ref) {
   const [hours, setHours] = useState<DayHours[]>(DEFAULT_HOURS);
   const [timezone, setTimezone] = useState("America/New_York");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    save: () => handleSave(),
+  }));
 
   const fetchHours = useCallback(async () => {
     setLoading(true);
@@ -125,6 +133,22 @@ export function HoursEditor({ clientId }: HoursEditorProps) {
   useEffect(() => {
     fetchHours();
   }, [fetchHours]);
+
+  // Auto-save timezone when changed so it's always persisted to the DB.
+  // Without this, changing the dropdown and clicking "Continue" in onboarding
+  // (instead of "Save Hours") would lose the timezone change.
+  async function handleTimezoneChange(newTimezone: string) {
+    setTimezone(newTimezone);
+    try {
+      await fetch(apiUrl("", clientId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: newTimezone }),
+      });
+    } catch {
+      // Will be saved with the next "Save Hours" click
+    }
+  }
 
   function updateDay(index: number, field: keyof DayHours, value: string) {
     setHours((prev) =>
@@ -214,7 +238,7 @@ export function HoursEditor({ clientId }: HoursEditorProps) {
         {/* Timezone Selector */}
         <div className="flex items-center gap-3">
           <Label className="text-sm font-medium shrink-0">Timezone</Label>
-          <Select value={timezone} onValueChange={setTimezone}>
+          <Select value={timezone} onValueChange={handleTimezoneChange}>
             <SelectTrigger className="w-full max-w-xs">
               <SelectValue placeholder="Select timezone" />
             </SelectTrigger>
@@ -311,4 +335,4 @@ export function HoursEditor({ clientId }: HoursEditorProps) {
       </CardContent>
     </Card>
   );
-}
+});

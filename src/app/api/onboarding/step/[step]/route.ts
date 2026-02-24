@@ -86,6 +86,11 @@ export async function PATCH(
         console.error("DB error (business_settings):", settingsError.message);
         return NextResponse.json({ error: "Failed to save business settings" }, { status: 500 });
       }
+
+      // Keep sidebar name (clients.name) in sync with business name
+      if (body.business_name) {
+        await supabase.from("clients").update({ name: body.business_name }).eq("id", clientId);
+      }
       break;
     }
 
