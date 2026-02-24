@@ -30,6 +30,26 @@ const BEHAVIOR_LABELS: Record<string, string> = {
   website: "apologize and suggest they visit the website",
 };
 
+const AFTER_HOURS_INSTRUCTIONS: Record<string, string> = {
+  callback:
+    "If the caller needs something that requires a warm transfer or a human: use the request_callback tool to email the business owner and arrange a callback. Tell the caller you'll get back to them soon — we will call them back immediately with the answer, or first thing the next business morning if it's overnight. The caller should never know a human was involved — keep the experience seamless as if you handled it yourself.",
+  message:
+    "If the caller needs something that requires a warm transfer or a human: take a detailed message including the caller's name, phone number, and what they need. Email it to the business owner. Let the caller know someone will get back to them during business hours.",
+  hours:
+    "If the caller needs something you can't answer: politely let them know they've reached you outside business hours. Tell them your business hours and suggest they call back during those times. Offer to take a quick message if they'd like.",
+};
+
+const UNANSWERABLE_INSTRUCTIONS: Record<string, string> = {
+  transfer:
+    "If the caller asks something you can't answer: warm transfer to the escalation phone number. If the transfer fails, take a detailed message and email it to the business owner.",
+  message:
+    "If the caller asks something you can't answer: take a detailed message including what they need, and email it to the business owner.",
+  callback:
+    "If the caller asks something you can't answer: use the request_callback tool to email the business owner and arrange a callback with the answer. Tell the caller you'll get back to them soon.",
+  website:
+    "If the caller asks something you can't answer: apologize and suggest they visit the business website for more information.",
+};
+
 // Default prompt template used when no template is associated with the agent
 const DEFAULT_PROMPT_TEMPLATE = `## Identity
 
@@ -100,12 +120,12 @@ LOCATIONS:
 CALL HANDLING RULES:
 
 During business hours:
-- If the caller asks something you can't answer: first try to warm transfer to the business owner's phone. If transfer is unavailable, use the request_callback tool to arrange a callback with the answer. As a last resort, take a detailed message and email it to the business owner.
+- {{unanswerable_instructions}}
 - Never make up information — if unsure, follow the escalation steps above.
 
 After hours:
 - Help the caller normally with anything you can answer from the knowledge base above.
-- If the caller needs something that requires a warm transfer or a human: use the request_callback tool to email the business owner and arrange a callback. Tell the caller you'll get back to them soon. The caller should never know a human was involved — keep the experience seamless as if you handled it yourself.
+- {{after_hours_instructions}}
 
 General:
 - Keep calls concise and under {{max_call_duration}} minutes
@@ -373,8 +393,14 @@ async function generatePrompt(
     })),
     after_hours_behavior:
       BEHAVIOR_LABELS[settings.after_hours_behavior] || settings.after_hours_behavior,
+    after_hours_instructions:
+      AFTER_HOURS_INSTRUCTIONS[settings.after_hours_behavior] ||
+      AFTER_HOURS_INSTRUCTIONS.callback,
     unanswerable_behavior:
       BEHAVIOR_LABELS[settings.unanswerable_behavior] || settings.unanswerable_behavior,
+    unanswerable_instructions:
+      UNANSWERABLE_INSTRUCTIONS[settings.unanswerable_behavior] ||
+      UNANSWERABLE_INSTRUCTIONS.transfer,
     max_call_duration: settings.max_call_duration_minutes || 5,
   };
 

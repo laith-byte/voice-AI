@@ -1602,6 +1602,104 @@ export default function OnboardingWizardPage() {
 
                   <div className="border-t" />
 
+                  {/* After Hours Behavior */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold">
+                      After Hours Behavior
+                    </Label>
+                    <p className="text-xs text-muted-foreground -mt-1">
+                      What should the AI do when someone calls outside your
+                      business hours?
+                    </p>
+                    <RadioGroup
+                      value={afterHoursBehavior}
+                      onValueChange={setAfterHoursBehavior}
+                      className="space-y-3"
+                    >
+                      <label
+                        htmlFor="ah-callback"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          afterHoursBehavior === "callback"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="callback"
+                          id="ah-callback"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              Find out and call them back
+                            </span>
+                            <Badge className="bg-primary/10 text-primary border-0 text-[10px]">
+                              Recommended
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            The AI emails you the caller&apos;s question. Once
+                            you reply, we call them back right away with your
+                            answer — or first thing next morning at 9am their
+                            local time.
+                          </p>
+                        </div>
+                      </label>
+                      <label
+                        htmlFor="ah-message"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          afterHoursBehavior === "message"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="message"
+                          id="ah-message"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            Take a message and email it to me
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            The AI answers what it can, then captures a message
+                            and emails it to you.
+                          </p>
+                        </div>
+                      </label>
+                      <label
+                        htmlFor="ah-hours"
+                        className={cn(
+                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
+                          afterHoursBehavior === "hours"
+                            ? "border-primary bg-primary/[0.03]"
+                            : "border-gray-200 hover:border-gray-300"
+                        )}
+                      >
+                        <RadioGroupItem
+                          value="hours"
+                          id="ah-hours"
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium">
+                            Tell them the business hours
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            The AI lets the caller know your hours and suggests
+                            they call back.
+                          </p>
+                        </div>
+                      </label>
+                    </RadioGroup>
+                  </div>
+
+                  <div className="border-t" />
+
                   {/* Max Call Duration */}
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold">
