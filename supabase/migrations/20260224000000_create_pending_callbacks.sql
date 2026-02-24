@@ -24,4 +24,6 @@ CREATE TABLE pending_callbacks (
 
 CREATE INDEX idx_pending_callbacks_ready ON pending_callbacks (status, next_attempt_at) WHERE status = 'answered';
 CREATE INDEX idx_pending_callbacks_retell_call ON pending_callbacks (callback_retell_call_id) WHERE callback_retell_call_id IS NOT NULL;
+-- RLS enabled with no policies = deny all non-service-role access.
+-- This table is only accessed via service role in API routes (tools, webhooks, cron).
 ALTER TABLE pending_callbacks ENABLE ROW LEVEL SECURITY;

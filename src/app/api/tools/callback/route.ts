@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
           ${caller_name ? `<p><strong>Caller:</strong> ${esc(caller_name)}</p>` : ""}
           ${caller_phone ? `<p><strong>Phone:</strong> ${esc(caller_phone)}</p>` : ""}
           <p><strong>Question:</strong> ${esc(question)}</p>
-          <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+          <p><strong>Time:</strong> ${new Date().toLocaleString("en-US", { timeZone: settings?.timezone || "America/Los_Angeles", dateStyle: "medium", timeStyle: "short" })}</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 16px 0;" />
           <p style="font-size: 16px; font-weight: 600;">Simply reply to this email with the answer, and we'll call them back automatically.</p>
           <p style="color: #666; font-size: 13px;">The AI agent will present your answer naturally as if it researched it. The caller won't know a human was involved.</p>

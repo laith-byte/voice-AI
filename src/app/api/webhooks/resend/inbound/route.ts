@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { sendEmail } from "@/lib/resend";
 import { logger } from "@/lib/logger";
 
 /**
@@ -53,12 +54,12 @@ function calculateNextAttempt(timezone: string): string {
     callerHour = now.getUTCHours();
   }
 
-  if (callerHour < 20) {
-    // Before 8 PM — call back immediately
+  if (callerHour >= 8 && callerHour < 20) {
+    // Between 8 AM and 8 PM — call back immediately
     return now.toISOString();
   }
 
-  // After 8 PM — schedule for 9 AM next day in caller's timezone
+  // Outside 8 AM–8 PM window — schedule for 9 AM next day in caller's timezone
   // Calculate the offset to get to 9 AM local time tomorrow
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -86,6 +87,13 @@ function calculateNextAttempt(timezone: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  // Verify inbound webhook secret (passed as query param in the Resend webhook URL config)
+  const url = new URL(request.url);
+  const secret = url.searchParams.get("secret");
+  if (!secret || secret !== process.env.RESEND_INBOUND_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
 
@@ -116,6 +124,20 @@ export async function POST(request: NextRequest) {
 
     if (!answer) {
       logger.warn("Resend inbound: empty reply body", { callbackId });
+      // Notify the business owner that we couldn't parse their reply
+      const senderEmail = body.from;
+      if (senderEmail) {
+        await sendEmail({
+          to: senderEmail,
+          subject: "Re: Callback Request — We couldn't read your reply",
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px;">
+              <p>We received your reply but couldn't extract the answer text (it may have been empty or only contained your email signature).</p>
+              <p><strong>Please reply again with just the answer in the body of your email.</strong></p>
+            </div>
+          `,
+        });
+      }
       return NextResponse.json({ received: true });
     }
 

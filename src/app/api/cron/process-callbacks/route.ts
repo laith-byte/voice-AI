@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              from_number: phoneNumber.number,
+              from_number: toE164(phoneNumber.number),
               to_number: toE164(cb.caller_phone),
               agent_id: agent.retell_agent_id,
               metadata: {
@@ -112,6 +112,14 @@ export async function GET(request: NextRequest) {
             callbackId: cb.id,
             error: errText,
           });
+          // Push next_attempt_at forward by 30 min to avoid infinite retry loop
+          await supabase
+            .from("pending_callbacks")
+            .update({
+              next_attempt_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", cb.id);
           failed++;
           continue;
         }
