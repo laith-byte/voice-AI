@@ -160,7 +160,15 @@ export default function OnboardingWizardPage() {
   const [testSmsSending, setTestSmsSending] = useState(false);
   const [testSmsCompleted, setTestSmsCompleted] = useState(false);
 
-  // Step 6 state (Test Call)
+  // Step 6 state (Agent Settings)
+  const [agentSystemPrompt, setAgentSystemPrompt] = useState("");
+  const [agentFirstMessage, setAgentFirstMessage] = useState("");
+  const [agentLlmId, setAgentLlmId] = useState<string | null>(null);
+  const [loadingAgentConfig, setLoadingAgentConfig] = useState(false);
+  const [agentVoice, setAgentVoice] = useState("");
+  const [availableVoices, setAvailableVoices] = useState<Array<{voice_id: string; voice_name: string; provider: string; gender: string; accent: string | null}>>([]);
+
+  // Step 7 state (Test Call)
   const retellClient = useRef<RetellWebClient | null>(null);
   const [callActive, setCallActive] = useState(false);
   const [callStarting, setCallStarting] = useState(false);
@@ -300,7 +308,7 @@ export default function OnboardingWizardPage() {
 
   // Auto-generate flow nodes when entering step 5
   useEffect(() => {
-    if (step !== 5 || flowGenerated) return;
+    if (step !== 5 || flowGenerated || loading) return;
     const currentTemplate = templates.find((t) => t.id === selectedTemplate);
     const industryKey = selectedIndustry || currentTemplate?.industry;
     const useCaseKey = currentTemplate?.use_case;
@@ -308,10 +316,45 @@ export default function OnboardingWizardPage() {
       const nodes = generateTemplateNodes(industryKey, useCaseKey);
       if (nodes.length) {
         setFlowNodes(nodes);
-        setFlowGenerated(true);
       }
     }
-  }, [step, flowGenerated, templates, selectedTemplate, selectedIndustry]);
+    // Mark as generated even if no nodes were produced so the spinner doesn't hang
+    setFlowGenerated(true);
+  }, [step, flowGenerated, loading, templates, selectedTemplate, selectedIndustry]);
+
+  // Fetch agent config when entering step 6 (Agent Settings)
+  useEffect(() => {
+    if (step !== 6 || !chatAgentId) return;
+    setLoadingAgentConfig(true);
+    fetch(`/api/agents/${chatAgentId}/config`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch agent config");
+        return res.json();
+      })
+      .then(async (config) => {
+        if (config.system_prompt) setAgentSystemPrompt(config.system_prompt);
+        if (config.first_message) setAgentFirstMessage(config.first_message);
+        if (config.llm_id) setAgentLlmId(config.llm_id);
+        if (config.voice_id) setAgentVoice(config.voice_id);
+
+        // Fetch voice list for voice agents
+        if (agentType === "voice") {
+          try {
+            const voicesRes = await fetch(`/api/agents/${chatAgentId}/voices`);
+            if (voicesRes.ok) {
+              const voicesData = await voicesRes.json();
+              setAvailableVoices(Array.isArray(voicesData) ? voicesData : []);
+            }
+          } catch {
+            // Voice list fetch is optional
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch agent config:", err);
+      })
+      .finally(() => setLoadingAgentConfig(false));
+  }, [step, chatAgentId]);
 
   // ---------------------------------------------------------------------------
   // API helpers
@@ -412,11 +455,6 @@ export default function OnboardingWizardPage() {
   }
 
   async function handleStep4Continue() {
-    // Validate escalation phone when "transfer" is selected for voice agents
-    if (agentType === "voice" && unanswerableBehavior === "transfer" && !escalationPhone.trim()) {
-      toast.error("Please enter a phone number for call transfers.");
-      return;
-    }
     setSaving(true);
     try {
       if (agentType === "chat" || agentType === "sms") {
@@ -438,6 +476,16 @@ export default function OnboardingWizardPage() {
           post_call_followup_text: followUpText,
         });
       }
+      if (followUpText) {
+        await fetch("/api/integration-requests", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_type: "phone_number",
+            metadata: { sms_followup: true, note: "Client wants post-call follow-up texts" },
+          }),
+        });
+      }
       setStep(5);
     } catch {
       toast.error(agentType === "chat" || agentType === "sms" ? "Failed to save chat settings." : "Failed to save call handling rules.");
@@ -452,8 +500,8 @@ export default function OnboardingWizardPage() {
       setDeployingFlow(true);
       try {
         await deployConversationFlowFromNodes(flowNodes);
-      } catch {
-        toast.error("Failed to deploy conversation flow.");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to deploy conversation flow.");
         setDeployingFlow(false);
         return;
       }
@@ -474,10 +522,37 @@ export default function OnboardingWizardPage() {
   async function handleStep6Continue() {
     setSaving(true);
     try {
-      await saveStep(6, {
+      if (chatAgentId && (agentSystemPrompt || agentFirstMessage)) {
+        const patchRes = await fetch(`/api/agents/${chatAgentId}/config`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_prompt: agentSystemPrompt,
+            first_message: agentFirstMessage,
+            ...(agentVoice && { voice: agentVoice }),
+          }),
+        });
+        if (!patchRes.ok) {
+          const errBody = await patchRes.json().catch(() => null);
+          throw new Error(errBody?.error || "Failed to save agent settings");
+        }
+      }
+      await saveStep(6, {});
+      setStep(7);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save agent settings.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleStep7Continue() {
+    setSaving(true);
+    try {
+      await saveStep(7, {
         test_call_completed: agentType === "chat" ? testChatCompleted : agentType === "sms" ? testSmsCompleted : testCallCompleted,
       });
-      setStep(7);
+      setStep(8);
     } catch {
       toast.error("Failed to save progress.");
     } finally {
@@ -551,8 +626,7 @@ export default function OnboardingWizardPage() {
     const useCaseKey = currentTemplate?.use_case;
 
     if (!chatAgentId || !industryKey || !useCaseKey) {
-      toast.error("Missing agent or template information to deploy a flow.");
-      return;
+      throw new Error("Missing agent or template information to deploy a flow.");
     }
 
     // Check if a flow already exists for this agent
@@ -564,15 +638,21 @@ export default function OnboardingWizardPage() {
         : null;
       if (agentFlow) {
         // Flow already exists — update nodes then re-deploy
-        await fetch(`/api/conversation-flows/${agentFlow.id}`, {
+        const patchRes = await fetch(`/api/conversation-flows/${agentFlow.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ nodes: editedNodes }),
         });
+        if (!patchRes.ok) {
+          throw new Error("Failed to update conversation flow nodes");
+        }
         const deployRes = await fetch(`/api/conversation-flows/${agentFlow.id}`, {
           method: "POST",
         });
-        if (!deployRes.ok) throw new Error("Failed to deploy existing conversation flow");
+        if (!deployRes.ok) {
+          const errBody = await deployRes.json().catch(() => null);
+          throw new Error(errBody?.error || "Failed to deploy conversation flow");
+        }
         setFlowDeployed(true);
         toast.success("Conversation flow deployed to your agent!");
         return;
@@ -594,15 +674,21 @@ export default function OnboardingWizardPage() {
       }),
     });
 
-    if (!createRes.ok) throw new Error("Failed to create conversation flow");
+    if (!createRes.ok) {
+      const errBody = await createRes.json().catch(() => null);
+      throw new Error(errBody?.error || "Failed to create conversation flow");
+    }
     const flow = await createRes.json();
 
-    // Deploy the flow to Retell
+    // Deploy the flow
     const deployRes = await fetch(`/api/conversation-flows/${flow.id}`, {
       method: "POST",
     });
 
-    if (!deployRes.ok) throw new Error("Failed to deploy conversation flow");
+    if (!deployRes.ok) {
+      const errBody = await deployRes.json().catch(() => null);
+      throw new Error(errBody?.error || "Failed to deploy conversation flow");
+    }
 
     setFlowDeployed(true);
     toast.success("Conversation flow deployed to your agent!");
@@ -787,7 +873,7 @@ export default function OnboardingWizardPage() {
               financial_services: "Financial Services",
               insurance: "Insurance",
               logistics: "Logistics",
-              hvac: "Home Services",
+              home_services: "Home Services",
               retail: "Retail & Consumer",
               travel_hospitality: "Travel & Hospitality",
               debt_collection: "Debt Collection",
@@ -1800,7 +1886,7 @@ export default function OnboardingWizardPage() {
                           </Label>
                           <p className="text-xs text-muted-foreground">
                             Automatically text the caller after the call.
-                            Requires Twilio integration.
+                            We'll set this up with your phone number.
                           </p>
                         </div>
                       </div>
@@ -1880,12 +1966,20 @@ export default function OnboardingWizardPage() {
                     industryKey={industryKey}
                     useCaseKey={useCaseKey}
                   />
-                ) : (
+                ) : !flowGenerated ? (
                   <Card className="glass-card">
                     <CardContent className="p-8 text-center">
                       <Loader2 className="w-6 h-6 text-primary animate-spin mx-auto mb-3" />
                       <p className="text-sm text-muted-foreground">
                         Generating your conversation flow...
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="glass-card">
+                    <CardContent className="p-8 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        No conversation flow template available for your industry yet. You can skip this step and set up your conversation flow later from the Conversation Flows page.
                       </p>
                     </CardContent>
                   </Card>
@@ -1950,9 +2044,146 @@ export default function OnboardingWizardPage() {
           })()}
 
           {/* ================================================================= */}
-          {/* STEP 6: Test Call (enhanced with coaching, transcript, report)    */}
+          {/* STEP 6: Agent Settings                                           */}
           {/* ================================================================= */}
-          {step === 6 && agentType === "sms" && (
+          {step === 6 && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">
+                  Review your agent settings
+                </h1>
+                <p className="text-muted-foreground mt-1">
+                  Review and edit your agent&apos;s system prompt and first message before testing.
+                </p>
+              </div>
+
+              {flowDeployed && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-4 w-4 text-emerald-600" />
+                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                      Conversation Flow Deployed
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                    Your {flowNodes.length}-step conversation flow is live on your agent.
+                    You can edit it anytime from the Conversation Flows page or fine-tune
+                    individual nodes in the Prompt Tree editor.
+                  </p>
+                </div>
+              )}
+
+              {loadingAgentConfig ? (
+                <Card className="glass-card">
+                  <CardContent className="p-8 text-center">
+                    <Loader2 className="w-6 h-6 text-primary animate-spin mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      Loading agent configuration...
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {/* Voice Selection (voice agents only) */}
+                  {availableVoices.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Agent Voice</Label>
+                      <Select value={agentVoice} onValueChange={setAgentVoice}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a voice" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableVoices.map((v) => (
+                            <SelectItem key={v.voice_id} value={v.voice_id}>
+                              {v.voice_name} ({v.gender}{v.accent ? `, ${v.accent}` : ""})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Choose how your AI agent will sound on calls.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">System Prompt</Label>
+                    <p className="text-xs text-muted-foreground">
+                      This tells your AI agent how to behave, what information to use, and how to respond.
+                    </p>
+                    <Textarea
+                      value={agentSystemPrompt}
+                      onChange={(e) => setAgentSystemPrompt(e.target.value)}
+                      placeholder="You are a helpful AI assistant for..."
+                      className="resize-none font-mono text-sm"
+                      rows={12}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold">First Message</Label>
+                    <p className="text-xs text-muted-foreground">
+                      The opening message your agent says when a {agentType === "chat" ? "visitor starts a conversation" : agentType === "sms" ? "text is received" : "call is answered"}.
+                    </p>
+                    <Textarea
+                      value={agentFirstMessage}
+                      onChange={(e) => setAgentFirstMessage(e.target.value)}
+                      placeholder="Hello! Thank you for calling..."
+                      className="resize-none text-sm"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={() => setStep(5)}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setSaving(true);
+                      saveStep(6, {})
+                        .then(() => setStep(7))
+                        .catch(() => toast.error("Failed to save progress."))
+                        .finally(() => setSaving(false));
+                    }}
+                    disabled={saving || loadingAgentConfig}
+                    className="text-muted-foreground gap-1"
+                  >
+                    <span className="text-xs">Skip for now</span>
+                  </Button>
+                  <Button
+                    size="lg"
+                    onClick={handleStep6Continue}
+                    disabled={saving || loadingAgentConfig}
+                    className="min-w-[160px] gap-2"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        Save & Continue
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* STEP 7: Test Call (enhanced with coaching, transcript, report)    */}
+          {/* ================================================================= */}
+          {step === 7 && agentType === "sms" && (
             <div className="space-y-6">
               <div className="text-center">
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -2031,7 +2262,7 @@ export default function OnboardingWizardPage() {
               <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
-                  onClick={() => setStep(5)}
+                  onClick={() => setStep(6)}
                   className="gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -2041,7 +2272,7 @@ export default function OnboardingWizardPage() {
                   {!testSmsCompleted && (
                     <Button
                       variant="ghost"
-                      onClick={handleStep6Continue}
+                      onClick={handleStep7Continue}
                       disabled={saving}
                       className="text-muted-foreground"
                     >
@@ -2050,7 +2281,7 @@ export default function OnboardingWizardPage() {
                   )}
                   <Button
                     size="lg"
-                    onClick={handleStep6Continue}
+                    onClick={handleStep7Continue}
                     disabled={saving}
                     className="min-w-[160px] gap-2"
                   >
@@ -2075,7 +2306,7 @@ export default function OnboardingWizardPage() {
             </div>
           )}
 
-          {step === 6 && agentType === "chat" && (
+          {step === 7 && agentType === "chat" && (
             <div className="space-y-6">
               <div className="text-center">
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -2106,7 +2337,7 @@ export default function OnboardingWizardPage() {
               <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
-                  onClick={() => setStep(5)}
+                  onClick={() => setStep(6)}
                   className="gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -2116,7 +2347,7 @@ export default function OnboardingWizardPage() {
                   {!testChatCompleted && (
                     <Button
                       variant="ghost"
-                      onClick={handleStep6Continue}
+                      onClick={handleStep7Continue}
                       disabled={saving}
                       className="text-muted-foreground"
                     >
@@ -2125,7 +2356,7 @@ export default function OnboardingWizardPage() {
                   )}
                   <Button
                     size="lg"
-                    onClick={handleStep6Continue}
+                    onClick={handleStep7Continue}
                     disabled={saving}
                     className="min-w-[160px] gap-2"
                   >
@@ -2150,7 +2381,7 @@ export default function OnboardingWizardPage() {
             </div>
           )}
 
-          {step === 6 && agentType === "voice" && (() => {
+          {step === 7 && agentType === "voice" && (() => {
             const currentTemplate = templates.find((t) => t.id === selectedTemplate);
             const testScenarios: TestScenario[] = currentTemplate?.test_scenarios ?? [];
 
@@ -2298,7 +2529,7 @@ export default function OnboardingWizardPage() {
                         setCallDurationSeconds(0);
                       }}
                       onMakeChanges={() => setShowQuickFix(true)}
-                      onContinue={handleStep6Continue}
+                      onContinue={handleStep7Continue}
                     />
 
                     <QuickFixModal
@@ -2312,7 +2543,7 @@ export default function OnboardingWizardPage() {
                 <div className="flex items-center justify-between pt-4">
                   <Button
                     variant="ghost"
-                    onClick={() => setStep(5)}
+                    onClick={() => setStep(6)}
                     className="gap-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -2322,7 +2553,7 @@ export default function OnboardingWizardPage() {
                     {!testCallCompleted && (
                       <Button
                         variant="ghost"
-                        onClick={handleStep6Continue}
+                        onClick={handleStep7Continue}
                         disabled={saving}
                         className="text-muted-foreground"
                       >
@@ -2332,7 +2563,7 @@ export default function OnboardingWizardPage() {
                     {!testCallCompleted && (
                       <Button
                         size="lg"
-                        onClick={handleStep6Continue}
+                        onClick={handleStep7Continue}
                         disabled={saving}
                         className="min-w-[160px] gap-2"
                       >
@@ -2360,9 +2591,9 @@ export default function OnboardingWizardPage() {
           })()}
 
           {/* ================================================================= */}
-          {/* STEP 7: Go Live                                                   */}
+          {/* STEP 8: Go Live                                                   */}
           {/* ================================================================= */}
-          {step === 7 && (
+          {step === 8 && (
             <div className="space-y-6">
               <div className="text-center">
                 <h1 className="text-2xl font-bold tracking-tight">
@@ -2712,7 +2943,7 @@ export default function OnboardingWizardPage() {
               <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
-                  onClick={() => setStep(6)}
+                  onClick={() => setStep(7)}
                   className="gap-2"
                 >
                   <ArrowLeft className="w-4 h-4" />

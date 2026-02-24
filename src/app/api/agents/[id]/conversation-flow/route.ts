@@ -290,7 +290,7 @@ export async function GET(
   const retellApiKey = await resolveApiKey(agent);
   if (!retellApiKey) {
     return NextResponse.json(
-      { error: "No Retell API key configured" },
+      { error: "No API key configured. Please check your integrations settings." },
       { status: 500 }
     );
   }
@@ -310,7 +310,7 @@ export async function GET(
         await agentRes.text().catch(() => "")
       );
       return NextResponse.json(
-        { error: "Failed to fetch agent from Retell" },
+        { error: "Failed to fetch agent configuration" },
         { status: agentRes.status }
       );
     }
@@ -332,7 +332,7 @@ export async function GET(
           await llmRes.text().catch(() => "")
         );
         return NextResponse.json(
-          { error: "Failed to fetch LLM config from Retell" },
+          { error: "Failed to fetch LLM configuration" },
           { status: llmRes.status }
         );
       }
@@ -464,7 +464,7 @@ export async function PUT(
   const retellApiKey = await resolveApiKey(agent);
   if (!retellApiKey) {
     return NextResponse.json(
-      { error: "No Retell API key configured" },
+      { error: "No API key configured. Please check your integrations settings." },
       { status: 500 }
     );
   }
@@ -552,7 +552,7 @@ export async function PUT(
         await agentRes.text().catch(() => "")
       );
       return NextResponse.json(
-        { error: "Failed to fetch agent from Retell" },
+        { error: "Failed to fetch agent configuration" },
         { status: agentRes.status }
       );
     }

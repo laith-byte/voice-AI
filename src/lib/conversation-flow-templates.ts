@@ -92,7 +92,7 @@ export const INDUSTRIES: Record<string, IndustryConfig> = {
     dispatchItem: "driver",
     dispatchTimeframe: "2 hours",
   },
-  hvac: {
+  home_services: {
     label: "Home Services",
     specialist: "HVAC technician",
     servicePlural: "heating, cooling, and air quality services",

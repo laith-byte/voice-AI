@@ -87,7 +87,7 @@ export async function GET(
     || await getIntegrationKey(agent.organization_id, "retell")
     || process.env.RETELL_API_KEY;
   if (!retellApiKey) {
-    return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
+    return NextResponse.json({ error: "No API key configured. Please check your integrations settings." }, { status: 500 });
   }
 
   const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
@@ -99,7 +99,7 @@ export async function GET(
       : `/get-agent/${agent.retell_agent_id}`;
     const agentRes = await retellFetch(endpoint, retellApiKey);
     if (!agentRes.ok) {
-      return NextResponse.json({ error: "Failed to fetch from Retell" }, { status: agentRes.status });
+      return NextResponse.json({ error: "Failed to fetch agent configuration" }, { status: agentRes.status });
     }
     const retellAgent = await agentRes.json();
 
@@ -273,7 +273,7 @@ export async function PATCH(
     || await getIntegrationKey(agent.organization_id, "retell")
     || process.env.RETELL_API_KEY;
   if (!retellApiKey) {
-    return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
+    return NextResponse.json({ error: "No API key configured. Please check your integrations settings." }, { status: 500 });
   }
 
   const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
@@ -376,24 +376,68 @@ export async function PATCH(
 
     // Only set response_engine for inline LLM (no llm_id)
     if (!body.llm_id && (effectivePrompt !== undefined || body.llm_model || body.first_message || body.functions || body.model_high_priority !== undefined || body.tool_call_strict_mode !== undefined || body.kb_config !== undefined || body.knowledge_base_ids !== undefined)) {
-      // Voice agents use general_prompt / general_tools; chat agents use
-      // system_prompt / tools (matching Retell's API conventions).
-      const promptField = isChat ? "system_prompt" : "general_prompt";
-      const toolsField = isChat ? "tools" : "general_tools";
 
-      retellUpdate.response_engine = {
-        type: "retell-llm",
-        llm: {
-          ...(effectivePrompt !== undefined && { [promptField]: effectivePrompt }),
-          ...(body.llm_model && { model: body.llm_model }),
-          ...(body.first_message !== undefined && { begin_message: body.first_message }),
-          ...(body.functions && { [toolsField]: body.functions }),
-          ...(body.model_high_priority !== undefined && { model_high_priority: body.model_high_priority }),
-          ...(body.tool_call_strict_mode !== undefined && { tool_call_strict_mode: body.tool_call_strict_mode }),
-          ...(body.kb_config !== undefined && { kb_config: body.kb_config }),
-          ...(body.knowledge_base_ids !== undefined && { knowledge_base_ids: body.knowledge_base_ids }),
-        },
-      };
+      // Check current engine type to avoid switching from conversation-flow to retell-llm
+      let currentEngineType: string | null = null;
+      let currentFlowId: string | null = null;
+      try {
+        const getEndpoint = isChat
+          ? `/get-chat-agent/${agent.retell_agent_id}`
+          : `/get-agent/${agent.retell_agent_id}`;
+        const checkRes = await retellFetch(getEndpoint, retellApiKey);
+        if (checkRes.ok) {
+          const checkAgent = await checkRes.json();
+          currentEngineType = checkAgent.response_engine?.type || null;
+          currentFlowId = checkAgent.response_engine?.conversation_flow_id || null;
+        }
+      } catch {
+        // If check fails, fall through to existing behavior
+      }
+
+      if (currentEngineType === "conversation-flow" && currentFlowId) {
+        // Agent uses conversation-flow engine — update the flow's global_prompt
+        // instead of switching to retell-llm (which would destroy the flow)
+        if (effectivePrompt !== undefined) {
+          try {
+            const flowUpdateRes = await retellFetch(
+              `/update-conversation-flow/${currentFlowId}`,
+              retellApiKey,
+              {
+                method: "PATCH",
+                body: JSON.stringify({ global_prompt: effectivePrompt }),
+              }
+            );
+            if (!flowUpdateRes.ok) {
+              console.warn("[config] Failed to update conversation-flow global_prompt, falling through");
+            }
+          } catch {
+            console.warn("[config] conversation-flow update failed");
+          }
+        }
+        // For first_message, update at the agent level (not engine-specific)
+        if (body.first_message !== undefined) {
+          retellUpdate.first_sentence = body.first_message;
+        }
+        // Do NOT set response_engine — preserve conversation-flow engine type
+      } else {
+        // Standard retell-llm inline path (existing behavior)
+        const promptField = isChat ? "system_prompt" : "general_prompt";
+        const toolsField = isChat ? "tools" : "general_tools";
+
+        retellUpdate.response_engine = {
+          type: "retell-llm",
+          llm: {
+            ...(effectivePrompt !== undefined && { [promptField]: effectivePrompt }),
+            ...(body.llm_model && { model: body.llm_model }),
+            ...(body.first_message !== undefined && { begin_message: body.first_message }),
+            ...(body.functions && { [toolsField]: body.functions }),
+            ...(body.model_high_priority !== undefined && { model_high_priority: body.model_high_priority }),
+            ...(body.tool_call_strict_mode !== undefined && { tool_call_strict_mode: body.tool_call_strict_mode }),
+            ...(body.kb_config !== undefined && { kb_config: body.kb_config }),
+            ...(body.knowledge_base_ids !== undefined && { knowledge_base_ids: body.knowledge_base_ids }),
+          },
+        };
+      }
     }
 
     // Speech settings (voice agents only)

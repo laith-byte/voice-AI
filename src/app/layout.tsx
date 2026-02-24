@@ -54,8 +54,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${dmSans.variable} ${inter.variable} ${manrope.variable} font-sans antialiased`}>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning className={`${dmSans.variable} ${inter.variable} ${manrope.variable} font-sans antialiased`}>
         <TooltipProvider>
           {children}
           <Toaster />

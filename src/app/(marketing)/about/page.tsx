@@ -3,7 +3,7 @@ import { CTASection } from "@/components/marketing/sections/cta-section";
 import { LayoutTemplate, Users, Sparkles } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "About | Invaria Labs",
+  title: "About",
   description: "We built Invaria Labs because every business deserves an AI team that never misses a call. Learn our story.",
 };
 

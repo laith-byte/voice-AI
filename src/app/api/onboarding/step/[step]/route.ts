@@ -15,8 +15,8 @@ export async function PATCH(
   const { step: stepStr } = await params;
   const step = parseInt(stepStr, 10);
 
-  if (isNaN(step) || step < 1 || step > 7) {
-    return NextResponse.json({ error: "Step must be between 1 and 7" }, { status: 400 });
+  if (isNaN(step) || step < 1 || step > 8) {
+    return NextResponse.json({ error: "Step must be between 1 and 8" }, { status: 400 });
   }
 
   // Fetch the current onboarding record
@@ -143,6 +143,11 @@ export async function PATCH(
     }
 
     case 6: {
+      // Agent settings — saved directly via agent config API; just advance the step.
+      break;
+    }
+
+    case 7: {
       // Mark test call as completed
       if (body.test_call_completed !== undefined) {
         onboardingUpdate.test_call_completed = body.test_call_completed;
@@ -150,7 +155,7 @@ export async function PATCH(
       break;
     }
 
-    case 7: {
+    case 8: {
       // Save phone number choice or chat widget deployment
       if (body.phone_number_option !== undefined) {
         onboardingUpdate.phone_number_option = body.phone_number_option;
@@ -163,7 +168,7 @@ export async function PATCH(
   }
 
   // Advance current_step: only move forward, never backward
-  const nextStep = Math.min(step + 1, 8); // 8 means "all steps complete"
+  const nextStep = Math.min(step + 1, 9); // 9 means "all steps complete"
   onboardingUpdate.current_step = Math.max(onboarding.current_step ?? 1, nextStep);
 
   // Update the onboarding record

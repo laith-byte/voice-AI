@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   if (!retellApiKey) {
     return NextResponse.json(
-      { error: "No Retell API key configured" },
+      { error: "No API key configured. Please check your integrations settings." },
       { status: 500 }
     );
   }

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.RETELL_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Retell API key not configured" },
+        { error: "API key not configured. Please check your integrations settings." },
         { status: 500 }
       );
     }

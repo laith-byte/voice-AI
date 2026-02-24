@@ -27,7 +27,7 @@ export async function GET(
     (await getIntegrationKey(agent.organization_id, "retell")) ||
     process.env.RETELL_API_KEY;
   if (!retellApiKey) {
-    return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
+    return NextResponse.json({ error: "No API key configured. Please check your integrations settings." }, { status: 500 });
   }
 
   try {
@@ -96,7 +96,7 @@ export async function POST(
     (await getIntegrationKey(agent.organization_id, "retell")) ||
     process.env.RETELL_API_KEY;
   if (!retellApiKey) {
-    return NextResponse.json({ error: "No Retell API key configured" }, { status: 500 });
+    return NextResponse.json({ error: "No API key configured. Please check your integrations settings." }, { status: 500 });
   }
 
   try {

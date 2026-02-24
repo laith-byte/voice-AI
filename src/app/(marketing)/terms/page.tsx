@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Terms of Service | Invaria Labs",
+  title: "Terms of Service",
   description: "Invaria Labs terms of service — the agreement governing use of our Voice AI platform.",
 };
 

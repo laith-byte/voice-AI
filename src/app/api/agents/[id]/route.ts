@@ -138,14 +138,14 @@ export async function DELETE(
         const err = await retellRes.text();
         console.error("Retell DELETE error:", err);
         return NextResponse.json(
-          { error: "Failed to delete agent from Retell. Please try again." },
+          { error: "Failed to delete agent. Please try again." },
           { status: 409 }
         );
       }
     } catch (err) {
       console.error("Retell DELETE network error:", err);
       return NextResponse.json(
-        { error: "Failed to reach Retell API. Please try again." },
+        { error: "Failed to reach the service. Please try again." },
         { status: 409 }
       );
     }

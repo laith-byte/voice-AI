@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Invaria Labs",
+  title: "Privacy Policy",
   description: "Invaria Labs privacy policy — how we collect, use, and protect your data.",
 };
 

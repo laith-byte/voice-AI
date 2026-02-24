@@ -5,7 +5,7 @@ import { industries } from "@/lib/marketing/industries";
 import { Stethoscope, Scale, Wrench, Building2, Shield, Landmark, Car, UtensilsCrossed } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Industries | Invaria Labs",
+  title: "Industries",
   description: "AI voice agents purpose-built for healthcare, legal, home services, real estate, insurance, financial services, automotive, and hospitality.",
 };
 

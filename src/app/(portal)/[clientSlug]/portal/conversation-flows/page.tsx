@@ -212,7 +212,7 @@ const INDUSTRY_STYLES: Record<
     border: "border-orange-200 dark:border-orange-800",
     icon: Banknote,
   },
-  hvac: {
+  home_services: {
     gradient: "from-emerald-500 to-emerald-600",
     bg: "bg-emerald-50 dark:bg-emerald-950/30",
     text: "text-emerald-700 dark:text-emerald-300",
@@ -719,7 +719,12 @@ function ConversationFlowsContent() {
         throw new Error(err?.error || "Failed to deploy");
       }
       const data = await res.json();
-      setPromptPreview(data.prompt_preview || null);
+      setPromptPreview(
+        data.prompt_preview ||
+        (data.success
+          ? `Deployed ${data.nodes_deployed || 0} nodes.\nTools: ${(data.tools_registered || []).join(", ") || "none"}\nFlow ID: ${data.retell_flow_id || "—"}`
+          : null)
+      );
       toast.success("Flow deployed to agent!");
       fetchFlows();
     } catch (err) {
@@ -1485,7 +1490,7 @@ function ConversationFlowsContent() {
             {/* Prompt Preview */}
             {promptPreview && (
               <div className="space-y-2">
-                <Label>Deployed Prompt Preview</Label>
+                <Label>Deployment Summary</Label>
                 <pre className="bg-muted rounded-lg p-3 text-xs whitespace-pre-wrap font-mono max-h-48 overflow-y-auto">
                   {promptPreview}
                 </pre>

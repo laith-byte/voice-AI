@@ -3,44 +3,8 @@ import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
-import {
-  CALENDAR_TOOLS,
-  CALENDLY_TOOLS,
-  HUBSPOT_TOOLS,
-  injectClientId,
-  addAuthHeaders,
-} from "@/lib/oauth/register-agent-tools";
-
-// ---------------------------------------------------------------------------
-// Node types — includes integration actions
-// ---------------------------------------------------------------------------
-
-interface FlowNode {
-  id: string;
-  type:
-    | "message"
-    | "question"
-    | "condition"
-    | "transfer"
-    | "end"
-    | "check_availability"
-    | "book_appointment"
-    | "crm_lookup"
-    | "webhook";
-  data: {
-    text?: string;
-    nextNodeId?: string;
-    options?: { label: string; nextNodeId: string }[];
-    condition?: string;
-    trueNodeId?: string;
-    falseNodeId?: string;
-    transferNumber?: string;
-    // Integration fields
-    provider?: "google" | "calendly";
-    webhookUrl?: string;
-    webhookMethod?: "POST" | "GET";
-  };
-}
+import { compileFlowToRetellNodes } from "@/lib/compile-flow-to-retell";
+import type { FlowNode } from "@/lib/conversation-flow-templates";
 
 // ---------------------------------------------------------------------------
 // CRUD handlers
@@ -135,8 +99,10 @@ export async function DELETE(
 }
 
 // ---------------------------------------------------------------------------
-// POST — deploy flow to Retell (prompt + tools)
+// POST — deploy flow (compile to native Retell conversation-flow, push to agent)
 // ---------------------------------------------------------------------------
+
+const EXTERNAL_API_TIMEOUT_MS = 15_000; // 15s timeout for external API calls
 
 export async function POST(
   request: NextRequest,
@@ -150,15 +116,16 @@ export async function POST(
 
   const { id } = await params;
 
-  // Fetch the flow
+  // Fetch the flow with the linked agent (include platform for endpoint routing)
   const { data: flow, error: flowError } = await supabase
     .from("conversation_flows")
-    .select("*, agents(retell_agent_id, retell_api_key_encrypted, organization_id)")
+    .select("*, agents(id, retell_agent_id, retell_api_key_encrypted, organization_id, platform, conversation_flow_id)")
     .eq("id", id)
     .eq("client_id", clientId)
     .single();
 
   if (flowError || !flow) {
+    console.error("[conversation-flows] Flow lookup failed:", flowError?.message);
     return NextResponse.json({ error: "Flow not found" }, { status: 404 });
   }
 
@@ -168,14 +135,17 @@ export async function POST(
 
   const agent = flow.agents as Record<string, unknown> | null;
   if (!agent?.retell_agent_id) {
-    return NextResponse.json({ error: "Agent not linked to Retell" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Agent is not fully configured. Please go back and recreate the agent." },
+      { status: 400 }
+    );
   }
 
-  // Compile nodes into a structured prompt + collect required tools
+  // Compile FlowNodes into Retell's native conversation-flow format
   const nodes = flow.nodes as FlowNode[];
-  const { prompt, requiredProviders } = compileFlowToPrompt(nodes);
+  const { flowData } = compileFlowToRetellNodes(nodes, clientId!);
 
-  // Get Retell API key
+  // Resolve API key
   const apiKey =
     (agent.retell_api_key_encrypted
       ? decrypt(agent.retell_api_key_encrypted as string)
@@ -184,181 +154,199 @@ export async function POST(
     process.env.RETELL_API_KEY;
 
   if (!apiKey) {
-    return NextResponse.json({ error: "Retell API key not found" }, { status: 500 });
+    return NextResponse.json(
+      { error: "API key not configured. Please check your integrations settings." },
+      { status: 500 }
+    );
   }
 
   const retellAgentId = agent.retell_agent_id as string;
+  const isChat =
+    agent.platform === "retell-chat" || agent.platform === "retell-sms";
 
-  // --- Fetch current agent config to get existing tools ---
-  const agentConfigRes = await fetch(
-    `https://api.retellai.com/get-agent/${retellAgentId}`,
-    { headers: { Authorization: `Bearer ${apiKey}` } }
-  );
+  console.log("[conversation-flows] Deploying flow", id, "→ agent", retellAgentId, "platform:", agent.platform, "isChat:", isChat, "nodes:", flowData.nodes.length);
 
-  let existingTools: Record<string, unknown>[] = [];
-  let usesLlmId = false;
-  let llmId: string | null = null;
+  // Build the conversation-flow payload for Retell API
+  const flowPayload: Record<string, unknown> = {
+    nodes: flowData.nodes,
+    start_node_id: flowData.start_node_id,
+    start_speaker: flowData.start_speaker ?? "agent",
+    model_choice: flowData.model_choice ?? { model: "gpt-4.1", type: "cascading" },
+  };
+  if (flowData.global_prompt) flowPayload.global_prompt = flowData.global_prompt;
 
-  if (agentConfigRes.ok) {
-    const agentConfig = await agentConfigRes.json();
-    const engine = agentConfig.response_engine;
+  // Only include tools with valid public URLs — Retell rejects localhost/private hostnames
+  if (flowData.tools && flowData.tools.length > 0) {
+    const validTools = flowData.tools.filter((t) => {
+      if ("url" in t && typeof t.url === "string") {
+        try {
+          const hostname = new URL(t.url).hostname;
+          return hostname !== "localhost" && !hostname.startsWith("127.") && !hostname.startsWith("192.168.") && !hostname.startsWith("10.");
+        } catch {
+          return false;
+        }
+      }
+      return true; // non-custom tools (no URL) are always valid
+    });
+    if (validTools.length > 0) flowPayload.tools = validTools;
+  }
 
-    if (engine?.llm_id) {
-      usesLlmId = true;
-      llmId = engine.llm_id;
-      const llmRes = await fetch(
-        `https://api.retellai.com/get-retell-llm/${llmId}`,
-        { headers: { Authorization: `Bearer ${apiKey}` } }
+  // Check if agent already has a conversation flow on Retell
+  let existingFlowId: string | null = (agent.conversation_flow_id as string) || null;
+
+  try {
+    const getEndpoint = isChat
+      ? `https://api.retellai.com/get-chat-agent/${retellAgentId}`
+      : `https://api.retellai.com/get-agent/${retellAgentId}`;
+    const agentConfigRes = await fetch(getEndpoint, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+    });
+
+    if (agentConfigRes.ok) {
+      const agentConfig = await agentConfigRes.json();
+      const engine = agentConfig.response_engine;
+
+      // Extract existing conversation_flow_id if the agent uses that engine type
+      if (engine?.type === "conversation-flow") {
+        const cfId = engine.conversation_flow_id || engine["conversation-flow-id"];
+        if (cfId) existingFlowId = cfId;
+      }
+    }
+  } catch (fetchErr) {
+    console.warn("[conversation-flows] GET agent failed, will create new flow:", fetchErr);
+  }
+
+  // Create or update the Retell conversation flow
+  let retellFlowId: string;
+
+  try {
+    if (existingFlowId) {
+      // Update existing flow
+      const updateRes = await fetch(
+        `https://api.retellai.com/update-conversation-flow/${existingFlowId}`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(flowPayload),
+          signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+        }
       );
-      if (llmRes.ok) {
-        const llm = await llmRes.json();
-        existingTools = llm.general_tools || llm.tools || [];
-      }
-    } else if (engine?.llm) {
-      existingTools = engine.llm.tools || engine.llm.general_tools || [];
-    }
-  }
 
-  // --- Build the tools array for this flow ---
-  const flowToolDefs: Record<string, unknown>[] = [];
-  const flowToolNames = new Set<string>();
-
-  for (const provider of requiredProviders) {
-    let toolSet: Record<string, unknown>[] = [];
-    if (provider === "google") {
-      toolSet = CALENDAR_TOOLS as unknown as Record<string, unknown>[];
-    } else if (provider === "calendly") {
-      toolSet = CALENDLY_TOOLS as unknown as Record<string, unknown>[];
-    } else if (provider === "hubspot") {
-      toolSet = HUBSPOT_TOOLS as unknown as Record<string, unknown>[];
-    }
-
-    const prepared = addAuthHeaders(injectClientId(toolSet, clientId!));
-    for (const tool of prepared) {
-      if (!flowToolNames.has(tool.name as string)) {
-        flowToolNames.add(tool.name as string);
-        flowToolDefs.push(tool);
-      }
-    }
-  }
-
-  // Add webhook tools for any webhook nodes
-  let webhookIdx = 0;
-  for (const node of nodes) {
-    if (node.type === "webhook" && node.data.webhookUrl) {
-      webhookIdx++;
-      const toolName = `flow_webhook_${webhookIdx}`;
-      flowToolNames.add(toolName);
-      flowToolDefs.push({
-        type: "custom",
-        name: toolName,
-        description: node.data.text || `Send data to webhook endpoint #${webhookIdx}`,
-        url: node.data.webhookUrl,
-        method: node.data.webhookMethod || "POST",
-        speak_during_execution: true,
-        execution_message_description: "One moment while I process that",
-        speak_after_execution: true,
-        timeout_ms: 5000,
-        parameters: {
-          type: "object",
-          properties: {
-            caller_name: { type: "string", description: "The caller's name" },
-            caller_phone: { type: "string", description: "The caller's phone number" },
-            caller_email: { type: "string", description: "The caller's email if provided" },
-            notes: { type: "string", description: "Any relevant notes from the conversation" },
-          },
-          required: [],
-        },
-      });
-    }
-  }
-
-  // Add transfer_call tools for transfer nodes
-  let transferIdx = 0;
-  for (const node of nodes) {
-    if (node.type === "transfer" && node.data.transferNumber) {
-      transferIdx++;
-      const toolName = `transfer_call_${transferIdx}`;
-      flowToolNames.add(toolName);
-      flowToolDefs.push({
-        type: "transfer_call",
-        name: toolName,
-        description: node.data.text
-          ? `Transfer the call: ${node.data.text}`
-          : `Transfer the call to ${node.data.transferNumber}`,
-        transfer_destination: {
-          type: "predefined",
-          number: node.data.transferNumber,
-        },
-        transfer_option: {
-          type: "warm_transfer",
-          show_transferee_as_caller: false,
-          on_hold_music: "ringtone",
-        },
-        speak_during_execution: true,
-        execution_message_description: "Let the caller know you are transferring them now.",
-        execution_message_type: "prompt",
-      });
-    }
-  }
-
-  // Merge: keep existing tools that aren't overridden by flow tools
-  const mergedTools = [
-    ...existingTools.filter((t) => !flowToolNames.has(t.name as string)),
-    ...flowToolDefs,
-  ];
-
-  // --- Push prompt + tools to Retell ---
-  if (usesLlmId && llmId) {
-    const llmUpdateRes = await fetch(
-      `https://api.retellai.com/update-retell-llm/${llmId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          general_prompt: prompt,
-          general_tools: mergedTools,
-        }),
-      }
-    );
-
-    if (!llmUpdateRes.ok) {
-      const err = await llmUpdateRes.text();
-      console.error("Retell LLM update failed:", err);
-      return NextResponse.json({ error: "Failed to deploy flow to Retell" }, { status: 500 });
-    }
-  } else {
-    const agentUpdateRes = await fetch(
-      `https://api.retellai.com/update-agent/${retellAgentId}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          response_engine: {
-            type: "retell-llm",
-            llm: {
-              general_prompt: prompt,
-              general_tools: mergedTools,
+      if (updateRes.ok) {
+        retellFlowId = existingFlowId;
+        console.log("[conversation-flows] Updated existing Retell flow:", retellFlowId);
+      } else if (updateRes.status === 404) {
+        // Flow was deleted on Retell side — fall through to create
+        existingFlowId = null;
+        console.warn("[conversation-flows] Existing flow not found on Retell, creating new one");
+        // Create below
+        const createRes = await fetch(
+          "https://api.retellai.com/create-conversation-flow",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
             },
-          },
-        }),
+            body: JSON.stringify(flowPayload),
+            signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+          }
+        );
+        if (!createRes.ok) {
+          const err = await createRes.text();
+          console.error("[conversation-flows] Create flow failed:", createRes.status, err);
+          return NextResponse.json(
+            { error: "Failed to create conversation flow. Please try again." },
+            { status: 500 }
+          );
+        }
+        const newFlow = await createRes.json();
+        retellFlowId = newFlow.conversation_flow_id;
+        console.log("[conversation-flows] Created new Retell flow:", retellFlowId);
+      } else {
+        const err = await updateRes.text();
+        console.error("[conversation-flows] Update flow failed:", updateRes.status, err);
+        return NextResponse.json(
+          { error: "Failed to update conversation flow. Please try again." },
+          { status: 500 }
+        );
       }
+    } else {
+      // Create new flow
+      const createRes = await fetch(
+        "https://api.retellai.com/create-conversation-flow",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(flowPayload),
+          signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+        }
+      );
+      if (!createRes.ok) {
+        const err = await createRes.text();
+        console.error("[conversation-flows] Create flow failed:", createRes.status, err);
+        return NextResponse.json(
+          { error: "Failed to create conversation flow. Please try again." },
+          { status: 500 }
+        );
+      }
+      const newFlow = await createRes.json();
+      retellFlowId = newFlow.conversation_flow_id;
+      console.log("[conversation-flows] Created new Retell flow:", retellFlowId);
+    }
+  } catch (err) {
+    console.error("[conversation-flows] Retell API call timed out or failed:", err);
+    return NextResponse.json(
+      { error: "Deployment timed out. Please try again." },
+      { status: 504 }
     );
+  }
+
+  // Link the agent to the conversation flow (set response_engine.type = "conversation-flow")
+  try {
+    const updateAgentEndpoint = isChat
+      ? `https://api.retellai.com/update-chat-agent/${retellAgentId}`
+      : `https://api.retellai.com/update-agent/${retellAgentId}`;
+
+    const agentUpdateRes = await fetch(updateAgentEndpoint, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        response_engine: {
+          type: "conversation-flow",
+          conversation_flow_id: retellFlowId,
+        },
+      }),
+      signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+    });
 
     if (!agentUpdateRes.ok) {
       const err = await agentUpdateRes.text();
-      console.error("Retell agent update failed:", err);
-      return NextResponse.json({ error: "Failed to deploy flow to Retell" }, { status: 500 });
+      console.error("[conversation-flows] Agent link failed:", agentUpdateRes.status, err);
+      // Non-fatal — flow was created, just not linked yet
+      console.warn("[conversation-flows] Flow created but agent link failed. Will retry on next load.");
     }
+  } catch (linkErr) {
+    console.error("[conversation-flows] Agent link timed out:", linkErr);
   }
 
-  // Mark flow as active and increment version
+  // Save the Retell flow ID to our agents table for future lookups
+  await supabase
+    .from("agents")
+    .update({ conversation_flow_id: retellFlowId })
+    .eq("id", agent.id as string);
+
+  // Mark flow as active and increment version in our DB
   await supabase
     .from("conversation_flows")
     .update({
@@ -368,158 +356,22 @@ export async function POST(
     })
     .eq("id", id);
 
+  // Deactivate any other flows for this agent
+  await supabase
+    .from("conversation_flows")
+    .update({ is_active: false })
+    .eq("client_id", clientId)
+    .eq("agent_id", flow.agent_id)
+    .neq("id", id);
+
+  console.log("[conversation-flows] Deploy succeeded for flow", id, "→ Retell flow", retellFlowId);
+
   return NextResponse.json({
     success: true,
-    prompt_preview: prompt,
-    tools_registered: flowToolDefs.map((t) => t.name),
+    retell_flow_id: retellFlowId,
+    nodes_deployed: flowData.nodes.length,
+    tools_registered: (flowData.tools || []).map((t) => t.name),
   });
 }
 
-// ---------------------------------------------------------------------------
-// Compiler — converts flow nodes into a Retell prompt + determines tools
-// ---------------------------------------------------------------------------
 
-function compileFlowToPrompt(nodes: FlowNode[]): {
-  prompt: string;
-  requiredProviders: Set<string>;
-} {
-  const requiredProviders = new Set<string>();
-
-  if (!nodes.length) return { prompt: "", requiredProviders };
-
-  const lines: string[] = [];
-  lines.push(
-    "You are a professional AI voice assistant. Follow this conversation flow while maintaining a natural, conversational tone.\n"
-  );
-  lines.push("CONVERSATION FLOW:\n");
-
-  let webhookCounter = 0;
-  let transferCounter = 0;
-
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const step = i + 1;
-
-    switch (node.type) {
-      case "message":
-        lines.push(`${step}. Say: "${node.data.text || ""}"`);
-        break;
-
-      case "question":
-        lines.push(`${step}. Ask: "${node.data.text || ""}"`);
-        if (node.data.options && node.data.options.length > 0) {
-          for (const opt of node.data.options) {
-            lines.push(
-              `   - If the caller says "${opt.label}": acknowledge their choice and continue.`
-            );
-          }
-        } else {
-          lines.push(
-            `   Listen to the caller's response, then continue to the next step.`
-          );
-        }
-        break;
-
-      case "condition":
-        lines.push(
-          `${step}. Evaluate: ${node.data.condition || "the situation"}`
-        );
-        lines.push(`   - If yes: continue to the next step.`);
-        lines.push(
-          `   - If no: adapt your response accordingly and continue.`
-        );
-        break;
-
-      case "transfer":
-        if (node.data.transferNumber) {
-          transferCounter++;
-          const transferToolName = `transfer_call_${transferCounter}`;
-          lines.push(
-            `${step}. ${node.data.text || "Let the caller know you're transferring them."} Then use the "${transferToolName}" tool to transfer the call.`
-          );
-        } else {
-          lines.push(
-            `${step}. ${node.data.text || "Transfer the call to the appropriate person or department."}`
-          );
-        }
-        break;
-
-      case "end":
-        lines.push(
-          `${step}. ${node.data.text || "End the conversation politely. Thank the caller for their time."}`
-        );
-        break;
-
-      // --- Integration nodes ---
-
-      case "check_availability": {
-        const provider = node.data.provider || "google";
-        requiredProviders.add(provider === "calendly" ? "calendly" : "google");
-        const toolName =
-          provider === "calendly"
-            ? "check_calendly_availability"
-            : "check_availability";
-        lines.push(
-          `${step}. ${node.data.text || "Ask the caller what date they'd like to schedule for."} Then use the "${toolName}" tool to check available time slots for that date. Read back the available times and ask the caller to pick one.`
-        );
-        break;
-      }
-
-      case "book_appointment": {
-        const provider = node.data.provider || "google";
-        requiredProviders.add(provider === "calendly" ? "calendly" : "google");
-        const toolName =
-          provider === "calendly"
-            ? "book_calendly_appointment"
-            : "book_appointment";
-        lines.push(
-          `${step}. ${node.data.text || "Confirm the selected time with the caller."} Then use the "${toolName}" tool to book the appointment. Collect the caller's name and contact info (phone/email) for the booking. Confirm the booking details once complete.`
-        );
-        break;
-      }
-
-      case "crm_lookup":
-        requiredProviders.add("hubspot");
-        lines.push(
-          `${step}. ${node.data.text || "Use the \"lookup_caller\" tool with the caller's phone number to check if they're an existing contact."} If found, greet them by name and reference their account. If not found, proceed to collect their information.`
-        );
-        break;
-
-      case "webhook": {
-        if (node.data.webhookUrl) {
-          webhookCounter++;
-          const toolName = `flow_webhook_${webhookCounter}`;
-          lines.push(
-            `${step}. ${node.data.text || "Collect relevant caller information."} Then use the "${toolName}" tool to send the data (caller name, phone, email, and any relevant notes from the conversation).`
-          );
-        } else {
-          // No webhook URL configured — include as a data collection step without tool reference
-          lines.push(
-            `${step}. ${node.data.text || "Collect relevant caller information (name, phone, email, and any relevant notes)."}`
-          );
-        }
-        break;
-      }
-    }
-  }
-
-  lines.push("");
-  lines.push("GUIDELINES:");
-  lines.push(
-    "- Keep responses concise and natural-sounding for voice conversation."
-  );
-  lines.push(
-    "- If the caller goes off-script, gently guide them back to the flow."
-  );
-  lines.push(
-    "- Be empathetic and professional throughout the conversation."
-  );
-  lines.push(
-    "- If you cannot resolve something, offer to transfer to a human agent."
-  );
-  lines.push(
-    "- When using tools, let the caller know you're working on it (e.g., 'Let me check that for you')."
-  );
-
-  return { prompt: lines.join("\n"), requiredProviders };
-}

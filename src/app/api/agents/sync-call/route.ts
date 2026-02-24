@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       || process.env.RETELL_API_KEY;
     if (!retellApiKey) {
       return NextResponse.json(
-        { error: "No Retell API key configured" },
+        { error: "No API key configured. Please check your integrations settings." },
         { status: 500 }
       );
     }
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     if (!retellRes.ok) {
       return NextResponse.json(
-        { error: "Failed to fetch call from Retell" },
+        { error: "Failed to fetch call details" },
         { status: retellRes.status }
       );
     }

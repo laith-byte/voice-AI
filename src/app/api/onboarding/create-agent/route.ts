@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
 
   if (!retellApiKey) {
     return NextResponse.json(
-      { error: "No Retell API key configured" },
+      { error: "No API key configured. Please check your integrations settings." },
       { status: 500 }
     );
   }
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       if (!templateRes.ok) {
         console.error("Retell template fetch error:", await templateRes.text());
         return NextResponse.json(
-          { error: "Failed to fetch template agent from Retell" },
+          { error: "Failed to load template configuration. Please try again." },
           { status: 502 }
         );
       }
@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
         if (!updateRes.ok) {
           console.error("Retell agent update error:", await updateRes.text());
           return NextResponse.json(
-            { error: "Failed to reconfigure agent in Retell" },
+            { error: "Failed to reconfigure agent. Please try again." },
             { status: 502 }
           );
         }
@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
           const errText = await templateRes.text();
           console.error("Retell template fetch error:", errText);
           return NextResponse.json(
-            { error: "Failed to fetch template agent from Retell" },
+            { error: "Failed to load template configuration. Please try again." },
             { status: 502 }
           );
         }
@@ -275,7 +275,7 @@ export async function POST(request: NextRequest) {
         const errText = await createRes.text();
         console.error("Retell agent creation error:", errText);
         return NextResponse.json(
-          { error: "Failed to create agent in Retell" },
+          { error: "Failed to create agent. Please try again." },
           { status: 502 }
         );
       }
