@@ -91,10 +91,11 @@ export async function POST(request: NextRequest) {
   // If agent already exists, reconfigure it with the (possibly new) template settings
   if (existingAgent) {
     if (!template.retell_agent_id) {
-      return NextResponse.json(
-        { error: "No template agent configuration found. Please select a different template or contact support." },
-        { status: 400 }
-      );
+      // Template has no Retell agent to copy config from — keep existing agent as-is
+      return NextResponse.json({
+        agent_id: existingAgent.id,
+        retell_agent_id: existingAgent.retell_agent_id,
+      });
     }
 
     try {

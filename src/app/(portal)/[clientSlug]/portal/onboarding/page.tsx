@@ -138,7 +138,7 @@ export default function OnboardingWizardPage() {
 
   // Step 4 state
   const [afterHoursBehavior, setAfterHoursBehavior] = useState("callback");
-  const [unanswerableBehavior, setUnanswerableBehavior] = useState("message");
+  const [unanswerableBehavior, setUnanswerableBehavior] = useState("transfer");
   const [escalationPhone, setEscalationPhone] = useState("");
   const [maxCallDuration, setMaxCallDuration] = useState("5");
   const [emailSummary, setEmailSummary] = useState(true);
@@ -1410,25 +1410,25 @@ export default function OnboardingWizardPage() {
                         </div>
                       </label>
                       <label
-                        htmlFor="chat-ua-website"
+                        htmlFor="chat-ua-callback"
                         className={cn(
                           "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          unanswerableBehavior === "website"
+                          unanswerableBehavior === "callback"
                             ? "border-primary bg-primary/[0.03]"
                             : "border-gray-200 hover:border-gray-300"
                         )}
                       >
                         <RadioGroupItem
-                          value="website"
-                          id="chat-ua-website"
+                          value="callback"
+                          id="chat-ua-callback"
                           className="mt-0.5"
                         />
                         <div className="flex-1">
                           <span className="text-sm font-medium">
-                            Suggest the website
+                            Find out and get back to them
                           </span>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI directs the visitor to your website for more information.
+                            The AI lets the visitor know it will get back to them soon with an answer.
                           </p>
                         </div>
                       </label>
@@ -1493,102 +1493,6 @@ export default function OnboardingWizardPage() {
 
               <Card className="glass-card">
                 <CardContent className="p-6 space-y-6">
-                  {/* After Hours Behavior */}
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold">
-                      After Hours Behavior
-                    </Label>
-                    <p className="text-xs text-muted-foreground -mt-1">
-                      What should your AI do when someone calls outside business
-                      hours?
-                    </p>
-                    <RadioGroup
-                      value={afterHoursBehavior}
-                      onValueChange={setAfterHoursBehavior}
-                      className="space-y-3"
-                    >
-                      <label
-                        htmlFor="ah-callback"
-                        className={cn(
-                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          afterHoursBehavior === "callback"
-                            ? "border-primary bg-primary/[0.03]"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <RadioGroupItem
-                          value="callback"
-                          id="ah-callback"
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">
-                              Offer to schedule a callback
-                            </span>
-                            <Badge className="bg-primary/10 text-primary border-0 text-[10px]">
-                              Recommended
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI will collect the caller&apos;s preferred
-                            callback time and notify you.
-                          </p>
-                        </div>
-                      </label>
-                      <label
-                        htmlFor="ah-message"
-                        className={cn(
-                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          afterHoursBehavior === "message"
-                            ? "border-primary bg-primary/[0.03]"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <RadioGroupItem
-                          value="message"
-                          id="ah-message"
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">
-                            Take a message and email it to me
-                          </span>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI records the caller&apos;s message and sends
-                            you an email summary.
-                          </p>
-                        </div>
-                      </label>
-                      <label
-                        htmlFor="ah-hours"
-                        className={cn(
-                          "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          afterHoursBehavior === "hours"
-                            ? "border-primary bg-primary/[0.03]"
-                            : "border-gray-200 hover:border-gray-300"
-                        )}
-                      >
-                        <RadioGroupItem
-                          value="hours"
-                          id="ah-hours"
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1">
-                          <span className="text-sm font-medium">
-                            Tell them our hours and suggest they call back
-                          </span>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI shares your business hours and politely ends
-                            the call.
-                          </p>
-                        </div>
-                      </label>
-                    </RadioGroup>
-                  </div>
-
-                  <div className="border-t" />
-
                   {/* Unanswerable Question Behavior */}
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold">
@@ -1618,12 +1522,17 @@ export default function OnboardingWizardPage() {
                           className="mt-0.5"
                         />
                         <div className="flex-1">
-                          <span className="text-sm font-medium">
-                            Transfer to my phone
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              Warm transfer to my phone
+                            </span>
+                            <Badge className="bg-primary/10 text-primary border-0 text-[10px]">
+                              Recommended
+                            </Badge>
+                          </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI transfers the caller directly to your phone
-                            number.
+                            The AI warmly transfers the caller directly to your
+                            phone number.
                           </p>
                           {unanswerableBehavior === "transfer" && (
                             <div className="mt-3">
@@ -1654,14 +1563,9 @@ export default function OnboardingWizardPage() {
                           className="mt-0.5"
                         />
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">
-                              Take a message and email it to me
-                            </span>
-                            <Badge className="bg-primary/10 text-primary border-0 text-[10px]">
-                              Recommended
-                            </Badge>
-                          </div>
+                          <span className="text-sm font-medium">
+                            Take a message and email it to me
+                          </span>
                           <p className="text-xs text-muted-foreground mt-0.5">
                             The AI captures the question and sends you a
                             detailed email.
@@ -1669,26 +1573,26 @@ export default function OnboardingWizardPage() {
                         </div>
                       </label>
                       <label
-                        htmlFor="ua-website"
+                        htmlFor="ua-callback"
                         className={cn(
                           "flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-all",
-                          unanswerableBehavior === "website"
+                          unanswerableBehavior === "callback"
                             ? "border-primary bg-primary/[0.03]"
                             : "border-gray-200 hover:border-gray-300"
                         )}
                       >
                         <RadioGroupItem
-                          value="website"
-                          id="ua-website"
+                          value="callback"
+                          id="ua-callback"
                           className="mt-0.5"
                         />
                         <div className="flex-1">
                           <span className="text-sm font-medium">
-                            Apologize and suggest they visit our website
+                            Find out and get back to the caller
                           </span>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            The AI directs the caller to your website for more
-                            information.
+                            The AI tells the caller it will get back to them
+                            soon with an answer.
                           </p>
                         </div>
                       </label>

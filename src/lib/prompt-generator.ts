@@ -23,10 +23,10 @@ function formatTime(time: string | null): string {
 }
 
 const BEHAVIOR_LABELS: Record<string, string> = {
-  callback: "offer to schedule a callback",
+  callback: "let the caller know you'll find the answer and get back to them soon",
   message: "take a message and email it to the business owner",
   hours: "tell them the business hours and suggest they call back",
-  transfer: "transfer the call to the escalation phone number",
+  transfer: "warm transfer the call to the escalation phone number",
   website: "apologize and suggest they visit the website",
 };
 
@@ -98,11 +98,18 @@ LOCATIONS:
 {{/if}}
 
 CALL HANDLING RULES:
-- If the caller asks about something not covered above, {{unanswerable_behavior}}
-- If calling outside business hours, {{after_hours_behavior}}
+
+During business hours:
+- If the caller asks something you can't answer: first try to warm transfer to the business owner's phone. If transfer is unavailable, let the caller know you'll find the answer and get back to them soon. As a last resort, take a detailed message and email it to the business owner.
+- Never make up information — if unsure, follow the escalation steps above.
+
+After hours:
+- Help the caller normally with anything you can answer from the knowledge base above.
+- If the caller needs something that requires a warm transfer or a human: tell the caller you'll get back to them soon. Internally, email a detailed summary to the business owner. If the business owner responds with an answer, call the caller back that evening. If the caller doesn't pick up, try again at 9 AM their local time. The caller should never know a human was involved — keep the experience seamless as if you handled it yourself.
+
+General:
 - Keep calls concise and under {{max_call_duration}} minutes
 - Always be warm, helpful, and professional
-- Never make up information — if unsure, {{unanswerable_behavior}}
 `;
 
 const DEFAULT_CHAT_PROMPT_TEMPLATE = `## Identity
@@ -166,10 +173,17 @@ LOCATIONS:
 {{/if}}
 
 CHAT HANDLING RULES:
-- If the visitor asks about something not covered above, {{unanswerable_behavior}}
-- If chatting outside business hours, {{after_hours_behavior}}
+
+During business hours:
+- If the visitor asks something you can't answer: let them know you'll find the answer and get back to them soon. As a last resort, take a detailed message and email it to the business owner.
+- Never make up information — if unsure, follow the escalation steps above.
+
+After hours:
+- Help the visitor normally with anything you can answer from the knowledge base above.
+- If they need something that requires a human: tell the visitor you'll get back to them soon. Internally, email a detailed summary to the business owner. Follow up once the business owner responds. The visitor should never know a human was involved — keep the experience seamless.
+
+General:
 - Always be warm, helpful, and professional
-- Never make up information — if unsure, {{unanswerable_behavior}}
 `;
 
 const DEFAULT_SMS_PROMPT_TEMPLATE = `## Identity
@@ -233,10 +247,17 @@ LOCATIONS:
 {{/if}}
 
 SMS HANDLING RULES:
-- If the customer asks about something not covered above, {{unanswerable_behavior}}
-- If texting outside business hours, {{after_hours_behavior}}
+
+During business hours:
+- If the customer asks something you can't answer: let them know you'll find the answer and get back to them soon. As a last resort, take a detailed message and email it to the business owner.
+- Never make up information — if unsure, follow the escalation steps above.
+
+After hours:
+- Help the customer normally with anything you can answer from the knowledge base above.
+- If they need something that requires a human: tell the customer you'll get back to them soon. Internally, email a detailed summary to the business owner. Follow up once the business owner responds. The customer should never know a human was involved — keep the experience seamless.
+
+General:
 - Always be warm, helpful, and professional
-- Never make up information — if unsure, {{unanswerable_behavior}}
 `;
 
 interface HoursRow {

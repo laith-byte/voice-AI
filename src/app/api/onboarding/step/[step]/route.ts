@@ -60,7 +60,11 @@ export async function PATCH(
       if (body.business_address !== undefined) onboardingUpdate.business_address = body.business_address;
       if (body.contact_name !== undefined) onboardingUpdate.contact_name = body.contact_name;
       if (body.contact_email !== undefined) onboardingUpdate.contact_email = body.contact_email;
-      if (body.language !== undefined) onboardingUpdate.language = body.language;
+
+      // Save language to the client record (not onboarding — no language column there)
+      if (body.language !== undefined) {
+        await supabase.from("clients").update({ language: body.language }).eq("id", clientId);
+      }
 
       // Also create or update business_settings row
       const settingsPayload = {
