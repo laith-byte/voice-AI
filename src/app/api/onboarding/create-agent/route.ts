@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
+import { createServiceClient } from "@/lib/supabase/server";
 import { regenerateKnowledgeBase } from "@/lib/knowledge-base-generator";
+import { regeneratePrompt } from "@/lib/prompt-generator";
 import { encrypt, decrypt } from "@/lib/crypto";
 import Retell from "retell-sdk";
 
@@ -11,6 +13,10 @@ export async function POST(request: NextRequest) {
 
   const { clientId, error: clientError } = await getClientId(user!, supabase, request);
   if (clientError) return clientError;
+
+  // Service-role client for privileged inserts (client portal users don't have
+  // RLS INSERT permission on agents, widget_config, etc.)
+  const adminDb = await createServiceClient();
 
   // 1. Get the onboarding record to find vertical_template_id and business info
   const { data: onboarding, error: onboardingError } = await supabase
@@ -90,75 +96,219 @@ export async function POST(request: NextRequest) {
 
   // If agent already exists, reconfigure it with the (possibly new) template settings
   if (existingAgent) {
-    if (!template.retell_agent_id) {
-      // Template has no Retell agent to copy config from — keep existing agent as-is
-      return NextResponse.json({
-        agent_id: existingAgent.id,
-        retell_agent_id: existingAgent.retell_agent_id,
-      });
-    }
-
     try {
-      const selectedLanguage = (onboarding.language || "en-US") as "en-US";
+      // ----------------------------------------------------------------
+      // Step A: ALWAYS clear old data and re-seed from the new template.
+      // This must run even if the template has no retell_agent_id.
+      // ----------------------------------------------------------------
+      console.log("[create-agent] Re-seeding template data for client", clientId, "from template", template.id, template.name);
 
-      // Fetch template config from Retell
-      const templateRes = await fetch(
-        `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
-        { headers: { Authorization: `Bearer ${retellApiKey}` } }
-      );
+      await Promise.all([
+        adminDb.from("business_services").delete().eq("client_id", clientId),
+        adminDb.from("business_faqs").delete().eq("client_id", clientId),
+        adminDb.from("business_policies").delete().eq("client_id", clientId),
+        adminDb.from("business_hours").delete().eq("client_id", clientId),
+        adminDb.from("business_locations").delete().eq("client_id", clientId),
+        adminDb.from("conversation_flows").update({ is_active: false }).eq("client_id", clientId),
+      ]);
 
-      if (!templateRes.ok) {
-        console.error("Retell template fetch error:", await templateRes.text());
-        return NextResponse.json(
-          { error: "Failed to load template configuration. Please try again." },
-          { status: 502 }
+      const reseedPromises: PromiseLike<unknown>[] = [];
+
+      if (template.default_services && Array.isArray(template.default_services) && template.default_services.length > 0) {
+        const services = template.default_services.map(
+          (s: { name: string; description?: string; price_text?: string; ai_notes?: string }, i: number) => ({
+            client_id: clientId,
+            name: s.name,
+            description: s.description || null,
+            price_text: s.price_text || null,
+            ai_notes: s.ai_notes || null,
+            sort_order: i,
+            is_active: true,
+          })
+        );
+        reseedPromises.push(adminDb.from("business_services").insert(services));
+      }
+
+      if (template.default_faqs && Array.isArray(template.default_faqs) && template.default_faqs.length > 0) {
+        const faqs = template.default_faqs.map(
+          (f: { question: string; answer: string }, i: number) => ({
+            client_id: clientId,
+            question: f.question,
+            answer: f.answer,
+            sort_order: i,
+            is_active: true,
+          })
+        );
+        reseedPromises.push(adminDb.from("business_faqs").insert(faqs));
+      }
+
+      if (template.default_policies && Array.isArray(template.default_policies) && template.default_policies.length > 0) {
+        const policies = template.default_policies.map(
+          (p: { name: string; description: string }, i: number) => ({
+            client_id: clientId,
+            name: p.name,
+            description: p.description,
+            sort_order: i,
+            is_active: true,
+          })
+        );
+        reseedPromises.push(adminDb.from("business_policies").insert(policies));
+      }
+
+      if (template.default_hours && Array.isArray(template.default_hours) && template.default_hours.length > 0) {
+        const hours = template.default_hours.map(
+          (h: { day_of_week: number; is_open: boolean; open_time?: string | null; close_time?: string | null }) => ({
+            client_id: clientId,
+            day_of_week: h.day_of_week,
+            is_open: h.is_open,
+            open_time: h.is_open ? h.open_time || null : null,
+            close_time: h.is_open ? h.close_time || null : null,
+          })
+        );
+        reseedPromises.push(adminDb.from("business_hours").insert(hours));
+      } else {
+        const defaultHours = Array.from({ length: 7 }, (_, i) => ({
+          client_id: clientId,
+          day_of_week: i,
+          is_open: i < 5,
+          open_time: i < 5 ? "09:00:00" : null,
+          close_time: i < 5 ? "17:00:00" : null,
+        }));
+        reseedPromises.push(adminDb.from("business_hours").insert(defaultHours));
+      }
+
+      if (onboarding.business_address) {
+        reseedPromises.push(
+          adminDb.from("business_locations").insert({
+            client_id: clientId,
+            name: onboarding.business_name || "Main Location",
+            address: onboarding.business_address,
+            phone: onboarding.business_phone || null,
+            sort_order: 0,
+            is_active: true,
+          })
         );
       }
 
-      const templateConfig = await templateRes.json();
+      await Promise.all(reseedPromises);
+      console.log("[create-agent] Re-seed complete for client", clientId);
 
-      // Build update payload based on agent type
-      const isChat = existingAgent.platform === "retell-chat" || existingAgent.platform === "retell-sms";
-      if (isChat) {
-        const retell = new Retell({ apiKey: retellApiKey });
-        await retell.chatAgent.update(existingAgent.retell_agent_id, {
-          agent_name: onboarding.business_name || "AI Agent",
-          language: selectedLanguage,
-          response_engine: templateConfig.response_engine,
-        });
-      } else {
-        // Voice agent — PATCH via Retell API
-        const updatePayload = {
-          agent_name: onboarding.business_name || "AI Agent",
-          response_engine: templateConfig.response_engine,
-          voice_id: templateConfig.voice_id,
-          ambient_sound: templateConfig.ambient_sound,
-          ambient_sound_volume: templateConfig.ambient_sound_volume,
-          responsiveness: templateConfig.responsiveness,
-          interruption_sensitivity: templateConfig.interruption_sensitivity,
-          enable_backchannel: templateConfig.enable_backchannel,
-          language: selectedLanguage,
-        };
+      // ----------------------------------------------------------------
+      // Step B: Reconfigure the Retell agent (only if template has one)
+      // ----------------------------------------------------------------
+      if (template.retell_agent_id) {
+        const selectedLanguage = (onboarding.language || "en-US") as "en-US";
 
-        const updateRes = await fetch(
-          `https://api.retellai.com/v2/agents/${existingAgent.retell_agent_id}`,
-          {
-            method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${retellApiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(updatePayload),
-          }
+        const templateRes = await fetch(
+          `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
+          { headers: { Authorization: `Bearer ${retellApiKey}` } }
         );
 
-        if (!updateRes.ok) {
-          console.error("Retell agent update error:", await updateRes.text());
-          return NextResponse.json(
-            { error: "Failed to reconfigure agent. Please try again." },
-            { status: 502 }
-          );
+        if (templateRes.ok) {
+          const templateConfig = await templateRes.json();
+
+          const isChat = existingAgent.platform === "retell-chat" || existingAgent.platform === "retell-sms";
+          if (isChat) {
+            const retell = new Retell({ apiKey: retellApiKey });
+            await retell.chatAgent.update(existingAgent.retell_agent_id, {
+              agent_name: onboarding.business_name || "AI Agent",
+              language: selectedLanguage,
+              response_engine: templateConfig.response_engine,
+            });
+          } else {
+            // Update non-engine agent settings
+            const agentSettingsPayload = {
+              agent_name: onboarding.business_name || "AI Agent",
+              voice_id: templateConfig.voice_id,
+              ambient_sound: templateConfig.ambient_sound,
+              ambient_sound_volume: templateConfig.ambient_sound_volume,
+              responsiveness: templateConfig.responsiveness,
+              interruption_sensitivity: templateConfig.interruption_sensitivity,
+              enable_backchannel: templateConfig.enable_backchannel,
+              language: selectedLanguage,
+            };
+
+            const agentUpdateRes = await fetch(
+              `https://api.retellai.com/update-agent/${existingAgent.retell_agent_id}`,
+              {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify(agentSettingsPayload),
+              }
+            );
+            if (!agentUpdateRes.ok) {
+              console.warn("Agent settings update warning:", await agentUpdateRes.text());
+            }
+
+            // Update the existing LLM — clear old states, apply template LLM content
+            const getAgentRes = await fetch(
+              `https://api.retellai.com/get-agent/${existingAgent.retell_agent_id}`,
+              { headers: { Authorization: `Bearer ${retellApiKey}` } }
+            );
+
+            if (getAgentRes.ok) {
+              const agentConfig = await getAgentRes.json();
+              const existingLlmId = agentConfig.response_engine?.llm_id;
+
+              if (existingLlmId) {
+                const templateLlmId = templateConfig.response_engine?.llm_id;
+                let templatePrompt: string | null = null;
+                let templateBeginMsg: string | null = null;
+                let templateTools: unknown[] = [];
+
+                if (templateLlmId) {
+                  const templateLlmRes = await fetch(
+                    `https://api.retellai.com/get-retell-llm/${templateLlmId}`,
+                    { headers: { Authorization: `Bearer ${retellApiKey}` } }
+                  );
+                  if (templateLlmRes.ok) {
+                    const templateLlm = await templateLlmRes.json();
+                    templatePrompt = templateLlm.general_prompt || null;
+                    templateBeginMsg = templateLlm.begin_message ?? null;
+                    templateTools = templateLlm.general_tools || [];
+                  }
+                }
+
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const llmUpdate: Record<string, any> = {
+                  states: [],
+                  starting_state: "",
+                  general_tools: templateTools.length > 0 ? templateTools : [],
+                };
+                if (templatePrompt) llmUpdate.general_prompt = templatePrompt;
+                if (templateBeginMsg !== null) llmUpdate.begin_message = templateBeginMsg;
+
+                const llmUpdateRes = await fetch(
+                  `https://api.retellai.com/update-retell-llm/${existingLlmId}`,
+                  {
+                    method: "PATCH",
+                    headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
+                    body: JSON.stringify(llmUpdate),
+                  }
+                );
+                if (!llmUpdateRes.ok) {
+                  console.warn("LLM update warning:", await llmUpdateRes.text());
+                }
+              }
+            }
+          }
+        } else {
+          console.warn("Retell template fetch failed:", await templateRes.text());
         }
+      }
+
+      // ----------------------------------------------------------------
+      // Step C: Regenerate KB + prompt from the new business data
+      // ----------------------------------------------------------------
+      try {
+        await regenerateKnowledgeBase(clientId!);
+      } catch (kbErr) {
+        console.error("KB regeneration failed during reconfigure:", kbErr);
+      }
+      try {
+        await regeneratePrompt(clientId!);
+      } catch (promptErr) {
+        console.error("Prompt regeneration failed during reconfigure:", promptErr);
       }
 
       return NextResponse.json({
@@ -205,10 +355,16 @@ export async function POST(request: NextRequest) {
       }
 
       if (!responseEngine) {
-        return NextResponse.json(
-          { error: "No template agent configuration found. Please select a different template or contact support." },
-          { status: 400 }
-        );
+        // No template Retell agent — use a basic inline LLM config
+        console.log("[create-agent] No retell_agent_id on template — using default chat response engine");
+        responseEngine = {
+          type: "retell-llm",
+          llm: {
+            model: "gpt-4.1",
+            general_prompt: "You are a helpful AI chat assistant.",
+            begin_message: `Hi! Thanks for reaching out to ${onboarding.business_name || "us"}. How can I help you today?`,
+          },
+        };
       }
 
       const chatAgentConfig = {
@@ -256,13 +412,50 @@ export async function POST(request: NextRequest) {
           language: selectedLanguage,
         };
       } else {
-        return NextResponse.json(
-          { error: "No template agent configuration found. Please select a different template or contact support." },
-          { status: 400 }
-        );
+        // No template Retell agent — create a fresh LLM and agent from scratch.
+        // regeneratePrompt() will overwrite the prompt with the industry-specific one.
+        console.log("[create-agent] No retell_agent_id on template — creating fresh LLM + agent");
+
+        const llmRes = await fetch("https://api.retellai.com/create-retell-llm", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${retellApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4.1",
+            general_prompt: "You are a helpful AI phone agent.",
+            begin_message: `Hi, thanks for calling ${onboarding.business_name || "us"}! How can I help you today?`,
+          }),
+        });
+
+        if (!llmRes.ok) {
+          const errText = await llmRes.text();
+          console.error("Retell LLM creation error:", errText);
+          return NextResponse.json(
+            { error: "Failed to create agent configuration. Please try again." },
+            { status: 502 }
+          );
+        }
+
+        const newLlm = await llmRes.json();
+        agentPayload = {
+          ...agentPayload,
+          response_engine: {
+            type: "retell-llm",
+            llm_id: newLlm.llm_id,
+          },
+          voice_id: "11labs-Adrian",
+          ambient_sound: "coffee-shop",
+          ambient_sound_volume: 0.5,
+          responsiveness: 1,
+          interruption_sensitivity: 1,
+          enable_backchannel: true,
+          language: selectedLanguage,
+        };
       }
 
-      const createRes = await fetch("https://api.retellai.com/v2/agents", {
+      const createRes = await fetch("https://api.retellai.com/create-agent", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,
@@ -285,8 +478,8 @@ export async function POST(request: NextRequest) {
       agentPlatform = "retell";
     }
 
-    // 7. Insert the new agent row
-    const { data: agentRow, error: agentError } = await supabase
+    // 7. Insert the new agent row (use adminDb — client portal users lack RLS INSERT on agents)
+    const { data: agentRow, error: agentError } = await adminDb
       .from("agents")
       .insert({
         organization_id: orgId,
@@ -306,9 +499,9 @@ export async function POST(request: NextRequest) {
 
     // 8-10. Create associated config rows in parallel
     const configPromises = [
-      supabase.from("widget_config").insert({ agent_id: agentRow.id }),
-      supabase.from("ai_analysis_config").insert({ agent_id: agentRow.id }),
-      supabase.from("campaign_config").insert({ agent_id: agentRow.id }),
+      adminDb.from("widget_config").insert({ agent_id: agentRow.id }),
+      adminDb.from("ai_analysis_config").insert({ agent_id: agentRow.id }),
+      adminDb.from("campaign_config").insert({ agent_id: agentRow.id }),
     ];
 
     await Promise.all(configPromises);
@@ -328,7 +521,7 @@ export async function POST(request: NextRequest) {
           is_active: true,
         })
       );
-      seedPromises.push(supabase.from("business_services").insert(services));
+      seedPromises.push(adminDb.from("business_services").insert(services));
     }
 
     if (template.default_faqs && Array.isArray(template.default_faqs) && template.default_faqs.length > 0) {
@@ -341,7 +534,7 @@ export async function POST(request: NextRequest) {
           is_active: true,
         })
       );
-      seedPromises.push(supabase.from("business_faqs").insert(faqs));
+      seedPromises.push(adminDb.from("business_faqs").insert(faqs));
     }
 
     if (template.default_policies && Array.isArray(template.default_policies) && template.default_policies.length > 0) {
@@ -354,7 +547,7 @@ export async function POST(request: NextRequest) {
           is_active: true,
         })
       );
-      seedPromises.push(supabase.from("business_policies").insert(policies));
+      seedPromises.push(adminDb.from("business_policies").insert(policies));
     }
 
     // 14. Create business hours from template or default M-F 9-5
@@ -368,7 +561,7 @@ export async function POST(request: NextRequest) {
           close_time: h.is_open ? h.close_time || null : null,
         })
       );
-      seedPromises.push(supabase.from("business_hours").insert(hours));
+      seedPromises.push(adminDb.from("business_hours").insert(hours));
     } else {
       const defaultHours = Array.from({ length: 7 }, (_, i) => ({
         client_id: clientId,
@@ -377,13 +570,13 @@ export async function POST(request: NextRequest) {
         open_time: i < 5 ? "09:00:00" : null,
         close_time: i < 5 ? "17:00:00" : null,
       }));
-      seedPromises.push(supabase.from("business_hours").insert(defaultHours));
+      seedPromises.push(adminDb.from("business_hours").insert(defaultHours));
     }
 
     // 15. Seed primary location from onboarding business address
     if (onboarding.business_address) {
       seedPromises.push(
-        supabase.from("business_locations").insert({
+        adminDb.from("business_locations").insert({
           client_id: clientId,
           name: onboarding.business_name || "Main Location",
           address: onboarding.business_address,
@@ -402,6 +595,14 @@ export async function POST(request: NextRequest) {
     } catch (promptErr) {
       // Non-fatal: the prompt can be regenerated later
       console.error("Initial KB generation failed:", promptErr);
+    }
+
+    // 17. Generate the detailed system prompt from business data and push to Retell
+    try {
+      await regeneratePrompt(clientId!);
+    } catch (promptErr) {
+      // Non-fatal: the prompt can be regenerated later from Knowledge Base page
+      console.error("Initial prompt generation failed:", promptErr);
     }
 
     return NextResponse.json({

@@ -140,7 +140,129 @@ export const INDUSTRIES: Record<string, IndustryConfig> = {
     dispatchItem: "field representative",
     dispatchTimeframe: "2 business days",
   },
+  automotive: {
+    label: "Automotive",
+    specialist: "service advisor",
+    servicePlural: "automotive services",
+    customer: "customer",
+    appointmentTerm: "service appointment",
+    leadOptions: ["New vehicle sales", "Pre-owned vehicles", "Financing options", "Trade-in appraisal"],
+    supportOptions: ["Service status", "Warranty questions", "Recall information", "Parts availability"],
+    receptionistOptions: ["Schedule a service", "Speak with sales", "Get a quote", "General information"],
+    dispatchItem: "tow truck",
+    dispatchTimeframe: "45 minutes",
+  },
+  hospitality: {
+    label: "Hospitality",
+    specialist: "guest services coordinator",
+    servicePlural: "hospitality and guest services",
+    customer: "guest",
+    appointmentTerm: "reservation",
+    leadOptions: ["Room reservations", "Event planning", "Corporate packages", "Dining reservations"],
+    supportOptions: ["Reservation changes", "Billing questions", "Lost and found", "Facility inquiries"],
+    receptionistOptions: ["Make a reservation", "Request room service", "Concierge assistance", "Speak with management"],
+    dispatchItem: "concierge team",
+    dispatchTimeframe: "15 minutes",
+  },
+  legal: {
+    label: "Legal",
+    specialist: "intake coordinator",
+    servicePlural: "legal services",
+    customer: "client",
+    appointmentTerm: "consultation",
+    leadOptions: ["Personal injury", "Family law", "Business law", "Estate planning"],
+    supportOptions: ["Case status", "Document requests", "Billing questions", "Court date information"],
+    receptionistOptions: ["Schedule a consultation", "Case status inquiry", "Speak with an attorney", "General information"],
+    dispatchItem: "process server",
+    dispatchTimeframe: "1 business day",
+  },
+  real_estate: {
+    label: "Real Estate",
+    specialist: "real estate agent",
+    servicePlural: "real estate services",
+    customer: "client",
+    appointmentTerm: "showing",
+    leadOptions: ["Buying a home", "Selling a home", "Investment properties", "Commercial real estate"],
+    supportOptions: ["Transaction status", "Contract questions", "Inspection scheduling", "Closing process"],
+    receptionistOptions: ["Schedule a showing", "Property information", "Speak with an agent", "General inquiries"],
+    dispatchItem: "agent",
+    dispatchTimeframe: "1 hour",
+  },
 };
+
+// Agent names for each industry × use_case combo (mirrors AGENT_PERSONALITIES in prompt-generator.ts)
+export const AGENT_NAMES: Record<string, string> = {
+  healthcare_lead_qualification: "Sarah",
+  healthcare_customer_support: "Emily",
+  healthcare_receptionist: "Rachel",
+  healthcare_dispatch: "James",
+  financial_services_lead_qualification: "David",
+  financial_services_customer_support: "Lisa",
+  financial_services_receptionist: "Amanda",
+  financial_services_dispatch: "Robert",
+  insurance_lead_qualification: "Jennifer",
+  insurance_customer_support: "Michael",
+  insurance_receptionist: "Karen",
+  insurance_dispatch: "Brian",
+  logistics_lead_qualification: "Alex",
+  logistics_customer_support: "Chris",
+  logistics_receptionist: "Taylor",
+  logistics_dispatch: "Marcus",
+  home_services_lead_qualification: "Jake",
+  home_services_customer_support: "Samantha",
+  home_services_receptionist: "Laura",
+  home_services_dispatch: "Mike",
+  retail_lead_qualification: "Olivia",
+  retail_customer_support: "Daniel",
+  retail_receptionist: "Sophie",
+  retail_dispatch: "Tyler",
+  travel_hospitality_lead_qualification: "Isabella",
+  travel_hospitality_customer_support: "Nathan",
+  travel_hospitality_receptionist: "Grace",
+  travel_hospitality_dispatch: "Connor",
+  debt_collection_lead_qualification: "Thomas",
+  debt_collection_customer_support: "Nicole",
+  debt_collection_receptionist: "Ryan",
+  debt_collection_dispatch: "Angela",
+  automotive_lead_qualification: "Derek",
+  automotive_customer_support: "Hannah",
+  automotive_receptionist: "Megan",
+  automotive_dispatch: "Carlos",
+  hospitality_lead_qualification: "Victoria",
+  hospitality_customer_support: "Julian",
+  hospitality_receptionist: "Claire",
+  hospitality_dispatch: "Marco",
+  legal_lead_qualification: "Catherine",
+  legal_customer_support: "Andrew",
+  legal_receptionist: "Patricia",
+  legal_dispatch: "Steven",
+  real_estate_lead_qualification: "Jessica",
+  real_estate_customer_support: "Brandon",
+  real_estate_receptionist: "Monica",
+  real_estate_dispatch: "Kevin",
+};
+
+/**
+ * Replace [Company Name] and [Agent Name] placeholders in flow node text
+ * with actual values. Returns a new array (does not mutate the input).
+ */
+export function replaceFlowPlaceholders(
+  nodes: FlowNode[],
+  businessName: string,
+  agentName?: string
+): FlowNode[] {
+  const name = agentName || "your assistant";
+  const biz = businessName || "our company";
+  return nodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      text: node.data.text
+        ?.replace(/\[Company Name\]/g, biz)
+        .replace(/\[Agent Name\]/g, name),
+    },
+  }));
+}
 
 export function makeFlowId() {
   return crypto.randomUUID();
@@ -656,7 +778,7 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
           id: makeFlowId(),
           type: "message",
           data: {
-            text: `Thank you for calling [Company Name] dispatch. I'm [Agent Name], and I'm here to get you the help you need as quickly as possible. Let me pull up your account while you tell me what's going on.
+            text: `Thank you for calling [Company Name]. I'm [Agent Name], and I'm here to help with your ${ind.servicePlural} needs as quickly as possible. Let me pull up your account while you tell me what's going on.
 
 **Tone:** Calm, competent, and reassuring. Dispatch callers are often in stressful situations (emergencies, broken equipment, urgent needs). Your calm demeanor helps de-escalate their anxiety.
 

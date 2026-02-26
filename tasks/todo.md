@@ -1,42 +1,54 @@
-# Audit #8 — Two-Model Verification (Self-Serve + Admin-Fulfillment)
+# Fix: Agent Prompt & Prompt Tree Not Syncing After Onboarding
 
-## Status: COMPLETE — DO NOT SHIP (8.5/10)
+## Root Cause Analysis
 
-## Context
-Audit #8 verified both interaction models: self-serve and admin-fulfillment. 5 blockers prevent 10/10.
+After thoroughly tracing the entire data flow across 8 files, I've identified **3 compounding bugs** that cause:
+1. The wrong agent name showing on the Agent Settings page ("Jake" instead of "Samantha")
+2. The Prompt Tree page appearing empty after onboarding
 
-## Results
+### Bug 1: RLS blocks `agents` table writes for client users (CRITICAL)
 
-### Phase 1: Parallel Audit (5 teammates)
-- [x] **Teammate 1 (Client Platform)**: 1 blocker, 3 warnings, 3 cosmetic. Previous fixes: 12/12 PASS.
-- [x] **Teammate 2 (Admin Dashboard)**: 4 blockers, 10 warnings, 3 cosmetic. Previous fixes: 3/3 PASS.
-- [x] **Teammate 3 (Marketing Website)**: 0 blockers, 2 warnings, 1 cosmetic. Previous fixes: 5/5 PASS.
-- [x] **Teammate 4 (E2E Journeys)**: 6/6 PASS
-- [x] **Teammate 5 (Build/Security)**: 0 blockers, 3 warnings, 2 cosmetic. Build: 0/0. Lint: 0/0.
+The `client_own_agents` RLS policy is `FOR SELECT` only. Client users can **read** their agents but **cannot UPDATE** them. Two endpoints silently fail to save `conversation_flow_id`:
 
-### Phase 2: Synthesis
-- [x] Collected all 5 audit reports
-- [x] Wrote docs/audit-8/VERDICT.md with all 11 sections
-- [x] Updated tasks/lessons.md with 4 new patterns
+- **Deploy endpoint** (`POST /api/conversation-flows/[id]`, line 452): Uses `supabase` (user session) to `UPDATE agents SET conversation_flow_id = ...` — **silently blocked by RLS**.
+- **Prompt tree auto-save** (`PUT /api/agents/[id]/conversation-flow`, line 652): Same issue.
 
-## Verdict: 8.5/10 — DO NOT SHIP
+**Effect**: Our DB `agents.conversation_flow_id` stays null. The prompt tree GET endpoint falls back to checking Retell's `response_engine.conversation_flow_id`, which should work IF the Retell agent was linked correctly. But if Retell linking also failed (e.g., stale flow ID), there's no fallback at all.
 
-**5 blockers (deduplicated across teammates):**
-1. Change-password component bypasses API route (direct supabase.auth calls)
-2. 4 admin pages have direct Supabase mutations (saas/advanced, agents/layout, campaigns, widget)
-3. "Automations" text in 5 admin UI-facing locations
-4. Setup-account page has direct Supabase mutation (borderline)
+### Bug 2: `create-agent` route doesn't save `conversation_flow_id` to our DB
 
-**6/6 E2E journeys PASS**
-**All 12 previous fixes VERIFIED — ZERO regressions**
-**Build: 0 errors, 0 warnings. Lint: 0 errors, 0 warnings.**
-**Self-serve: ALL FEATURES WORK**
-**Admin-fulfillment: FULL REQUEST CHAIN VERIFIED**
-**Security: STRONG (130+ routes, 4 webhook verifications, zero client secrets)**
+When `cloneTemplateConversationFlow` creates a new flow on Retell, the flow ID is used in `response_engine` for the Retell agent update, but it's **never saved** to `agents.conversation_flow_id` in our DB. Combined with Bug 1 (deploy can't write either), our DB never knows about the flow.
 
-**To reach 10/10:** Fix all 11 items in VERDICT.md punch list. ~3 hours total.
-- Quick wins (items 1-2): ~25 min
-- Direct mutation fixes (items 3-7): ~2h
-- Verification (items 8-11): ~10 min
+### Bug 3: Deploy endpoint uses user-session client where service client is needed
 
-**Full report:** `docs/audit-8/VERDICT.md`
+The deploy endpoint uses `supabase` (user session) for multiple DB writes that can fail silently for client users. These all need service client.
+
+## Fix Plan
+
+### Step 1: Fix deploy endpoint RLS issue ✅
+**File**: `src/app/api/conversation-flows/[id]/route.ts`
+
+- [x] Import `createServiceClient`
+- [x] Create `adminDb` at the top of the POST handler
+- [x] Use `adminDb` for `agents.update({ conversation_flow_id })` (line 452)
+- [x] Use `adminDb` for `conversation_flows.update({ is_active, version })` (lines 458-465)
+- [x] Use `adminDb` for `conversation_flows.update({ is_active: false })` (lines 469-473)
+
+### Step 2: Fix create-agent to save `conversation_flow_id` ✅
+**File**: `src/app/api/onboarding/create-agent/route.ts`
+
+- [x] Existing agent reconfiguration: save flow ID via `adminDb` after Retell update
+- [x] Chat/SMS agent creation: capture `conversationFlowId` after cloning
+- [x] Voice agent creation: capture `conversationFlowId` after cloning
+- [x] Include `conversation_flow_id` in agent row insert
+
+### Step 3: Fix prompt tree auto-save RLS issue ✅
+**File**: `src/app/api/agents/[id]/conversation-flow/route.ts`
+
+- [x] Import `createServiceClient`
+- [x] Use `adminDb` for clearing stale flow ID in GET handler
+- [x] Use `adminDb` for saving new flow ID in PUT handler
+
+### Step 4: Build and verify ✅
+- [x] Run `npm run build` — no type errors
+- [x] All imports resolve

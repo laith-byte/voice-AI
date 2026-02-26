@@ -22,6 +22,7 @@ import {
   MessageSquare,
   Rocket,
   Sparkles,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -123,6 +124,7 @@ export default function PortalAgentsPage() {
   const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null);
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [totalCallsSinceLive, setTotalCallsSinceLive] = useState(0);
+  const [resettingOnboarding, setResettingOnboarding] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -308,10 +310,39 @@ export default function PortalAgentsPage() {
     <div className="p-6 space-y-6">
       <div className="page-header-glow">
         <div className="h-1 w-16 rounded-full bg-gradient-to-r from-primary to-primary/40 mb-3" />
-        <h1 className="text-3xl font-bold tracking-tight">{getGreeting()}{clientName ? `, ${clientName}` : ""}</h1>
-        <p className="text-muted-foreground/80 text-sm mt-1">
-          Here&apos;s an overview of your agents and recent activity
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">{getGreeting()}{clientName ? `, ${clientName}` : ""}</h1>
+            <p className="text-muted-foreground/80 text-sm mt-1">
+              Here&apos;s an overview of your agents and recent activity
+            </p>
+          </div>
+          {onboardingStatus === "completed" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground hover:text-foreground"
+              disabled={resettingOnboarding}
+              onClick={async () => {
+                setResettingOnboarding(true);
+                try {
+                  const res = await fetch("/api/onboarding/reset", { method: "POST" });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => null);
+                    throw new Error(err?.error ?? "Failed to reset onboarding");
+                  }
+                  router.push(`/${clientSlug}/portal/onboarding`);
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Failed to reset onboarding");
+                  setResettingOnboarding(false);
+                }
+              }}
+            >
+              <RotateCcw className={cn("w-3.5 h-3.5", resettingOnboarding && "animate-spin")} />
+              Redo Setup
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Onboarding Banner */}

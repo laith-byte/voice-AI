@@ -1,6 +1,10 @@
 import Handlebars from "handlebars";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
+import { filterToolsForRetell } from "@/lib/compile-flow-to-retell";
+
+// Re-export from standalone module (no Next.js deps) so seed scripts can import directly
+export { AGENT_PERSONALITIES, generateFlowPromptTemplate, generateFirstMessageTemplate, type AgentPersonality } from "./prompt-templates";
 
 const DAY_NAMES = [
   "Monday",
@@ -314,7 +318,7 @@ interface LocationRow {
  * Fetches all business data for a client and compiles the system prompt.
  * Returns the generated prompt string (does NOT push to Retell).
  */
-async function generatePrompt(
+export async function generatePrompt(
   clientId: string,
   promptTemplate?: string | null,
   agentType?: string
@@ -437,13 +441,15 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     .single();
 
   let promptTemplate: string | null = null;
+  let firstMessageTemplate: string | null = null;
   if (templateLink?.vertical_template_id) {
     const { data: tmpl } = await supabase
       .from("agent_templates")
-      .select("prompt_template")
+      .select("prompt_template, first_message_template")
       .eq("id", templateLink.vertical_template_id)
       .single();
     promptTemplate = tmpl?.prompt_template || null;
+    firstMessageTemplate = tmpl?.first_message_template || null;
   }
 
   const agentTypeStr = agent.platform === "retell-sms" ? "sms" : isChat ? "chat" : "voice";
@@ -454,6 +460,18 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
   // This MUST be appended AFTER Handlebars compilation so Handlebars doesn't consume it.
   if (!isChat) {
     generatedPrompt += "\n\n{{callback_context}}";
+  }
+
+  // Compile first message template with business name
+  let compiledFirstMessage: string | null = null;
+  if (firstMessageTemplate) {
+    const { data: biz } = await supabase
+      .from("business_settings")
+      .select("business_name")
+      .eq("client_id", clientId)
+      .single();
+    const compiled = Handlebars.compile(firstMessageTemplate, { noEscape: true });
+    compiledFirstMessage = compiled({ business_name: biz?.business_name || "our business" }).trim();
   }
 
   // Get knowledge base settings for max_call_duration and escalation phone
@@ -531,6 +549,8 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     let usesLlmId = false;
     let llmId: string | null = null;
     let existingTools: Record<string, unknown>[] = [];
+    let existingStates: Record<string, unknown>[] = [];
+    let existingStartingState: string | undefined;
 
     if (agentConfigRes.ok) {
       const agentConfig = await agentConfigRes.json();
@@ -546,6 +566,11 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
         if (llmRes.ok) {
           const llm = await llmRes.json();
           existingTools = llm.general_tools || [];
+          existingStates = llm.states || [];
+          existingStartingState = llm.starting_state;
+          if (existingStates.length > 0) {
+            console.log("[regeneratePrompt] Preserving", existingStates.length, "states, starting_state:", existingStartingState);
+          }
         }
       } else if (engine?.llm) {
         // Inline LLM — preserve existing tools (e.g. from flow deployments)
@@ -592,11 +617,16 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     const toolsWithoutOld = existingTools.filter(
       (t) => t.name !== "transfer_to_human" && t.name !== "request_callback"
     );
-    const mergedTools = [
+    const mergedToolsRaw = [
       ...toolsWithoutOld,
       ...(transferTool ? [transferTool] : []),
       callbackTool,
     ];
+
+    // Filter out custom tools with non-public URLs (e.g. localhost) so Retell
+    // doesn't reject the entire PATCH. These tools only work in production.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mergedTools = filterToolsForRetell(mergedToolsRaw as any);
 
     if (usesLlmId && llmId) {
       // Push prompt + tools to the standalone LLM
@@ -611,6 +641,11 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
           body: JSON.stringify({
             general_prompt: generatedPrompt,
             general_tools: mergedTools,
+            ...(compiledFirstMessage && { begin_message: compiledFirstMessage }),
+            ...(existingStates.length > 0 && {
+              states: existingStates,
+              starting_state: existingStartingState,
+            }),
           }),
         }
       );
@@ -622,7 +657,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
       }
 
       // Still update agent-level settings (max duration)
-      await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
+      await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -634,7 +669,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
       });
     } else {
       // Push to Retell Voice Agent API (inline LLM)
-      const res = await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
+      const res = await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -645,6 +680,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
             llm: {
               general_prompt: generatedPrompt,
               general_tools: mergedTools,
+              ...(compiledFirstMessage && { begin_message: compiledFirstMessage }),
             },
           },
           max_call_duration_ms: (settings?.max_call_duration_minutes || 5) * 60 * 1000,

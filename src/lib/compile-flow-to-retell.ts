@@ -1,725 +1,374 @@
 // ---------------------------------------------------------------------------
-// FlowNode → Retell Conversation Flow Compiler
+// FlowNode → Retell LLM States Compiler
 // ---------------------------------------------------------------------------
-// Converts the linear FlowNode[] format (used by onboarding + Flows page)
-// into Retell's native ConversationFlowData format (nodes + edges + tools).
+// Converts FlowNode[] (onboarding + Flows page) into retell-llm multi-state
+// format (states[] + general_tools[]).
 //
-// This replaces `compileFlowToPrompt()` so that flows deploy as
-// `response_engine.type = "conversation-flow"` instead of "retell-llm",
-// ensuring coherence with the Prompt Tree Editor.
+// WHY: Retell does NOT allow changing response_engine type after creation
+// ("Cannot update response engine of agent version > 0"). Since agents are
+// created as retell-llm, we MUST stay within that engine type.
+//
+// The Prompt Tree Editor already handles retell-llm states via
+// convertLLMToFlow() and convertFlowToLLM(), so these states will
+// render as visual nodes in the editor.
+//
+// TOOLS: Uses Retell-native tool types (end_call, transfer_call) where
+// possible — these work without custom URLs. Custom tools (calendar, CRM,
+// webhook) require a public APP_URL and are only generated in production.
 // ---------------------------------------------------------------------------
 
 import type { FlowNode } from "@/lib/conversation-flow-templates";
-import type {
-  ConversationFlowData,
-  ConversationFlowTool,
-  ConversationFlowCustomTool,
-  RetellNode,
-  RetellConversationNode,
-  RetellEndNode,
-  RetellTransferCallNode,
-  RetellEdge,
-} from "@/lib/prompt-tree-types";
 
 // ---------------------------------------------------------------------------
-// ID helpers
+// Types
 // ---------------------------------------------------------------------------
 
-let _nodeCounter = 0;
-function makeNodeId(prefix: string): string {
-  _nodeCounter++;
-  return `${prefix}_${_nodeCounter}_${Date.now().toString(36)}`;
+export interface RetellLLMState {
+  name: string;
+  state_prompt: string;
+  edges: RetellLLMStateEdge[];
+  tools?: RetellLLMTool[];
 }
 
-function makeEdgeId(sourceId: string, idx: number): string {
-  return `edge_${sourceId}_${idx}`;
+export interface RetellLLMStateEdge {
+  destination_state_name: string;
+  description: string;
 }
 
-/** Reset counter (for testing) */
-export function resetCounter(): void {
-  _nodeCounter = 0;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type RetellLLMTool = Record<string, any>;
+
+export interface CompileResult {
+  states: RetellLLMState[];
+  starting_state: string;
+  general_prompt: string;
+  general_tools: RetellLLMTool[];
+}
+
+/**
+ * Filter out custom tools that have non-public URLs (localhost, private IPs).
+ * Call this before sending state.tools to Retell — Retell rejects custom tools
+ * with non-public hostnames. The compiler always generates all tools so the
+ * editor can display them; this function strips the ones Retell can't call.
+ */
+export function filterToolsForRetell(tools: RetellLLMTool[]): RetellLLMTool[] {
+  return tools.filter((t) => {
+    if (t.type !== "custom") return true; // native tools always OK
+    return isPublicUrl(t.url as string || "");
+  });
+}
+
+/**
+ * Filter state-level tools for all states before sending to Retell.
+ */
+export function filterStatesForRetell(states: RetellLLMState[]): RetellLLMState[] {
+  return states.map((s) => {
+    if (!s.tools || s.tools.length === 0) return s;
+    const filtered = filterToolsForRetell(s.tools);
+    if (filtered.length === s.tools.length) return s; // all tools pass — no change
+    // Destructure to remove old tools, then add filtered (or omit if empty).
+    // JSON.stringify omits undefined values, so Retell won't see an empty tools array.
+    const { tools: _old, ...rest } = s;
+    return filtered.length > 0 ? { ...rest, tools: filtered } : rest;
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Tool builders (match the shapes in register-agent-tools.ts)
+// Helpers
 // ---------------------------------------------------------------------------
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
 
-function buildCalendarTools(
-  clientId: string,
-  provider: "google" | "calendly"
-): ConversationFlowTool[] {
+function isPublicUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host !== "localhost" &&
+      host !== "127.0.0.1" &&
+      host !== "0.0.0.0" &&
+      !host.startsWith("192.168.") &&
+      !host.startsWith("10.")
+    );
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tool builders — Native Retell tools (no URL needed, work everywhere)
+// ---------------------------------------------------------------------------
+
+function buildEndCallTool(): RetellLLMTool {
+  return {
+    type: "end_call",
+    name: "end_call",
+    description: "End the phone call when the conversation is complete.",
+  };
+}
+
+function buildTransferCallTool(name: string, node: FlowNode): RetellLLMTool {
+  return {
+    type: "transfer_call",
+    name,
+    description: node.data.text
+      ? `Transfer the call: ${node.data.text}`
+      : "Transfer the call to the appropriate department or person.",
+    transfer_destination: node.data.transferNumber
+      ? { type: "predefined", number: node.data.transferNumber }
+      : { type: "inferred", prompt: "Determine the appropriate transfer destination based on the caller's needs." },
+    transfer_option: { type: "warm_transfer", show_transferee_as_caller: false, on_hold_music: "ringtone" },
+    speak_during_execution: true,
+    execution_message_description: "Let the caller know you are transferring them now",
+    execution_message_type: "prompt",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tool builders — Custom tools (require public APP_URL for Retell validation)
+// ---------------------------------------------------------------------------
+
+function buildCalendarTools(clientId: string, provider: "google" | "calendly"): RetellLLMTool[] {
   if (provider === "calendly") {
     return [
       {
         type: "custom",
-        tool_id: "check_calendly_availability",
         name: "check_calendly_availability",
-        description:
-          "Check available appointment slots on Calendly for a given date.",
+        description: "Check available appointment slots on Calendly.",
         url: `${APP_URL}/api/tools/calendly/availability`,
         method: "POST",
-        timeout_ms: 5000,
         speak_during_execution: true,
-        parameters: {
-          type: "object",
-          properties: {
-            date: {
-              type: "string",
-              description:
-                "The date to check availability for, in YYYY-MM-DD format",
-            },
-          },
-          required: ["date"],
-        },
+        execution_message_description: "Let the caller know you are checking the calendar",
+        speak_after_execution: true,
+        timeout_ms: 5000,
+        parameters: { type: "object", properties: { date: { type: "string", description: "Date in YYYY-MM-DD format" } }, required: ["date"] },
         headers: { "x-client-id": clientId },
-      } as ConversationFlowCustomTool,
+      },
       {
         type: "custom",
-        tool_id: "book_calendly_appointment",
         name: "book_calendly_appointment",
-        description:
-          "Book an appointment on Calendly at a specific time.",
+        description: "Book an appointment on Calendly.",
         url: `${APP_URL}/api/tools/calendly/book`,
         method: "POST",
-        timeout_ms: 5000,
         speak_during_execution: true,
-        parameters: {
-          type: "object",
-          properties: {
-            start_time: {
-              type: "string",
-              description: "ISO 8601 datetime for appointment start",
-            },
-            name: { type: "string", description: "Caller's full name" },
-            email: { type: "string", description: "Caller's email address" },
-            phone: { type: "string", description: "Caller's phone number" },
-          },
-          required: ["start_time", "name", "email"],
-        },
+        execution_message_description: "Let the caller know you are booking the appointment",
+        speak_after_execution: true,
+        timeout_ms: 5000,
+        parameters: { type: "object", properties: { start_time: { type: "string", description: "ISO 8601 datetime" }, name: { type: "string", description: "Caller's name" }, email: { type: "string", description: "Caller's email" }, phone: { type: "string", description: "Caller's phone" } }, required: ["start_time", "name", "email"] },
         headers: { "x-client-id": clientId },
-      } as ConversationFlowCustomTool,
+      },
     ];
   }
-
-  // Google Calendar
   return [
     {
       type: "custom",
-      tool_id: "check_availability",
       name: "check_availability",
-      description:
-        "Check available appointment slots for a given date.",
+      description: "Check available appointment slots for a given date.",
       url: `${APP_URL}/api/tools/calendar/availability`,
       method: "POST",
-      timeout_ms: 5000,
       speak_during_execution: true,
-      parameters: {
-        type: "object",
-        properties: {
-          date: {
-            type: "string",
-            description:
-              "The date to check availability for, in YYYY-MM-DD format",
-          },
-          duration_minutes: {
-            type: "number",
-            description:
-              "How long the appointment should be in minutes. Default 60.",
-          },
-        },
-        required: ["date"],
-      },
+      execution_message_description: "Let the caller know you are checking the calendar",
+      speak_after_execution: true,
+      timeout_ms: 5000,
+      parameters: { type: "object", properties: { date: { type: "string", description: "Date in YYYY-MM-DD format" }, duration_minutes: { type: "number", description: "Duration in minutes. Default 60." } }, required: ["date"] },
       headers: { "x-client-id": clientId },
-    } as ConversationFlowCustomTool,
+    },
     {
       type: "custom",
-      tool_id: "book_appointment",
       name: "book_appointment",
-      description:
-        "Book an appointment at a specific time.",
+      description: "Book an appointment at a specific time.",
       url: `${APP_URL}/api/tools/calendar/book`,
       method: "POST",
-      timeout_ms: 5000,
       speak_during_execution: true,
-      parameters: {
-        type: "object",
-        properties: {
-          start_time: {
-            type: "string",
-            description: "ISO 8601 datetime for appointment start",
-          },
-          end_time: {
-            type: "string",
-            description: "ISO 8601 datetime for appointment end",
-          },
-          summary: {
-            type: "string",
-            description: "Brief title for the appointment",
-          },
-          attendee_name: {
-            type: "string",
-            description: "Caller's full name",
-          },
-          attendee_email: {
-            type: "string",
-            description: "Caller's email address",
-          },
-          attendee_phone: {
-            type: "string",
-            description: "Caller's phone number",
-          },
-          notes: {
-            type: "string",
-            description: "Additional notes for the appointment",
-          },
-        },
-        required: ["start_time", "end_time", "summary"],
-      },
+      execution_message_description: "Let the caller know you are booking the appointment",
+      speak_after_execution: true,
+      timeout_ms: 5000,
+      parameters: { type: "object", properties: { start_time: { type: "string", description: "ISO 8601 datetime for start" }, end_time: { type: "string", description: "ISO 8601 datetime for end" }, summary: { type: "string", description: "Brief title" }, attendee_name: { type: "string", description: "Caller's name" }, attendee_email: { type: "string", description: "Caller's email" }, attendee_phone: { type: "string", description: "Caller's phone" }, notes: { type: "string", description: "Additional notes" } }, required: ["start_time", "end_time", "summary"] },
       headers: { "x-client-id": clientId },
-    } as ConversationFlowCustomTool,
+    },
   ];
 }
 
-function buildCrmLookupTool(clientId: string): ConversationFlowCustomTool {
-  return {
+function buildCrmTool(clientId: string): RetellLLMTool[] {
+  return [{
     type: "custom",
-    tool_id: "lookup_caller",
     name: "lookup_caller",
-    description:
-      "Look up a caller by phone number in the CRM to check if they are an existing contact.",
+    description: "Look up a caller by phone number in the CRM.",
     url: `${APP_URL}/api/tools/hubspot/lookup`,
     method: "POST",
-    timeout_ms: 5000,
     speak_during_execution: true,
-    parameters: {
-      type: "object",
-      properties: {
-        phone: {
-          type: "string",
-          description: "The caller's phone number",
-        },
-      },
-      required: ["phone"],
-    },
+    execution_message_description: "Let the caller know you are looking them up",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: { type: "object", properties: { phone: { type: "string", description: "Caller's phone number" } }, required: ["phone"] },
     headers: { "x-client-id": clientId },
+  }];
+}
+
+function buildWebhookTool(name: string, node: FlowNode): RetellLLMTool | null {
+  if (!node.data.webhookUrl) return null;
+  return {
+    type: "custom", name,
+    description: node.data.text || "Send conversation data to webhook",
+    url: node.data.webhookUrl,
+    method: node.data.webhookMethod || "POST",
+    speak_during_execution: true,
+    execution_message_description: "One moment while I process that",
+    speak_after_execution: true,
+    timeout_ms: 5000,
+    parameters: { type: "object", properties: { caller_name: { type: "string", description: "Caller's name" }, caller_phone: { type: "string", description: "Caller's phone number" }, caller_email: { type: "string", description: "Caller's email if provided" }, notes: { type: "string", description: "Relevant notes from the conversation" } }, required: [] },
   };
 }
 
-function buildWebhookTool(
-  name: string,
-  node: FlowNode
-): ConversationFlowCustomTool {
-  return {
-    type: "custom",
-    tool_id: name,
-    name,
-    description:
-      node.data.text || `Send conversation data to webhook endpoint`,
-    url: node.data.webhookUrl!,
-    method: node.data.webhookMethod || "POST",
-    timeout_ms: 5000,
-    speak_during_execution: true,
-    parameters: {
-      type: "object",
-      properties: {
-        caller_name: {
-          type: "string",
-          description: "The caller's name",
-        },
-        caller_phone: {
-          type: "string",
-          description: "The caller's phone number",
-        },
-        caller_email: {
-          type: "string",
-          description: "The caller's email if provided",
-        },
-        notes: {
-          type: "string",
-          description: "Any relevant notes from the conversation",
-        },
-      },
-      required: [],
-    },
+// ---------------------------------------------------------------------------
+// State name helper
+// ---------------------------------------------------------------------------
+
+function makeStateName(index: number, type: string): string {
+  const typeLabel: Record<string, string> = {
+    message: "message", question: "question", condition: "evaluate",
+    transfer: "transfer", end: "end-call", check_availability: "check-availability",
+    book_appointment: "book-appointment", crm_lookup: "crm-lookup",
+    webhook: "webhook", request_callback: "request-callback",
   };
+  return `step-${index + 1}_${typeLabel[type] || type}`;
 }
 
 // ---------------------------------------------------------------------------
 // Main compiler
 // ---------------------------------------------------------------------------
 
-export interface CompileResult {
-  flowData: ConversationFlowData;
-  /** Tool definitions that should be registered at the flow level */
-  tools: ConversationFlowTool[];
-}
-
-/**
- * Compile FlowNode[] into Retell's native ConversationFlowData.
- *
- * The resulting data can be sent directly to Retell's
- * `/create-conversation-flow` or `/update-conversation-flow` endpoints,
- * and the agent's `response_engine.type` should be set to `"conversation-flow"`.
- */
-export function compileFlowToRetellNodes(
+export function compileFlowToRetellStates(
   flowNodes: FlowNode[],
   clientId: string
 ): CompileResult {
   if (!flowNodes.length) {
-    return {
-      flowData: {
-        nodes: [],
-        start_node_id: null,
-        start_speaker: "agent",
-        tools: [],
-      },
-      tools: [],
-    };
+    return { states: [], starting_state: "", general_prompt: "", general_tools: [] };
   }
 
-  resetCounter();
-
-  const retellNodes: RetellNode[] = [];
-  const tools: ConversationFlowTool[] = [];
-  const toolNames = new Set<string>();
-
-  // Helper to add tools without duplicates
-  function addTools(newTools: ConversationFlowTool[]) {
-    for (const t of newTools) {
-      if (!toolNames.has(t.name)) {
-        toolNames.add(t.name);
-        tools.push(t);
-      }
-    }
-  }
-
-  // First pass: create all Retell nodes with IDs so we can wire edges
-  const nodeIds: string[] = [];
-  for (let i = 0; i < flowNodes.length; i++) {
-    const fn = flowNodes[i];
-    const nodeId = makeNodeId(fn.type);
-    nodeIds.push(nodeId);
-  }
-
-  // Second pass: build each RetellNode with edges pointing to the next node
-  let webhookIdx = 0;
+  const states: RetellLLMState[] = [];
+  const stateNames = flowNodes.map((fn, i) => makeStateName(i, fn.type));
+  let webhookIdx = 0, transferIdx = 0;
 
   for (let i = 0; i < flowNodes.length; i++) {
     const fn = flowNodes[i];
-    const nodeId = nodeIds[i];
-    const nextNodeId = i < flowNodes.length - 1 ? nodeIds[i + 1] : undefined;
-    const yPos = i * 300;
+    const name = stateNames[i];
+    const next = i < flowNodes.length - 1 ? stateNames[i + 1] : undefined;
+    const edges: RetellLLMStateEdge[] = [];
 
     switch (fn.type) {
-      // ── Message → conversation node ──────────────────────────────
-      case "message": {
-        const edges: RetellEdge[] = [];
-        if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt: "After delivering this message, move to the next step.",
-            },
-          });
-        }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: Message`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text: fn.data.text || "Greet the caller.",
-          },
-          edges,
-        } satisfies RetellConversationNode);
+      case "message":
+        if (next) edges.push({ destination_state_name: next, description: "After delivering this message, move to the next step." });
+        states.push({ name, state_prompt: fn.data.text || "Greet the caller.", edges });
         break;
-      }
 
-      // ── Question → conversation node with option edges ───────────
-      case "question": {
-        const edges: RetellEdge[] = [];
-        if (fn.data.options && fn.data.options.length > 0) {
-          // Each option gets an edge — but in the linear model they all
-          // point to the next node. The prompt condition captures the option.
-          for (let oi = 0; oi < fn.data.options.length; oi++) {
-            const opt = fn.data.options[oi];
-            edges.push({
-              id: makeEdgeId(nodeId, oi),
-              destination_node_id: nextNodeId,
-              transition_condition: {
-                type: "prompt",
-                prompt: `The caller responds with "${opt.label}" or something similar.`,
-              },
-            });
-          }
-          // Add a catch-all edge for unexpected responses
-          if (nextNodeId) {
-            edges.push({
-              id: makeEdgeId(nodeId, fn.data.options.length),
-              destination_node_id: nextNodeId,
-              transition_condition: {
-                type: "prompt",
-                prompt:
-                  "The caller responds with something else or is ready to continue.",
-              },
-            });
-          }
-        } else if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt:
-                "The caller has answered the question. Continue to the next step.",
-            },
-          });
-        }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: Question`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text: fn.data.text || "Ask the caller a question.",
-          },
-          edges,
-        } satisfies RetellConversationNode);
+      case "question":
+        if (next) edges.push({ destination_state_name: next, description: "The caller has answered the question. Continue." });
+        states.push({ name, state_prompt: fn.data.text || "Ask the caller a question.", edges });
         break;
-      }
 
-      // ── Condition → conversation node with conditional logic ─────
-      case "condition": {
-        // We use a conversation node with the condition as instruction text.
-        // The edges represent "yes" and "no" paths — in the linear model
-        // both currently go to the next node, but the prompt captures the logic.
-        const edges: RetellEdge[] = [];
-        if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt: `The condition is met: ${fn.data.condition || "proceed"}`,
-            },
-          });
-          edges.push({
-            id: makeEdgeId(nodeId, 1),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt: `The condition is NOT met — adapt your response accordingly and continue.`,
-            },
-          });
+      case "condition":
+        if (next) {
+          edges.push({ destination_state_name: next, description: `Evaluate: ${fn.data.condition || "the situation"}. If met, proceed. If not, adapt accordingly and continue.` });
         }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: Evaluate`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text: `Evaluate: ${fn.data.condition || "the situation"}. Based on the caller's responses and the conversation so far, determine whether this condition is met and proceed accordingly.`,
-          },
-          edges,
-        } satisfies RetellConversationNode);
+        states.push({ name, state_prompt: `Evaluate: ${fn.data.condition || "the situation"}. Determine if condition is met and proceed.`, edges });
         break;
-      }
 
-      // ── Transfer → transfer_call node ────────────────────────────
       case "transfer": {
-        if (fn.data.transferNumber) {
-          const failEdge: RetellEdge = {
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt: "Transfer failed or was not completed.",
-            },
-          };
-          retellNodes.push({
-            id: nodeId,
-            type: "transfer_call",
-            name: `Step ${i + 1}: Transfer`,
-            display_position: { x: 0, y: yPos },
-            transfer_destination: {
-              type: "predefined",
-              number: fn.data.transferNumber,
-            },
-            transfer_option: {
-              type: "warm_transfer",
-              show_transferee_as_caller: false,
-              on_hold_music: "ringtone",
-            },
-            edge: failEdge,
-            speak_during_execution: true,
-            instruction: fn.data.text
-              ? { type: "prompt", text: fn.data.text }
-              : {
-                  type: "prompt",
-                  text: "Let the caller know you are transferring them now.",
-                },
-          } satisfies RetellTransferCallNode);
-        } else {
-          // No number — fall back to a conversation node
-          const edges: RetellEdge[] = [];
-          if (nextNodeId) {
-            edges.push({
-              id: makeEdgeId(nodeId, 0),
-              destination_node_id: nextNodeId,
-              transition_condition: {
-                type: "prompt",
-                prompt: "After attempting the transfer, continue.",
-              },
-            });
-          }
-          retellNodes.push({
-            id: nodeId,
-            type: "conversation",
-            name: `Step ${i + 1}: Transfer`,
-            display_position: { x: 0, y: yPos },
-            instruction: {
-              type: "prompt",
-              text:
-                fn.data.text ||
-                "Transfer the call to the appropriate person or department.",
-            },
-            edges,
-          } satisfies RetellConversationNode);
-        }
+        transferIdx++;
+        const toolName = `transfer_call_${transferIdx}`;
+        const tool = buildTransferCallTool(toolName, fn);
+        if (next) edges.push({ destination_state_name: next, description: "If transfer fails, continue." });
+        const transferPrompt = fn.data.text || "Let the caller know you're transferring them.";
+        states.push({ name, state_prompt: `${transferPrompt} Use the "${toolName}" tool to transfer the call.`, edges, tools: [tool] });
         break;
       }
 
-      // ── End → end node ───────────────────────────────────────────
       case "end": {
-        retellNodes.push({
-          id: nodeId,
-          type: "end",
-          name: `Step ${i + 1}: End`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text:
-              fn.data.text ||
-              "End the conversation politely. Thank the caller for their time.",
-          },
-        } satisfies RetellEndNode);
+        const endTool = buildEndCallTool();
+        states.push({
+          name,
+          state_prompt: fn.data.text || "End the conversation politely. Thank the caller. Use the \"end_call\" tool to hang up.",
+          edges: [],
+          tools: [endTool],
+        });
         break;
       }
 
-      // ── Check Availability → conversation node + calendar tools ──
       case "check_availability": {
-        const provider = fn.data.provider || "google";
-        addTools(buildCalendarTools(clientId, provider));
-        const toolName =
-          provider === "calendly"
-            ? "check_calendly_availability"
-            : "check_availability";
-        const edges: RetellEdge[] = [];
-        if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt:
-                "After checking availability and presenting options to the caller, continue.",
-            },
-          });
-        }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: Check Availability`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text: `${fn.data.text || "Ask the caller what date they'd like to schedule for."} Then use the "${toolName}" tool to check available time slots for that date. Read back the available times and ask the caller to pick one.`,
-          },
-          edges,
-        } satisfies RetellConversationNode);
-        break;
-      }
-
-      // ── Book Appointment → conversation node + calendar tools ────
-      case "book_appointment": {
-        const provider = fn.data.provider || "google";
-        addTools(buildCalendarTools(clientId, provider));
-        const toolName =
-          provider === "calendly"
-            ? "book_calendly_appointment"
-            : "book_appointment";
-        const edges: RetellEdge[] = [];
-        if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt:
-                "After booking the appointment and confirming details, continue.",
-            },
-          });
-        }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: Book Appointment`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text: `${fn.data.text || "Confirm the selected time with the caller."} Then use the "${toolName}" tool to book the appointment. Collect the caller's name and contact info (phone/email) for the booking. Confirm the booking details once complete.`,
-          },
-          edges,
-        } satisfies RetellConversationNode);
-        break;
-      }
-
-      // ── CRM Lookup → conversation node + hubspot tool ────────────
-      case "crm_lookup": {
-        addTools([buildCrmLookupTool(clientId)]);
-        const edges: RetellEdge[] = [];
-        if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt:
-                "After looking up the caller and greeting them appropriately, continue.",
-            },
-          });
-        }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: CRM Lookup`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text:
-              fn.data.text ||
-              'Use the "lookup_caller" tool with the caller\'s phone number to check if they\'re an existing contact. If found, greet them by name and reference their account. If not found, proceed to collect their information.',
-          },
-          edges,
-        } satisfies RetellConversationNode);
-        break;
-      }
-
-      // ── Webhook → conversation node + custom tool ────────────────
-      case "webhook": {
-        if (fn.data.webhookUrl) {
-          webhookIdx++;
-          const toolName = `flow_webhook_${webhookIdx}`;
-          addTools([buildWebhookTool(toolName, fn)]);
-          const edges: RetellEdge[] = [];
-          if (nextNodeId) {
-            edges.push({
-              id: makeEdgeId(nodeId, 0),
-              destination_node_id: nextNodeId,
-              transition_condition: {
-                type: "prompt",
-                prompt: "After sending the data, continue.",
-              },
-            });
-          }
-          retellNodes.push({
-            id: nodeId,
-            type: "conversation",
-            name: `Step ${i + 1}: Webhook`,
-            display_position: { x: 0, y: yPos },
-            instruction: {
-              type: "prompt",
-              text: `${fn.data.text || "Collect relevant caller information."} Then use the "${toolName}" tool to send the data (caller name, phone, email, and any relevant notes from the conversation).`,
-            },
-            edges,
-          } satisfies RetellConversationNode);
+        const prov = fn.data.provider || "google";
+        const calTools = buildCalendarTools(clientId, prov);
+        const tn = prov === "calendly" ? "check_calendly_availability" : "check_availability";
+        const relevantTool = calTools.find(t => t.name === tn);
+        if (next) edges.push({ destination_state_name: next, description: "After checking availability, continue." });
+        const checkText = fn.data.text || "Ask what date they'd like.";
+        if (relevantTool) {
+          states.push({ name, state_prompt: `${checkText} Use "${tn}" to check slots.`, edges, tools: [relevantTool] });
         } else {
-          // No URL — just a data collection step
-          const edges: RetellEdge[] = [];
-          if (nextNodeId) {
-            edges.push({
-              id: makeEdgeId(nodeId, 0),
-              destination_node_id: nextNodeId,
-              transition_condition: {
-                type: "prompt",
-                prompt: "After collecting the information, continue.",
-              },
-            });
-          }
-          retellNodes.push({
-            id: nodeId,
-            type: "conversation",
-            name: `Step ${i + 1}: Collect Info`,
-            display_position: { x: 0, y: yPos },
-            instruction: {
-              type: "prompt",
-              text:
-                fn.data.text ||
-                "Collect relevant caller information (name, phone, email, and any relevant notes).",
-            },
-            edges,
-          } satisfies RetellConversationNode);
+          states.push({ name, state_prompt: `${checkText} Ask the caller for their preferred date and check the calendar for available appointment slots.`, edges });
         }
         break;
       }
 
-      // ── Request Callback → conversation node ─────────────────────
-      case "request_callback": {
-        const edges: RetellEdge[] = [];
-        if (nextNodeId) {
-          edges.push({
-            id: makeEdgeId(nodeId, 0),
-            destination_node_id: nextNodeId,
-            transition_condition: {
-              type: "prompt",
-              prompt:
-                "After arranging the callback, continue.",
-            },
-          });
+      case "book_appointment": {
+        const prov = fn.data.provider || "google";
+        const calTools = buildCalendarTools(clientId, prov);
+        const tn = prov === "calendly" ? "book_calendly_appointment" : "book_appointment";
+        const relevantTool = calTools.find(t => t.name === tn);
+        if (next) edges.push({ destination_state_name: next, description: "After booking, continue." });
+        const bookText = fn.data.text || "Confirm the time.";
+        if (relevantTool) {
+          states.push({ name, state_prompt: `${bookText} Use "${tn}" to book. Collect name/contact info.`, edges, tools: [relevantTool] });
+        } else {
+          states.push({ name, state_prompt: `${bookText} Confirm the appointment details and collect the caller's name, email, and phone number to complete the booking.`, edges });
         }
-        retellNodes.push({
-          id: nodeId,
-          type: "conversation",
-          name: `Step ${i + 1}: Request Callback`,
-          display_position: { x: 0, y: yPos },
-          instruction: {
-            type: "prompt",
-            text:
-              fn.data.text ||
-              "Let the caller know that their question will be emailed to the team, and someone will call them back with an answer. Collect their name, phone number, and a brief description of their question.",
-          },
-          edges,
-        } satisfies RetellConversationNode);
         break;
       }
+
+      case "crm_lookup": {
+        const crmTools = buildCrmTool(clientId);
+        const relevantTool = crmTools.find(t => t.name === "lookup_caller");
+        if (next) edges.push({ destination_state_name: next, description: "After looking up caller, continue." });
+        if (relevantTool) {
+          states.push({ name, state_prompt: fn.data.text || 'Use "lookup_caller" with the caller\'s phone to check if they\'re known.', edges, tools: [relevantTool] });
+        } else {
+          states.push({ name, state_prompt: fn.data.text || "Ask the caller for their name and phone number so you can look them up in the system.", edges });
+        }
+        break;
+      }
+
+      case "webhook": {
+        webhookIdx++;
+        const toolName = `flow_webhook_${webhookIdx}`;
+        const tool = buildWebhookTool(toolName, fn);
+        if (next) edges.push({ destination_state_name: next, description: "After sending data, continue." });
+        const webhookText = fn.data.text || "Collect caller info.";
+        if (tool) {
+          states.push({ name, state_prompt: `${webhookText} Use "${toolName}" to send data.`, edges, tools: [tool] });
+        } else {
+          states.push({ name, state_prompt: `${webhookText} Collect the caller's name, phone number, email, and any relevant notes.`, edges });
+        }
+        break;
+      }
+
+      case "request_callback":
+        if (next) edges.push({ destination_state_name: next, description: "After arranging callback, continue." });
+        states.push({ name, state_prompt: fn.data.text || "Let caller know someone will call back. Collect name, phone, and question.", edges });
+        break;
     }
   }
 
-  // Build the global prompt (guidelines that apply across all nodes)
-  const globalPrompt = [
-    "GUIDELINES:",
-    "- Keep responses concise and natural-sounding for voice conversation.",
-    "- If the caller goes off-script, gently guide them back to the flow.",
-    "- Be empathetic and professional throughout the conversation.",
-    "- If you cannot resolve something, offer to transfer to a human agent.",
-    "- When using tools, let the caller know you're working on it (e.g., 'Let me check that for you').",
-  ].join("\n");
-
-  const flowData: ConversationFlowData = {
-    nodes: retellNodes,
-    start_node_id: nodeIds[0] || null,
-    start_speaker: "agent",
-    global_prompt: globalPrompt,
-    model_choice: { model: "gpt-4.1", type: "cascading" },
-    tools,
+  return {
+    states,
+    starting_state: stateNames[0] || "",
+    general_prompt: [
+      "GUIDELINES:",
+      "- Keep responses concise and natural for voice.",
+      "- If caller goes off-script, gently guide them back.",
+      "- Be empathetic and professional.",
+      "- When using tools, let the caller know you're working on it.",
+    ].join("\n"),
+    general_tools: [],
   };
-
-  return { flowData, tools };
 }

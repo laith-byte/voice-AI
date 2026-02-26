@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
-import { compileFlowToRetellNodes } from "@/lib/compile-flow-to-retell";
+import { compileFlowToRetellStates, filterStatesForRetell } from "@/lib/compile-flow-to-retell";
 import type { FlowNode } from "@/lib/conversation-flow-templates";
 
 // ---------------------------------------------------------------------------
@@ -99,10 +99,16 @@ export async function DELETE(
 }
 
 // ---------------------------------------------------------------------------
-// POST — deploy flow (compile to native Retell conversation-flow, push to agent)
+// POST — deploy flow (compile to retell-llm states, push to agent's LLM)
+// ---------------------------------------------------------------------------
+// Retell does NOT allow changing response_engine type after creation
+// ("Cannot update response engine of agent version > 0"). So we stay within
+// the existing retell-llm engine and push multi-state prompts via
+// /update-retell-llm/{llm_id}. The Prompt Tree Editor reads these states
+// via convertLLMToFlow() and displays them as visual nodes.
 // ---------------------------------------------------------------------------
 
-const EXTERNAL_API_TIMEOUT_MS = 15_000; // 15s timeout for external API calls
+const EXTERNAL_API_TIMEOUT_MS = 15_000;
 
 export async function POST(
   request: NextRequest,
@@ -116,10 +122,10 @@ export async function POST(
 
   const { id } = await params;
 
-  // Fetch the flow with the linked agent (include platform for endpoint routing)
+  // Fetch the flow with the linked agent
   const { data: flow, error: flowError } = await supabase
     .from("conversation_flows")
-    .select("*, agents(id, retell_agent_id, retell_api_key_encrypted, organization_id, platform, conversation_flow_id)")
+    .select("*, agents(id, retell_agent_id, retell_api_key_encrypted, organization_id, platform)")
     .eq("id", id)
     .eq("client_id", clientId)
     .single();
@@ -141,10 +147,6 @@ export async function POST(
     );
   }
 
-  // Compile FlowNodes into Retell's native conversation-flow format
-  const nodes = flow.nodes as FlowNode[];
-  const { flowData } = compileFlowToRetellNodes(nodes, clientId!);
-
   // Resolve API key
   const apiKey =
     (agent.retell_api_key_encrypted
@@ -161,192 +163,195 @@ export async function POST(
   }
 
   const retellAgentId = agent.retell_agent_id as string;
-  const isChat =
-    agent.platform === "retell-chat" || agent.platform === "retell-sms";
+  const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
 
-  console.log("[conversation-flows] Deploying flow", id, "→ agent", retellAgentId, "platform:", agent.platform, "isChat:", isChat, "nodes:", flowData.nodes.length);
+  // Step 1: GET the agent to find response_engine.llm_id
+  const getEndpoint = isChat
+    ? `https://api.retellai.com/get-chat-agent/${retellAgentId}`
+    : `https://api.retellai.com/get-agent/${retellAgentId}`;
 
-  // Build the conversation-flow payload for Retell API
-  const flowPayload: Record<string, unknown> = {
-    nodes: flowData.nodes,
-    start_node_id: flowData.start_node_id,
-    start_speaker: flowData.start_speaker ?? "agent",
-    model_choice: flowData.model_choice ?? { model: "gpt-4.1", type: "cascading" },
-  };
-  if (flowData.global_prompt) flowPayload.global_prompt = flowData.global_prompt;
-
-  // Only include tools with valid public URLs — Retell rejects localhost/private hostnames
-  if (flowData.tools && flowData.tools.length > 0) {
-    const validTools = flowData.tools.filter((t) => {
-      if ("url" in t && typeof t.url === "string") {
-        try {
-          const hostname = new URL(t.url).hostname;
-          return hostname !== "localhost" && !hostname.startsWith("127.") && !hostname.startsWith("192.168.") && !hostname.startsWith("10.");
-        } catch {
-          return false;
-        }
-      }
-      return true; // non-custom tools (no URL) are always valid
-    });
-    if (validTools.length > 0) flowPayload.tools = validTools;
-  }
-
-  // Check if agent already has a conversation flow on Retell
-  let existingFlowId: string | null = (agent.conversation_flow_id as string) || null;
+  let llmId: string | null = null;
 
   try {
-    const getEndpoint = isChat
-      ? `https://api.retellai.com/get-chat-agent/${retellAgentId}`
-      : `https://api.retellai.com/get-agent/${retellAgentId}`;
-    const agentConfigRes = await fetch(getEndpoint, {
+    const agentRes = await fetch(getEndpoint, {
       headers: { Authorization: `Bearer ${apiKey}` },
       signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
     });
 
-    if (agentConfigRes.ok) {
-      const agentConfig = await agentConfigRes.json();
+    if (agentRes.ok) {
+      const agentConfig = await agentRes.json();
       const engine = agentConfig.response_engine;
 
-      // Extract existing conversation_flow_id if the agent uses that engine type
-      if (engine?.type === "conversation-flow") {
-        const cfId = engine.conversation_flow_id || engine["conversation-flow-id"];
-        if (cfId) existingFlowId = cfId;
-      }
-    }
-  } catch (fetchErr) {
-    console.warn("[conversation-flows] GET agent failed, will create new flow:", fetchErr);
-  }
-
-  // Create or update the Retell conversation flow
-  let retellFlowId: string;
-
-  try {
-    if (existingFlowId) {
-      // Update existing flow
-      const updateRes = await fetch(
-        `https://api.retellai.com/update-conversation-flow/${existingFlowId}`,
-        {
-          method: "PATCH",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(flowPayload),
-          signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
-        }
-      );
-
-      if (updateRes.ok) {
-        retellFlowId = existingFlowId;
-        console.log("[conversation-flows] Updated existing Retell flow:", retellFlowId);
-      } else if (updateRes.status === 404) {
-        // Flow was deleted on Retell side — fall through to create
-        existingFlowId = null;
-        console.warn("[conversation-flows] Existing flow not found on Retell, creating new one");
-        // Create below
-        const createRes = await fetch(
-          "https://api.retellai.com/create-conversation-flow",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(flowPayload),
-            signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
-          }
-        );
-        if (!createRes.ok) {
-          const err = await createRes.text();
-          console.error("[conversation-flows] Create flow failed:", createRes.status, err);
-          return NextResponse.json(
-            { error: "Failed to create conversation flow. Please try again." },
-            { status: 500 }
-          );
-        }
-        const newFlow = await createRes.json();
-        retellFlowId = newFlow.conversation_flow_id;
-        console.log("[conversation-flows] Created new Retell flow:", retellFlowId);
-      } else {
-        const err = await updateRes.text();
-        console.error("[conversation-flows] Update flow failed:", updateRes.status, err);
-        return NextResponse.json(
-          { error: "Failed to update conversation flow. Please try again." },
-          { status: 500 }
-        );
+      if (engine?.type === "retell-llm" && engine.llm_id) {
+        llmId = engine.llm_id;
+      } else if (engine?.llm_id) {
+        // Fallback: try llm_id even if type doesn't match exactly
+        llmId = engine.llm_id;
       }
     } else {
-      // Create new flow
-      const createRes = await fetch(
-        "https://api.retellai.com/create-conversation-flow",
+      const errText = await agentRes.text();
+      console.error("[conversation-flows] GET agent failed:", agentRes.status, errText);
+    }
+  } catch (err) {
+    console.error("[conversation-flows] GET agent error:", err);
+  }
+
+  if (!llmId) {
+    return NextResponse.json(
+      {
+        error: "Could not find LLM ID for this agent. The agent may need to be recreated.",
+        debug_hint: "Agent response_engine does not contain llm_id. Check Retell dashboard.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Step 2: GET existing LLM to preserve all fields (general_prompt, tools, begin_message, etc.)
+  // Retell may or may not do incremental PATCHes, so we do a full read-modify-write to be safe.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let existingLLM: Record<string, any> = {};
+
+  try {
+    const llmRes = await fetch(
+      `https://api.retellai.com/get-retell-llm/${llmId}`,
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+      }
+    );
+    if (llmRes.ok) {
+      existingLLM = await llmRes.json();
+    } else {
+      console.warn("[conversation-flows] GET LLM failed:", llmRes.status);
+    }
+  } catch (err) {
+    console.warn("[conversation-flows] GET LLM error:", err);
+  }
+
+  // Step 3: Compile FlowNodes into retell-llm states
+  const nodes = flow.nodes as FlowNode[];
+  const compiled = compileFlowToRetellStates(nodes, clientId!);
+
+  console.log(
+    "[conversation-flows] Deploying flow", id,
+    "\u2192 LLM", llmId,
+    "| states:", compiled.states.length,
+    "| tools:", compiled.general_tools.length,
+    "| starting_state:", compiled.starting_state,
+    "| existing general_prompt length:", (existingLLM.general_prompt || "").length,
+    "| existing tools:", (existingLLM.general_tools || []).length
+  );
+
+  // Step 4: Build PATCH payload — merge new states with all existing LLM fields
+  // We preserve everything that exists and only overwrite states + starting_state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const llmPayload: Record<string, any> = {};
+
+  // Preserve all existing fields that matter
+  if (existingLLM.general_prompt) llmPayload.general_prompt = existingLLM.general_prompt;
+  if (existingLLM.begin_message !== undefined) llmPayload.begin_message = existingLLM.begin_message;
+
+  // Tools: compiled states now carry per-state tools (state.tools).
+  // Clear general_tools to avoid duplicates between general_tools and state.tools.
+  // If the compiled output has general_tools, merge them; otherwise set empty.
+  if (compiled.general_tools.length > 0) {
+    const existingTools: Record<string, unknown>[] = existingLLM.general_tools || [];
+    const newToolNames = new Set(compiled.general_tools.map(t => t.name as string));
+    const keptTools = existingTools.filter(t => !newToolNames.has(t.name as string));
+    llmPayload.general_tools = [...keptTools, ...compiled.general_tools];
+  } else {
+    // Tools live on individual states now — clear general_tools to prevent
+    // "Tool name must be unique" errors from stale entries.
+    llmPayload.general_tools = [];
+  }
+
+  // Set the new states — filter out custom tools with non-public URLs
+  // (Retell rejects them). The compiler always generates all tools so the
+  // editor can display them; we only strip non-deployable ones for Retell.
+  llmPayload.states = filterStatesForRetell(compiled.states);
+  llmPayload.starting_state = compiled.starting_state;
+
+  try {
+    const updateRes = await fetch(
+      `https://api.retellai.com/update-retell-llm/${llmId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(llmPayload),
+        signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
+      }
+    );
+
+    if (!updateRes.ok) {
+      const errText = await updateRes.text();
+      console.error("[conversation-flows] LLM update failed:", updateRes.status, errText);
+      return NextResponse.json(
         {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
+          error: "Failed to deploy flow to Retell. Please try again.",
+          debug_status: updateRes.status,
+          debug_retell_error: errText,
+          debug_endpoint: `https://api.retellai.com/update-retell-llm/${llmId}`,
+          debug_payload_summary: {
+            states_count: compiled.states.length,
+            tools_count: compiled.general_tools.length,
+            starting_state: compiled.starting_state,
           },
-          body: JSON.stringify(flowPayload),
+        },
+        { status: 502 }
+      );
+    }
+
+    const updatedLLM = await updateRes.json();
+    console.log(
+      "[conversation-flows] Deploy PATCH response for flow", id,
+      "\u2192 LLM", llmId,
+      "| response states:", (updatedLLM.states || []).length,
+      "| response starting_state:", updatedLLM.starting_state,
+      "| state names:", (updatedLLM.states || []).map((s: { name: string }) => s.name),
+      "| PATCH response state tools:", (updatedLLM.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
+    );
+
+    // Verification read-back: GET the LLM to confirm states + tools persisted
+    try {
+      const verifyRes = await fetch(
+        `https://api.retellai.com/get-retell-llm/${llmId}`,
+        {
+          headers: { Authorization: `Bearer ${apiKey}` },
           signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
         }
       );
-      if (!createRes.ok) {
-        const err = await createRes.text();
-        console.error("[conversation-flows] Create flow failed:", createRes.status, err);
-        return NextResponse.json(
-          { error: "Failed to create conversation flow. Please try again." },
-          { status: 500 }
+      if (verifyRes.ok) {
+        const verifyLlm = await verifyRes.json();
+        const verifyCount = (verifyLlm.states || []).length;
+        console.log(
+          "[conversation-flows] Deploy VERIFIED: LLM", llmId,
+          "has", verifyCount, "states after deploy",
+          "| starting_state:", verifyLlm.starting_state,
+          "| GET response state tools:", (verifyLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
         );
+        if (verifyCount === 0) {
+          console.error(
+            "[conversation-flows] DEPLOY VERIFICATION FAILED:",
+            "Retell accepted the PATCH but LLM has 0 states!",
+            "Compiled", compiled.states.length, "states were not persisted."
+          );
+        }
       }
-      const newFlow = await createRes.json();
-      retellFlowId = newFlow.conversation_flow_id;
-      console.log("[conversation-flows] Created new Retell flow:", retellFlowId);
+    } catch (verifyErr) {
+      console.warn("[conversation-flows] Deploy verification read-back failed:", verifyErr);
     }
   } catch (err) {
-    console.error("[conversation-flows] Retell API call timed out or failed:", err);
+    console.error("[conversation-flows] LLM update timed out:", err);
     return NextResponse.json(
       { error: "Deployment timed out. Please try again." },
       { status: 504 }
     );
   }
 
-  // Link the agent to the conversation flow (set response_engine.type = "conversation-flow")
-  try {
-    const updateAgentEndpoint = isChat
-      ? `https://api.retellai.com/update-chat-agent/${retellAgentId}`
-      : `https://api.retellai.com/update-agent/${retellAgentId}`;
-
-    const agentUpdateRes = await fetch(updateAgentEndpoint, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        response_engine: {
-          type: "conversation-flow",
-          conversation_flow_id: retellFlowId,
-        },
-      }),
-      signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
-    });
-
-    if (!agentUpdateRes.ok) {
-      const err = await agentUpdateRes.text();
-      console.error("[conversation-flows] Agent link failed:", agentUpdateRes.status, err);
-      // Non-fatal — flow was created, just not linked yet
-      console.warn("[conversation-flows] Flow created but agent link failed. Will retry on next load.");
-    }
-  } catch (linkErr) {
-    console.error("[conversation-flows] Agent link timed out:", linkErr);
-  }
-
-  // Save the Retell flow ID to our agents table for future lookups
-  await supabase
-    .from("agents")
-    .update({ conversation_flow_id: retellFlowId })
-    .eq("id", agent.id as string);
-
-  // Mark flow as active and increment version in our DB
+  // Step 4: Mark flow as active and increment version
   await supabase
     .from("conversation_flows")
     .update({
@@ -364,14 +369,13 @@ export async function POST(
     .eq("agent_id", flow.agent_id)
     .neq("id", id);
 
-  console.log("[conversation-flows] Deploy succeeded for flow", id, "→ Retell flow", retellFlowId);
-
   return NextResponse.json({
     success: true,
-    retell_flow_id: retellFlowId,
-    nodes_deployed: flowData.nodes.length,
-    tools_registered: (flowData.tools || []).map((t) => t.name),
+    llm_id: llmId,
+    states_deployed: compiled.states.length,
+    tools_registered: compiled.general_tools.map((t) => t.name),
+    state_tools: compiled.states
+      .filter((s) => s.tools && s.tools.length > 0)
+      .map((s) => ({ state: s.name, tools: s.tools!.map((t) => t.name) })),
   });
 }
-
-

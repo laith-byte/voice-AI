@@ -149,3 +149,39 @@
 **Pattern: Team agents can't run npm commands in background mode**
 - Build/security agent couldn't execute `npm run build` or `npm run lint` due to bash permissions in background mode
 - Rule: Always run build/lint from the main agent context, not from background subagents. Include the results in the agent prompt if needed.
+
+### Onboarding Flow — Retell API Integration (2026-02-24)
+
+**Pattern: Template resources are shared — always clone, never reference**
+- Agent templates on Retell have shared LLMs and conversation flows. Copying `response_engine` from a template means the new agent SHARES the template's LLM/flow (with the template's prompt, persona, test data)
+- Result: New agent says "Kate from South Bay Dental" instead of the configured business
+- Rule: When creating from a template, ALWAYS create a new LLM (`/create-retell-llm`) or conversation flow (`/create-conversation-flow`) — never share the template's resource ID
+
+**Pattern: Retell API endpoint conventions are inconsistent — verify each one**
+- GET works at `/v2/agents/{id}` but POST fails (use `/create-agent`)
+- PATCH should use `/update-agent/{id}`, not `/v2/agents/{id}`
+- LLM endpoints: `/create-retell-llm`, `/get-retell-llm/{id}`, `/update-retell-llm/{id}`
+- Flow endpoints: `/create-conversation-flow`, `/get-conversation-flow/{id}`, `/update-conversation-flow/{id}`
+- Rule: Always use the explicit verb-prefix endpoints (create-, get-, update-, delete-), not the REST-style /v2/ paths
+
+**Pattern: Retell requires response_engine on every agent update**
+- PATCH to update voice/language fails without `response_engine` in the body — Retell treats it as a required field even for partial updates
+- Rule: Always include `response_engine` in Retell agent PATCH requests. Fetch current config first to echo it back.
+
+**Pattern: Retell rejects inline LLM objects on create-agent — use llm_id**
+- `response_engine: { type: "retell-llm", llm: { model, prompt } }` is rejected on `/create-agent`
+- Must create LLM separately via `/create-retell-llm`, then reference by `llm_id`
+- Rule: Always create standalone LLM resources, never pass inline LLM objects
+
+**Pattern: Conversation flow dynamic variables leak between agents**
+- Template's `default_dynamic_variables` contained test data ("Ikra") that leaked to new agents sharing the flow
+- Rule: When cloning flows, always clear `default_dynamic_variables` to prevent data leakage
+
+**Pattern: Supabase RLS blocks client users from write operations on agents table**
+- `client_own_agents` policy is FOR SELECT only — client users can read but not insert/update/delete
+- Rule: Use `createServiceClient()` (service-role) for all write operations on the agents table and related tables when operating in client-user context (onboarding, KB regeneration)
+
+**Pattern: Multiple compounding bugs require systematic fix-then-verify cycles**
+- Original bug (step 6 failing) had 4 root causes. Fixing those revealed 6 MORE bugs in the same flow
+- Each fix was verified with `npm run build` + manual testing before moving on
+- Rule: After fixing a bug in a multi-step flow, test EVERY step end-to-end, not just the step you fixed

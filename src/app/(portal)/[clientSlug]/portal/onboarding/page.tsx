@@ -85,6 +85,8 @@ interface Template {
   default_services: { name: string }[] | null;
   default_faqs: { question: string }[] | null;
   default_policies: { name: string }[] | null;
+  default_flow_nodes: FlowNode[] | null;
+  agent_name: string | null;
 }
 
 interface Industry {
@@ -166,6 +168,7 @@ export default function OnboardingWizardPage() {
   const [agentLlmId, setAgentLlmId] = useState<string | null>(null);
   const [loadingAgentConfig, setLoadingAgentConfig] = useState(false);
   const [agentVoice, setAgentVoice] = useState("");
+  const [engineType, setEngineType] = useState<string | null>(null);
   const [availableVoices, setAvailableVoices] = useState<Array<{voice_id: string; voice_name: string; provider: string; gender: string; accent: string | null}>>([]);
 
   // Step 7 state (Test Call)
@@ -281,7 +284,7 @@ export default function OnboardingWizardPage() {
       const supabase = createClient();
       const { data: templateData } = await supabase
         .from("agent_templates")
-        .select("id, name, vertical, icon, description, industry, use_case, industry_icon, use_case_icon, use_case_description, test_scenarios, default_services, default_faqs, default_policies")
+        .select("id, name, vertical, icon, description, industry, use_case, industry_icon, use_case_icon, use_case_description, test_scenarios, default_services, default_faqs, default_policies, default_flow_nodes, agent_name")
         .eq("wizard_enabled", true)
         .order("name");
 
@@ -316,9 +319,19 @@ export default function OnboardingWizardPage() {
     const industryKey = selectedIndustry || currentTemplate?.industry;
     const useCaseKey = currentTemplate?.use_case;
     if (industryKey && useCaseKey) {
-      const rawNodes = generateTemplateNodes(industryKey, useCaseKey);
+      // Prefer DB-stored flow nodes, fall back to code generation
+      let rawNodes: FlowNode[] = [];
+      let agentName: string | undefined;
+
+      if (currentTemplate?.default_flow_nodes?.length) {
+        rawNodes = currentTemplate.default_flow_nodes;
+        agentName = currentTemplate.agent_name || undefined;
+      } else {
+        rawNodes = generateTemplateNodes(industryKey, useCaseKey);
+        agentName = AGENT_NAMES[`${industryKey}_${useCaseKey}`];
+      }
+
       if (rawNodes.length) {
-        const agentName = AGENT_NAMES[`${industryKey}_${useCaseKey}`];
         setFlowNodes(replaceFlowPlaceholders(rawNodes, businessName, agentName));
       }
     }
@@ -339,7 +352,8 @@ export default function OnboardingWizardPage() {
         if (config.system_prompt) setAgentSystemPrompt(config.system_prompt);
         if (config.first_message) setAgentFirstMessage(config.first_message);
         if (config.llm_id) setAgentLlmId(config.llm_id);
-        if (config.voice_id) setAgentVoice(config.voice_id);
+        if (config.voice_id || config.voice) setAgentVoice(config.voice_id || config.voice);
+        if (config.engine_type) setEngineType(config.engine_type);
 
         // Fetch voice list for voice agents
         if (agentType === "voice") {
@@ -528,14 +542,18 @@ export default function OnboardingWizardPage() {
     setSaving(true);
     try {
       if (chatAgentId && (agentSystemPrompt || agentFirstMessage)) {
+        const patchBody: Record<string, unknown> = {
+          system_prompt: agentSystemPrompt,
+          ...(agentVoice && { voice: agentVoice }),
+          ...(agentLlmId && { llm_id: agentLlmId }),
+        };
+        if (engineType !== "conversation-flow") {
+          patchBody.first_message = agentFirstMessage;
+        }
         const patchRes = await fetch(`/api/agents/${chatAgentId}/config`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_prompt: agentSystemPrompt,
-            first_message: agentFirstMessage,
-            ...(agentVoice && { voice: agentVoice }),
-          }),
+          body: JSON.stringify(patchBody),
         });
         if (!patchRes.ok) {
           const errBody = await patchRes.json().catch(() => null);
@@ -2125,19 +2143,28 @@ export default function OnboardingWizardPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label className="text-sm font-semibold">First Message</Label>
-                    <p className="text-xs text-muted-foreground">
-                      The opening message your agent says when a {agentType === "chat" ? "visitor starts a conversation" : agentType === "sms" ? "text is received" : "call is answered"}.
-                    </p>
-                    <Textarea
-                      value={agentFirstMessage}
-                      onChange={(e) => setAgentFirstMessage(e.target.value)}
-                      placeholder="Hello! Thank you for calling..."
-                      className="resize-none text-sm"
-                      rows={3}
-                    />
-                  </div>
+                  {engineType === "conversation-flow" ? (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">First Message</Label>
+                      <p className="text-xs text-muted-foreground">
+                        The greeting is defined in your conversation flow&apos;s first node.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">First Message</Label>
+                      <p className="text-xs text-muted-foreground">
+                        The opening message your agent says when a {agentType === "chat" ? "visitor starts a conversation" : agentType === "sms" ? "text is received" : "call is answered"}.
+                      </p>
+                      <Textarea
+                        value={agentFirstMessage}
+                        onChange={(e) => setAgentFirstMessage(e.target.value)}
+                        placeholder="Hello! Thank you for calling..."
+                        className="resize-none text-sm"
+                        rows={3}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

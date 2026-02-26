@@ -27,13 +27,16 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (existing) {
-    // Update existing record without regressing current_step
+    // Update existing record without regressing current_step.
+    // Reset business_name when switching to a different template so stale
+    // industry names (e.g., "Acme HVAC") don't carry over to a new vertical.
     const { data, error } = await supabase
       .from("client_onboarding")
       .update({
         status: "in_progress",
         vertical_template_id,
         agent_type: agent_type || "voice",
+        business_name: null,
         updated_at: new Date().toISOString(),
       })
       .eq("client_id", clientId)

@@ -619,7 +619,18 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
         if (data.engine_type) setEngineType(data.engine_type);
         if (data.llm_id) setLlmId(data.llm_id);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((data as any)._retell_llm_data) setRetellLlmData((data as any)._retell_llm_data);
+        if ((data as any)._retell_llm_data) {
+          const llmD = (data as any)._retell_llm_data;
+          if (process.env.NODE_ENV === "development") {
+            console.log(
+              "[prompt-tree-editor] Loading retellLlmData",
+              "| states:", (llmD.states || []).length,
+              "| state tools:",
+              (llmD.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
+            );
+          }
+          setRetellLlmData(llmD);
+        }
 
         setFlowData({
           conversation_flow_id: data.conversation_flow_id,
@@ -839,6 +850,16 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
 
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveInFlight = useRef(false);
+  // Use refs for data that changes frequently but shouldn't retrigger the
+  // auto-save effect (retellLlmData, engineType, llmId).  Without refs,
+  // updating retellLlmData after a save response would change the autoSave
+  // callback reference → retrigger the useEffect → start an infinite save loop.
+  const retellLlmDataRef = useRef(retellLlmData);
+  retellLlmDataRef.current = retellLlmData;
+  const engineTypeRef = useRef(engineType);
+  engineTypeRef.current = engineType;
+  const llmIdRef = useRef(llmId);
+  llmIdRef.current = llmId;
 
   const autoSave = useCallback(() => {
     if (!flowExists || autoSaveInFlight.current) return;
@@ -871,11 +892,12 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
       tool_call_strict_mode: flowData.tool_call_strict_mode,
     };
 
-    // Include engine metadata for retell-llm
-    if (engineType === "retell-llm") {
-      payload.engine_type = engineType;
-      payload.llm_id = llmId;
-      payload._retell_llm_data = retellLlmData;
+    // Include engine metadata for retell-llm (read from refs to avoid
+    // re-triggering the auto-save effect when this data changes).
+    if (engineTypeRef.current === "retell-llm") {
+      payload.engine_type = engineTypeRef.current;
+      payload.llm_id = llmIdRef.current;
+      payload._retell_llm_data = retellLlmDataRef.current;
     }
 
     autoSaveInFlight.current = true;
@@ -889,13 +911,15 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
         if (res.ok) {
           setLastSavedAt(new Date());
           setHasUnsavedChanges(false);
-          // Update retell-llm data from response to keep it fresh
+          // Update retell-llm data from response to keep it fresh.
+          // Using the ref assignment avoids triggering a re-render cycle.
           try {
             const data = await res.json();
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if ((data as any)._retell_llm_data) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              setRetellLlmData((data as any)._retell_llm_data);
+              const fresh = (data as any)._retell_llm_data;
+              setRetellLlmData(fresh);
             }
           } catch {
             // Response parsing failed, but save succeeded — not critical
@@ -909,7 +933,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
         autoSaveInFlight.current = false;
         setSaving(false);
       });
-  }, [agentId, nodes, edges, flowData, flowExists, engineType, llmId, retellLlmData]);
+  }, [agentId, nodes, edges, flowData, flowExists]);
 
   // Track unsaved changes & trigger auto-save 2s after any change
   const initialLoadDone = useRef(false);
@@ -1172,11 +1196,64 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
   const [editingToolIndex, setEditingToolIndex] = useState<number | null>(null);
   const [editingToolType, setEditingToolType] = useState<string | null>(null);
 
-  const handleUpdateTools = useCallback(
+  // Helper: get the selected node's state name for per-state tool lookup
+  const getSelectedStateName = useCallback((): string | null => {
+    if (!selectedNodeId) return null;
+    const node = nodes.find((n) => n.id === selectedNodeId);
+    return (node?.data as { name?: string })?.name ?? selectedNodeId;
+  }, [selectedNodeId, nodes]);
+
+  // Helper: get tools for the currently selected node (per-state for retell-llm)
+  const getSelectedNodeTools = useCallback((): ConversationFlowTool[] => {
+    if (engineType === "retell-llm" && retellLlmData?.states) {
+      const stateName = getSelectedStateName();
+      if (stateName) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const state = (retellLlmData.states as any[]).find((s: any) => s.name === stateName);
+        const tools = (state?.tools ?? []) as ConversationFlowTool[];
+        if (process.env.NODE_ENV === "development") {
+          console.log(
+            "[getSelectedNodeTools]",
+            "stateName:", stateName,
+            "| found state:", !!state,
+            "| tools:", tools.length,
+            "| all state names:", (retellLlmData.states as { name: string }[]).map((s) => s.name)
+          );
+        }
+        return tools;
+      }
+    }
+    return flowData.tools ?? [];
+  }, [engineType, retellLlmData, getSelectedStateName, flowData.tools]);
+
+  // Helper: update tools for the currently selected node (per-state for retell-llm)
+  const setSelectedNodeTools = useCallback(
     (tools: ConversationFlowTool[]) => {
+      if (engineType === "retell-llm" && retellLlmData?.states) {
+        const stateName = getSelectedStateName();
+        if (stateName) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          setRetellLlmData((prev: any) => ({
+            ...prev,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            states: (prev.states || []).map((s: any) =>
+              s.name === stateName ? { ...s, tools } : s
+            ),
+          }));
+          setHasUnsavedChanges(true);
+          return;
+        }
+      }
       setFlowData((prev) => ({ ...prev, tools }));
     },
-    []
+    [engineType, retellLlmData, getSelectedStateName]
+  );
+
+  const handleUpdateTools = useCallback(
+    (tools: ConversationFlowTool[]) => {
+      setSelectedNodeTools(tools);
+    },
+    [setSelectedNodeTools]
   );
 
   const handleAddTool = useCallback((type: string) => {
@@ -1186,58 +1263,58 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
 
   const handleEditTool = useCallback(
     (toolIndex: number) => {
-      const tools = flowData.tools ?? [];
+      const tools = getSelectedNodeTools();
       const tool = tools[toolIndex];
       if (!tool) return;
       setEditingToolIndex(toolIndex);
       setEditingToolType(tool.type);
     },
-    [flowData.tools]
+    [getSelectedNodeTools]
   );
 
   const handleSaveCustomTool = useCallback(
     (tool: ConversationFlowCustomTool) => {
-      const tools = [...(flowData.tools ?? [])];
+      const tools = [...getSelectedNodeTools()];
       if (editingToolIndex !== null && editingToolIndex < tools.length) {
         tools[editingToolIndex] = tool;
       } else {
         tools.push(tool);
       }
-      setFlowData((prev) => ({ ...prev, tools }));
+      setSelectedNodeTools(tools);
       setEditingToolType(null);
       setEditingToolIndex(null);
     },
-    [flowData.tools, editingToolIndex]
+    [getSelectedNodeTools, setSelectedNodeTools, editingToolIndex]
   );
 
   const handleSaveCalTool = useCallback(
     (tool: CheckAvailabilityCalTool | BookAppointmentCalTool) => {
-      const tools = [...(flowData.tools ?? [])];
+      const tools = [...getSelectedNodeTools()];
       if (editingToolIndex !== null && editingToolIndex < tools.length) {
         tools[editingToolIndex] = tool;
       } else {
         tools.push(tool);
       }
-      setFlowData((prev) => ({ ...prev, tools }));
+      setSelectedNodeTools(tools);
       setEditingToolType(null);
       setEditingToolIndex(null);
     },
-    [flowData.tools, editingToolIndex]
+    [getSelectedNodeTools, setSelectedNodeTools, editingToolIndex]
   );
 
   const handleSaveGenericTool = useCallback(
     (tool: ConversationFlowTool) => {
-      const tools = [...(flowData.tools ?? [])];
+      const tools = [...getSelectedNodeTools()];
       if (editingToolIndex !== null && editingToolIndex < tools.length) {
         tools[editingToolIndex] = tool;
       } else {
         tools.push(tool);
       }
-      setFlowData((prev) => ({ ...prev, tools }));
+      setSelectedNodeTools(tools);
       setEditingToolType(null);
       setEditingToolIndex(null);
     },
-    [flowData.tools, editingToolIndex]
+    [getSelectedNodeTools, setSelectedNodeTools, editingToolIndex]
   );
 
   // ── Selected node reference ───────────────────────────────────────────
@@ -1431,7 +1508,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
               name: (n.data as { name?: string }).name ?? n.id,
             }))}
           startNodeId={flowData.start_node_id ?? null}
-          tools={flowData.tools ?? []}
+          tools={getSelectedNodeTools()}
           onUpdateNodeData={handleUpdateNodeData}
           onDeleteNode={handleDeleteNode}
           onSetStartNode={handleSetStartNode}
@@ -1459,7 +1536,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
         }}
         tool={
           editingToolIndex !== null
-            ? ((flowData.tools ?? [])[editingToolIndex] as ConversationFlowCustomTool) ?? null
+            ? (getSelectedNodeTools()[editingToolIndex] as ConversationFlowCustomTool) ?? null
             : null
         }
         onSave={handleSaveCustomTool}
@@ -1474,7 +1551,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
         }}
         tool={
           editingToolIndex !== null
-            ? ((flowData.tools ?? [])[editingToolIndex] as CheckAvailabilityCalTool | BookAppointmentCalTool) ?? null
+            ? (getSelectedNodeTools()[editingToolIndex] as CheckAvailabilityCalTool | BookAppointmentCalTool) ?? null
             : null
         }
         toolType={(editingToolType as "check_availability_cal" | "book_appointment_cal") ?? "check_availability_cal"}
@@ -1493,7 +1570,7 @@ export function PromptTreeEditor({ agentId }: PromptTreeEditorProps) {
           toolType={editingToolType as "end_call" | "transfer_call" | "agent_swap" | "press_digit" | "send_sms" | "extract_dynamic_variable"}
           tool={
             editingToolIndex !== null
-              ? (flowData.tools ?? [])[editingToolIndex] ?? null
+              ? getSelectedNodeTools()[editingToolIndex] ?? null
               : null
           }
           onSave={handleSaveGenericTool}

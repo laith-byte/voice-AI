@@ -51,7 +51,7 @@ function injectLanguageDirective(prompt: string, langCode: string): string {
   return directive + clean;
 }
 
-// Helper: fetch from Retell API
+// Helper: fetch from Retell API (15s timeout to prevent hanging requests)
 async function retellFetch(path: string, apiKey: string, options?: RequestInit) {
   return fetch(`https://api.retellai.com${path}`, {
     ...options,
@@ -60,6 +60,7 @@ async function retellFetch(path: string, apiKey: string, options?: RequestInit) 
       "Content-Type": "application/json",
       ...options?.headers,
     },
+    signal: options?.signal ?? AbortSignal.timeout(15_000),
   });
 }
 
@@ -103,11 +104,26 @@ export async function GET(
     }
     const retellAgent = await agentRes.json();
 
-    // Determine LLM config source: inline llm object or separate llm_id
+    // Determine LLM config source: inline llm, separate llm_id, or conversation-flow
     let llmConfig: Record<string, unknown> = {};
     const engine = retellAgent.response_engine;
+    let flowGlobalPrompt: string | null = null;
 
-    if (engine?.llm_id) {
+    if (engine?.type === "conversation-flow" && engine?.conversation_flow_id) {
+      // Conversation-flow engine — fetch the flow's global_prompt
+      try {
+        const flowRes = await retellFetch(
+          `/get-conversation-flow/${engine.conversation_flow_id}`,
+          retellApiKey
+        );
+        if (flowRes.ok) {
+          const flowConfig = await flowRes.json();
+          flowGlobalPrompt = (flowConfig.global_prompt as string) || null;
+        }
+      } catch {
+        // Fall through — global_prompt stays null
+      }
+    } else if (engine?.llm_id) {
       // Fetch the separate LLM object
       const llmRes = await retellFetch(`/get-retell-llm/${engine.llm_id}`, retellApiKey);
       if (llmRes.ok) {
@@ -120,6 +136,7 @@ export async function GET(
     // Map fields — handle both naming conventions
     // Strip any language directive so the UI sees a clean prompt
     const systemPrompt = stripLanguageDirective(
+      flowGlobalPrompt ||
       (llmConfig.general_prompt as string) || (llmConfig.system_prompt as string) || ""
     );
     const model = (llmConfig.model as string) || "gpt-4.1";
@@ -128,6 +145,7 @@ export async function GET(
 
     const config: Record<string, unknown> = {
       platform: agent.platform || "retell",
+      engine_type: engine?.type || "retell-llm",
       system_prompt: systemPrompt,
       llm_model: model,
       first_message: firstMessage,
@@ -153,6 +171,7 @@ export async function GET(
     } else {
       // Voice agent fields
       config.voice = retellAgent.voice_id || "Hailey";
+      config.voice_id = config.voice; // alias for backward compat
       config.voice_model = retellAgent.voice_model ?? null;
       config.voice_speed = retellAgent.voice_speed ?? 1;
       config.voice_temperature = retellAgent.voice_temperature ?? 1;
@@ -280,6 +299,28 @@ export async function PATCH(
 
   try {
     // -----------------------------------------------------------------------
+    // Single upfront GET — used for language/prompt resolution AND engine type
+    // detection, avoiding duplicate fetches.
+    // -----------------------------------------------------------------------
+    let currentAgent: Record<string, unknown> | null = null;
+    try {
+      const getEndpoint = isChat
+        ? `/get-chat-agent/${agent.retell_agent_id}`
+        : `/get-agent/${agent.retell_agent_id}`;
+      const currentRes = await retellFetch(getEndpoint, retellApiKey);
+      if (currentRes.ok) {
+        currentAgent = await currentRes.json();
+      }
+    } catch {
+      // If the lookup fails, proceed with what we have
+    }
+
+    const currentEngine = currentAgent?.response_engine as Record<string, unknown> | undefined;
+    const currentEngineType = (currentEngine?.type as string) || null;
+    const currentFlowId = (currentEngine?.conversation_flow_id as string) || null;
+    const isConversationFlow = currentEngineType === "conversation-flow" && !!currentFlowId;
+
+    // -----------------------------------------------------------------------
     // Resolve the effective prompt with the correct language directive.
     // We need BOTH the system prompt and the language to decide whether to
     // inject the directive.  When only one is present in the request we fetch
@@ -292,40 +333,31 @@ export async function PATCH(
     const needsLanguageLookup = effectivePrompt !== undefined && resolvedLanguage === undefined;
     const needsPromptLookup = effectivePrompt === undefined && resolvedLanguage !== undefined;
 
-    if (needsLanguageLookup || needsPromptLookup) {
-      try {
-        const getEndpoint = isChat
-          ? `/get-chat-agent/${agent.retell_agent_id}`
-          : `/get-agent/${agent.retell_agent_id}`;
-        const currentRes = await retellFetch(getEndpoint, retellApiKey);
-        if (currentRes.ok) {
-          const currentAgent = await currentRes.json();
+    if (currentAgent && (needsLanguageLookup || needsPromptLookup)) {
+      if (needsLanguageLookup) {
+        // system_prompt provided but no language — look up current language
+        resolvedLanguage = (currentAgent.language as string) || "en-US";
+      }
 
-          if (needsLanguageLookup) {
-            // system_prompt provided but no language — look up current language
-            resolvedLanguage = currentAgent.language || "en-US";
-          }
-
-          if (needsPromptLookup) {
-            // language provided but no system_prompt — look up current prompt
-            const engine = currentAgent.response_engine;
-            let currentPrompt = "";
-            const lid = body.llm_id || engine?.llm_id;
-            if (lid) {
-              const llmRes = await retellFetch(`/get-retell-llm/${lid}`, retellApiKey);
-              if (llmRes.ok) {
-                const llm = await llmRes.json();
-                currentPrompt = llm.general_prompt || llm.system_prompt || "";
-              }
-            } else if (engine?.llm) {
-              currentPrompt = engine.llm.general_prompt || engine.llm.system_prompt || "";
+      if (needsPromptLookup) {
+        // language provided but no system_prompt — look up current prompt
+        let currentPrompt = "";
+        const lid = body.llm_id || (currentEngine?.llm_id as string);
+        if (lid) {
+          try {
+            const llmRes = await retellFetch(`/get-retell-llm/${lid}`, retellApiKey);
+            if (llmRes.ok) {
+              const llm = await llmRes.json();
+              currentPrompt = llm.general_prompt || llm.system_prompt || "";
             }
-            effectivePrompt = stripLanguageDirective(currentPrompt);
+          } catch {
+            // LLM fetch failed, proceed without prompt
           }
+        } else if (currentEngine?.llm) {
+          const llm = currentEngine.llm as Record<string, string>;
+          currentPrompt = llm.general_prompt || llm.system_prompt || "";
         }
-      } catch {
-        // If the lookup fails, proceed with what we have — the language
-        // metadata will still update even if the directive can't be injected.
+        effectivePrompt = stripLanguageDirective(currentPrompt);
       }
     }
 
@@ -336,6 +368,7 @@ export async function PATCH(
 
     // If the agent uses a separate LLM (llm_id), update the LLM object
     if (body.llm_id) {
+      console.log("[config PATCH] body.llm_id present:", body.llm_id, "| updating standalone LLM");
       const llmUpdate: Record<string, unknown> = {};
       if (effectivePrompt !== undefined) llmUpdate.general_prompt = effectivePrompt;
       if (body.llm_model) llmUpdate.model = body.llm_model;
@@ -347,6 +380,30 @@ export async function PATCH(
       if (body.knowledge_base_ids !== undefined) llmUpdate.knowledge_base_ids = body.knowledge_base_ids;
 
       if (Object.keys(llmUpdate).length > 0) {
+        // Preserve existing prompt-tree states so this PATCH doesn't wipe them.
+        // Retell may not do incremental PATCHes for states, so we read-modify-write.
+        try {
+          const existingLlmRes = await retellFetch(`/get-retell-llm/${body.llm_id}`, retellApiKey);
+          if (existingLlmRes.ok) {
+            const existingLlm = await existingLlmRes.json();
+            if (existingLlm.states?.length > 0) {
+              llmUpdate.states = existingLlm.states;
+              if (existingLlm.starting_state) {
+                llmUpdate.starting_state = existingLlm.starting_state;
+              }
+              console.log("[config PATCH] Preserving", existingLlm.states.length, "states from LLM", body.llm_id, "| starting_state:", existingLlm.starting_state);
+            } else {
+              console.log("[config PATCH] LLM", body.llm_id, "has 0 states — nothing to preserve");
+            }
+          } else {
+            console.warn("[config PATCH] Failed to GET LLM", body.llm_id, "for state preservation:", existingLlmRes.status);
+          }
+        } catch (stateErr) {
+          // LLM fetch failed — proceed without preserving states
+          console.warn("[config PATCH] State preservation GET failed:", stateErr);
+        }
+
+        console.log("[config PATCH] Updating LLM", body.llm_id, "| fields:", Object.keys(llmUpdate), "| has states:", !!llmUpdate.states);
         const llmRes = await retellFetch(`/update-retell-llm/${body.llm_id}`, retellApiKey, {
           method: "PATCH",
           body: JSON.stringify(llmUpdate),
@@ -376,27 +433,12 @@ export async function PATCH(
 
     // Only set response_engine for inline LLM (no llm_id)
     if (!body.llm_id && (effectivePrompt !== undefined || body.llm_model || body.first_message || body.functions || body.model_high_priority !== undefined || body.tool_call_strict_mode !== undefined || body.kb_config !== undefined || body.knowledge_base_ids !== undefined)) {
+      console.log("[config PATCH] llm_id in body:", body.llm_id, "| currentEngine llm_id:", currentEngine?.llm_id, "| isConversationFlow:", isConversationFlow);
 
-      // Check current engine type to avoid switching from conversation-flow to retell-llm
-      let currentEngineType: string | null = null;
-      let currentFlowId: string | null = null;
-      try {
-        const getEndpoint = isChat
-          ? `/get-chat-agent/${agent.retell_agent_id}`
-          : `/get-agent/${agent.retell_agent_id}`;
-        const checkRes = await retellFetch(getEndpoint, retellApiKey);
-        if (checkRes.ok) {
-          const checkAgent = await checkRes.json();
-          currentEngineType = checkAgent.response_engine?.type || null;
-          currentFlowId = checkAgent.response_engine?.conversation_flow_id || null;
-        }
-      } catch {
-        // If check fails, fall through to existing behavior
-      }
-
-      if (currentEngineType === "conversation-flow" && currentFlowId) {
+      if (isConversationFlow) {
         // Agent uses conversation-flow engine — update the flow's global_prompt
         // instead of switching to retell-llm (which would destroy the flow)
+        console.log("[config PATCH] Detected conversation-flow engine, flowId:", currentFlowId);
         if (effectivePrompt !== undefined) {
           try {
             const flowUpdateRes = await retellFetch(
@@ -408,19 +450,65 @@ export async function PATCH(
               }
             );
             if (!flowUpdateRes.ok) {
-              console.warn("[config] Failed to update conversation-flow global_prompt, falling through");
+              const flowErr = await flowUpdateRes.text().catch(() => "");
+              console.warn("[config PATCH] Failed to update conversation-flow global_prompt:", flowUpdateRes.status, flowErr);
             }
-          } catch {
-            console.warn("[config] conversation-flow update failed");
+          } catch (flowErr) {
+            console.warn("[config PATCH] conversation-flow update failed:", flowErr);
           }
         }
-        // For first_message, update at the agent level (not engine-specific)
-        if (body.first_message !== undefined) {
-          retellUpdate.first_sentence = body.first_message;
-        }
+        // For conversation-flow engines, first_message lives inside the flow
+        // (as begin_message on the flow payload), not at the agent level.
+        // Attempting to set first_sentence / begin_message on the agent would
+        // cause a Retell API error, so we skip it here.
         // Do NOT set response_engine — preserve conversation-flow engine type
+      } else if (currentEngine?.llm_id) {
+        // Agent uses standalone LLM but body.llm_id was omitted — update the
+        // existing standalone LLM instead of switching to inline (which would
+        // disconnect the agent from its LLM and wipe prompt-tree states).
+        const fallbackLlmId = currentEngine.llm_id as string;
+        console.log("[config PATCH] Standalone LLM fallback — updating LLM", fallbackLlmId, "instead of switching to inline");
+
+        const llmUpdate: Record<string, unknown> = {};
+        if (effectivePrompt !== undefined) llmUpdate.general_prompt = effectivePrompt;
+        if (body.llm_model) llmUpdate.model = body.llm_model;
+        if (body.first_message !== undefined) llmUpdate.begin_message = body.first_message;
+        if (body.functions) llmUpdate.general_tools = body.functions;
+        if (body.model_high_priority !== undefined) llmUpdate.model_high_priority = body.model_high_priority;
+        if (body.tool_call_strict_mode !== undefined) llmUpdate.tool_call_strict_mode = body.tool_call_strict_mode;
+        if (body.kb_config !== undefined) llmUpdate.kb_config = body.kb_config;
+        if (body.knowledge_base_ids !== undefined) llmUpdate.knowledge_base_ids = body.knowledge_base_ids;
+
+        // Preserve existing prompt-tree states (read-modify-write)
+        try {
+          const existingLlmRes = await retellFetch(`/get-retell-llm/${fallbackLlmId}`, retellApiKey);
+          if (existingLlmRes.ok) {
+            const existingLlm = await existingLlmRes.json();
+            if (existingLlm.states?.length > 0) {
+              llmUpdate.states = existingLlm.states;
+              if (existingLlm.starting_state) {
+                llmUpdate.starting_state = existingLlm.starting_state;
+              }
+              console.log("[config PATCH] Preserving", existingLlm.states.length, "states from standalone LLM");
+            }
+          }
+        } catch {
+          // LLM fetch failed — proceed without preserving states
+        }
+
+        if (Object.keys(llmUpdate).length > 0) {
+          const llmRes = await retellFetch(`/update-retell-llm/${fallbackLlmId}`, retellApiKey, {
+            method: "PATCH",
+            body: JSON.stringify(llmUpdate),
+          });
+          if (!llmRes.ok) {
+            const err = await llmRes.text();
+            console.error("[config PATCH] Retell LLM update error (fallback path):", err);
+            return NextResponse.json({ error: "Failed to update agent LLM configuration" }, { status: llmRes.status });
+          }
+        }
       } else {
-        // Standard retell-llm inline path (existing behavior)
+        // Standard retell-llm inline path (for agents that truly use inline LLM)
         const promptField = isChat ? "system_prompt" : "general_prompt";
         const toolsField = isChat ? "tools" : "general_tools";
 
@@ -552,11 +640,31 @@ export async function PATCH(
       if (body.webhook.timeout_ms !== undefined) retellUpdate.webhook_timeout_ms = body.webhook.timeout_ms;
     }
 
+    // Ensure response_engine is always included in agent updates — Retell
+    // rejects partial updates that omit it.
+    if (Object.keys(retellUpdate).length > 0 && !retellUpdate.response_engine) {
+      if (isConversationFlow) {
+        retellUpdate.response_engine = {
+          type: "conversation-flow",
+          conversation_flow_id: currentFlowId,
+        };
+      } else if (body.llm_id || (currentEngine?.llm_id as string)) {
+        retellUpdate.response_engine = {
+          type: "retell-llm",
+          llm_id: body.llm_id || (currentEngine?.llm_id as string),
+        };
+      } else if (currentEngine) {
+        // Fallback: preserve current engine structure as-is
+        retellUpdate.response_engine = currentEngine;
+      }
+    }
+
     // Only call agent update if there are agent-level fields to update
     if (Object.keys(retellUpdate).length > 0) {
       const updateEndpoint = isChat
         ? `/update-chat-agent/${agent.retell_agent_id}`
         : `/update-agent/${agent.retell_agent_id}`;
+      console.log("[config PATCH] Updating agent via", updateEndpoint, "keys:", Object.keys(retellUpdate));
       const retellRes = await retellFetch(updateEndpoint, retellApiKey, {
         method: "PATCH",
         body: JSON.stringify(retellUpdate),
@@ -564,13 +672,21 @@ export async function PATCH(
 
       if (!retellRes.ok) {
         const err = await retellRes.text();
-        console.error("Retell API error:", err);
-        return NextResponse.json({ error: "Failed to update agent configuration" }, { status: retellRes.status });
+        console.error("[config PATCH] Retell API error:", retellRes.status, err);
+        let detail = "";
+        try {
+          const parsed = JSON.parse(err);
+          detail = parsed.error_message || parsed.error || parsed.message || err;
+        } catch {
+          detail = err;
+        }
+        return NextResponse.json({ error: `Failed to update agent configuration: ${detail}` }, { status: retellRes.status });
       }
     }
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error("[config PATCH] Unexpected error:", err);
     return NextResponse.json({ error: "Failed to update agent config" }, { status: 500 });
   }
 }

@@ -109,7 +109,7 @@ export async function PATCH(
           : process.env.RETELL_API_KEY;
 
         if (apiKey) {
-          await fetch(`https://api.retellai.com/v2/agents/${agent.retell_agent_id}`, {
+          await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
             method: "PATCH",
             headers: {
               Authorization: `Bearer ${apiKey}`,

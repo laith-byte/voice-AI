@@ -74,8 +74,17 @@ export async function POST(request: NextRequest) {
     });
 
     if (!retellRes.ok) {
+      const errText = await retellRes.text();
+      console.error("[test-call] Retell create-web-call error:", retellRes.status, errText);
+      let detail = "";
+      try {
+        const parsed = JSON.parse(errText);
+        detail = parsed.error_message || parsed.error || parsed.message || errText;
+      } catch {
+        detail = errText;
+      }
       return NextResponse.json(
-        { error: "Failed to create test call" },
+        { error: `Failed to create test call: ${detail}` },
         { status: retellRes.status }
       );
     }

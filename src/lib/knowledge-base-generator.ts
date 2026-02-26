@@ -1,4 +1,4 @@
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient as createServerClient, createServiceClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 
 const DAY_NAMES = [
@@ -56,7 +56,7 @@ interface LocationRow {
  */
 async function compileBusinessKnowledgeText(
   clientId: string
-): Promise<{ text: string; businessName: string }> {
+): Promise<{ text: string; businessName: string; businessPhone?: string; businessAddress?: string }> {
   const supabase = await createServerClient();
 
   const [settingsRes, hoursRes, servicesRes, faqsRes, policiesRes, locationsRes] =
@@ -167,7 +167,12 @@ async function compileBusinessKnowledgeText(
     }
   }
 
-  return { text: sections.join("\n"), businessName };
+  return {
+    text: sections.join("\n"),
+    businessName,
+    businessPhone: settings.business_phone,
+    businessAddress: settings.business_address,
+  };
 }
 
 /**
@@ -176,6 +181,7 @@ async function compileBusinessKnowledgeText(
  */
 export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
   const supabase = await createServerClient();
+  const adminDb = await createServiceClient();
 
   // Get agents linked to this client
   const { data: agents } = await supabase
@@ -189,7 +195,7 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
   }
 
   // Compile business data into text
-  const { text, businessName } = await compileBusinessKnowledgeText(clientId);
+  const { text, businessName, businessPhone, businessAddress } = await compileBusinessKnowledgeText(clientId);
   const kbName = `${businessName} — Business Profile`;
 
   for (const agent of agents) {
@@ -228,7 +234,7 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
       }
 
       // Delete from our database
-      await supabase
+      await adminDb
         .from("knowledge_base_sources")
         .delete()
         .eq("id", existingSource.id);
@@ -262,7 +268,7 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
     }
 
     // Save to our database
-    await supabase.from("knowledge_base_sources").insert({
+    await adminDb.from("knowledge_base_sources").insert({
       agent_id: agent.id,
       source_type: "business_profile",
       name: kbName,
@@ -284,9 +290,11 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
     });
 
     let existingKbIds: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let agentConfig: Record<string, any> | null = null;
     if (agentConfigRes.ok) {
-      const agentConfig = await agentConfigRes.json();
-      existingKbIds = agentConfig.knowledge_base_ids || [];
+      agentConfig = await agentConfigRes.json();
+      existingKbIds = agentConfig!.knowledge_base_ids || [];
     }
 
     // Remove old business_profile KB IDs, add new one
@@ -297,7 +305,7 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
     // Update agent with new KB IDs
     const updateEndpoint = isChat
       ? `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`
-      : `https://api.retellai.com/v2/agents/${agent.retell_agent_id}`;
+      : `https://api.retellai.com/update-agent/${agent.retell_agent_id}`;
 
     const updateRes = await fetch(updateEndpoint, {
       method: "PATCH",
@@ -312,5 +320,8 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
       const err = await updateRes.text().catch(() => `HTTP ${updateRes.status}`);
       console.error("Failed to link KB to agent:", err);
     }
+
+    // NOTE: System prompt is managed by regeneratePrompt() in prompt-generator.ts.
+    // Do NOT set general_prompt here — it would overwrite the detailed business prompt.
   }
 }

@@ -64,13 +64,19 @@ import {
   MessageSquare,
   HelpCircle,
   XCircle,
+  Car,
+  Hotel,
+  Scale,
+  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   type FlowNode,
   INDUSTRIES,
+  AGENT_NAMES,
   makeFlowId,
   generateTemplateNodes,
+  replaceFlowPlaceholders,
 } from "@/lib/conversation-flow-templates";
 import { FeatureGate } from "@/components/portal/feature-gate";
 
@@ -218,6 +224,34 @@ const INDUSTRY_STYLES: Record<
     text: "text-emerald-700 dark:text-emerald-300",
     border: "border-emerald-200 dark:border-emerald-800",
     icon: Wrench,
+  },
+  automotive: {
+    gradient: "from-slate-500 to-slate-600",
+    bg: "bg-slate-50 dark:bg-slate-950/30",
+    text: "text-slate-700 dark:text-slate-300",
+    border: "border-slate-200 dark:border-slate-800",
+    icon: Car,
+  },
+  hospitality: {
+    gradient: "from-pink-500 to-pink-600",
+    bg: "bg-pink-50 dark:bg-pink-950/30",
+    text: "text-pink-700 dark:text-pink-300",
+    border: "border-pink-200 dark:border-pink-800",
+    icon: Hotel,
+  },
+  legal: {
+    gradient: "from-sky-500 to-sky-600",
+    bg: "bg-sky-50 dark:bg-sky-950/30",
+    text: "text-sky-700 dark:text-sky-300",
+    border: "border-sky-200 dark:border-sky-800",
+    icon: Scale,
+  },
+  real_estate: {
+    gradient: "from-lime-500 to-lime-600",
+    bg: "bg-lime-50 dark:bg-lime-950/30",
+    text: "text-lime-700 dark:text-lime-300",
+    border: "border-lime-200 dark:border-lime-800",
+    icon: Home,
   },
 };
 
@@ -382,12 +416,15 @@ interface FlowTemplate {
   industryLabel: string;
   useCaseLabel: string;
   description: string;
+  nodeCount: number;
+  defaultFlowNodes: FlowNode[] | null;
 }
 
-function getAllTemplates(): FlowTemplate[] {
+function getCodeTemplates(): FlowTemplate[] {
   const templates: FlowTemplate[] = [];
   for (const [useCaseKey, uc] of Object.entries(USE_CASES)) {
     for (const [industryKey, ind] of Object.entries(INDUSTRIES)) {
+      const nodes = generateTemplateNodes(industryKey, useCaseKey);
       templates.push({
         industryKey,
         useCaseKey,
@@ -395,13 +432,16 @@ function getAllTemplates(): FlowTemplate[] {
         industryLabel: ind.label,
         useCaseLabel: uc.label,
         description: uc.description,
+        nodeCount: nodes.length,
+        defaultFlowNodes: null,
       });
     }
   }
   return templates;
 }
 
-const ALL_TEMPLATES = getAllTemplates();
+// Static fallback used until DB templates are loaded
+const CODE_TEMPLATES = getCodeTemplates();
 
 // ---------------------------------------------------------------------------
 // Page Component
@@ -430,6 +470,7 @@ function ConversationFlowsContent() {
   const [promptPreview, setPromptPreview] = useState<string | null>(null);
   const [templateFilter, setTemplateFilter] = useState<string>("all");
   const [confirmDeploy, setConfirmDeploy] = useState(false);
+  const [allTemplates, setAllTemplates] = useState<FlowTemplate[]>(CODE_TEMPLATES);
 
   // Editor state
   const [flowName, setFlowName] = useState("");
@@ -519,6 +560,46 @@ function ConversationFlowsContent() {
     fetchFlows();
   }, [fetchFlows]);
 
+  // Fetch DB-sourced templates (augments code-generated fallback)
+  useEffect(() => {
+    async function fetchTemplates() {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("agent_templates")
+        .select("industry, use_case, default_flow_nodes, agent_name")
+        .not("default_flow_nodes", "is", null)
+        .not("industry", "is", null)
+        .not("use_case", "is", null);
+
+      if (data && data.length > 0) {
+        const dbTemplates: FlowTemplate[] = data.map((row) => {
+          const ind = INDUSTRIES[row.industry!];
+          const uc = USE_CASES[row.use_case!];
+          const nodes = row.default_flow_nodes as FlowNode[];
+          return {
+            industryKey: row.industry!,
+            useCaseKey: row.use_case!,
+            name: `${ind?.label ?? row.industry} ${uc?.label ?? row.use_case}`,
+            industryLabel: ind?.label ?? row.industry!,
+            useCaseLabel: uc?.label ?? row.use_case!,
+            description: uc?.description ?? "",
+            nodeCount: nodes.length,
+            defaultFlowNodes: nodes,
+          };
+        });
+
+        // Merge: DB templates take precedence, add code-only templates that aren't in DB
+        const dbKeys = new Set(dbTemplates.map((t) => `${t.industryKey}_${t.useCaseKey}`));
+        const merged = [
+          ...dbTemplates,
+          ...CODE_TEMPLATES.filter((t) => !dbKeys.has(`${t.industryKey}_${t.useCaseKey}`)),
+        ];
+        setAllTemplates(merged);
+      }
+    }
+    fetchTemplates();
+  }, []);
+
   // Derived: active flow & its agent
   const activeFlow = flows.find((f) => f.is_active) ?? null;
   const activeAgent = activeFlow
@@ -560,7 +641,11 @@ function ConversationFlowsContent() {
     setEditingFlow(null);
     setFlowName(template.name);
     setFlowAgentId("");
-    setNodes(generateTemplateNodes(template.industryKey, template.useCaseKey));
+    // Prefer DB-stored flow nodes, fall back to code generation
+    const templateNodes = template.defaultFlowNodes?.length
+      ? template.defaultFlowNodes
+      : generateTemplateNodes(template.industryKey, template.useCaseKey);
+    setNodes(templateNodes);
     setCreating(true);
     setPromptPreview(null);
   }
@@ -779,14 +864,14 @@ function ConversationFlowsContent() {
 
   const filteredTemplates =
     templateFilter === "all"
-      ? ALL_TEMPLATES
-      : ALL_TEMPLATES.filter((t) => t.useCaseKey === templateFilter);
+      ? allTemplates
+      : allTemplates.filter((t) => t.useCaseKey === templateFilter);
 
   const renderTemplateCard = (t: FlowTemplate, idx: number) => {
     const style = INDUSTRY_STYLES[t.industryKey];
     const IndustryIcon = style?.icon ?? GitBranch;
     const UseCaseIcon = USE_CASES[t.useCaseKey]?.icon ?? UserCheck;
-    const nodeCount = USE_CASE_NODE_COUNTS[t.useCaseKey] ?? 0;
+    const nodeCount = t.nodeCount || (USE_CASE_NODE_COUNTS[t.useCaseKey] ?? 0);
     return (
       <Card
         key={`${t.industryKey}-${t.useCaseKey}`}
@@ -1135,7 +1220,7 @@ function ConversationFlowsContent() {
               onClick={() => setTemplateFilter("all")}
             >
               <Sparkles className="h-3 w-3 mr-1.5" />
-              All ({ALL_TEMPLATES.length})
+              All ({allTemplates.length})
             </Button>
             {Object.entries(USE_CASES).map(([key, uc]) => {
               const Icon = uc.icon;
@@ -1164,7 +1249,7 @@ function ConversationFlowsContent() {
             <div className="space-y-8">
               {Object.entries(USE_CASES).map(([useCaseKey, uc]) => {
                 const UseCaseIcon = uc.icon;
-                const templates = ALL_TEMPLATES.filter((t) => t.useCaseKey === useCaseKey);
+                const templates = allTemplates.filter((t) => t.useCaseKey === useCaseKey);
                 return (
                   <div key={useCaseKey}>
                     {/* Use case section header */}
