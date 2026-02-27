@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { cleanTranscriptText } from "@/lib/transcript-utils";
 
 interface TranscriptEntry {
   role: string;
@@ -131,7 +132,7 @@ export function TestCallReport({
                     <span className="font-medium opacity-60">
                       {entry.role === "agent" ? "Agent" : "You"}:
                     </span>{" "}
-                    {entry.content}
+                    {cleanTranscriptText(entry.content)}
                   </div>
                 </div>
               ))}

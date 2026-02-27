@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { mergeTranscript } from "@/lib/transcript-utils";
 
 interface TranscriptEntry {
   role: "agent" | "user";
@@ -96,7 +97,7 @@ export function useRetellCall() {
 
       client.on("update", (update: { transcript?: TranscriptEntry[] }) => {
         if (update.transcript) {
-          setTranscript(update.transcript);
+          setTranscript(prev => mergeTranscript(prev, update.transcript!));
         }
       });
 

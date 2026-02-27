@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { cleanTranscriptText } from "@/lib/transcript-utils";
 
 interface TranscriptEntry {
   role: string;
@@ -68,7 +69,7 @@ export function TestCallTranscript({
               <p className="text-[11px] font-medium opacity-70 mb-0.5">
                 {entry.role === "agent" ? agentName : "You"}
               </p>
-              {entry.content}
+              {cleanTranscriptText(entry.content, i < transcript.length - 1)}
             </div>
           </div>
         ))}
