@@ -56,11 +56,15 @@ export async function processRetryQueue(): Promise<number> {
 
   for (const item of items) {
     try {
-      // Mark as processing
-      await supabase
+      // MEDIUM-03: Atomic claim — only process if still pending (prevents race condition)
+      const { data: claimed } = await supabase
         .from("integration_retry_queue")
         .update({ status: "processing", updated_at: new Date().toISOString() })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+      if (!claimed) continue; // Another worker already claimed this item
 
       // Dynamic import of the executor based on provider
       const { executeNativeRecipe } = await import("@/lib/oauth/execute-native");

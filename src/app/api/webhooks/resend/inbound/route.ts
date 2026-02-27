@@ -87,11 +87,14 @@ function calculateNextAttempt(timezone: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  // Verify inbound webhook secret (passed as query param in the Resend webhook URL config)
+  // MEDIUM-16: Prefer header-based secret, fall back to query param for backward compatibility
   const url = new URL(request.url);
-  const secret = url.searchParams.get("secret");
+  const secret = request.headers.get("x-webhook-secret") || url.searchParams.get("secret");
   if (!secret || secret !== process.env.RESEND_INBOUND_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (url.searchParams.get("secret")) {
+    console.warn("[resend-inbound] Secret passed via query param — migrate to x-webhook-secret header");
   }
 
   try {

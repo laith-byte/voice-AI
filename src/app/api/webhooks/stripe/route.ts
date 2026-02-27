@@ -186,8 +186,13 @@ async function handleCheckoutCompleted(session: any, supabase: any) {
   if (linkError) {
     logger.error("Failed to generate invite link", { error: linkError.message });
     // Try to see if user already exists in auth
-    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    const existingAuthUser = users?.find((u: { email?: string }) => u.email === customerEmail);
+    // MEDIUM-14: Direct query instead of paginated listUsers
+    const { data: existingAuthUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", customerEmail)
+      .limit(1)
+      .maybeSingle();
     if (existingAuthUser) {
       // User exists in auth but not linked to a client — create the users row
       await createUserRow(supabase, existingAuthUser.id, customerEmail, organization_id, client.id);

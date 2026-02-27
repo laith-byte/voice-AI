@@ -77,7 +77,11 @@ export function filterStatesForRetell(states: RetellLLMState[]): RetellLLMState[
 // Helpers
 // ---------------------------------------------------------------------------
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
+function getAppUrl(): string {
+  const url = process.env.NEXT_PUBLIC_APP_URL;
+  if (!url) throw new Error("NEXT_PUBLIC_APP_URL environment variable is required");
+  return url;
+}
 
 function isPublicUrl(url: string): boolean {
   if (!url) return false;
@@ -136,7 +140,7 @@ function buildCalendarTools(clientId: string, provider: "google" | "calendly"): 
         type: "custom",
         name: "check_calendly_availability",
         description: "Check available appointment slots on Calendly.",
-        url: `${APP_URL}/api/tools/calendly/availability`,
+        url: `${getAppUrl()}/api/tools/calendly/availability`,
         method: "POST",
         speak_during_execution: true,
         execution_message_description: "Let the caller know you are checking the calendar",
@@ -149,7 +153,7 @@ function buildCalendarTools(clientId: string, provider: "google" | "calendly"): 
         type: "custom",
         name: "book_calendly_appointment",
         description: "Book an appointment on Calendly.",
-        url: `${APP_URL}/api/tools/calendly/book`,
+        url: `${getAppUrl()}/api/tools/calendly/book`,
         method: "POST",
         speak_during_execution: true,
         execution_message_description: "Let the caller know you are booking the appointment",
@@ -165,7 +169,7 @@ function buildCalendarTools(clientId: string, provider: "google" | "calendly"): 
       type: "custom",
       name: "check_availability",
       description: "Check available appointment slots for a given date.",
-      url: `${APP_URL}/api/tools/calendar/availability`,
+      url: `${getAppUrl()}/api/tools/calendar/availability`,
       method: "POST",
       speak_during_execution: true,
       execution_message_description: "Let the caller know you are checking the calendar",
@@ -178,7 +182,7 @@ function buildCalendarTools(clientId: string, provider: "google" | "calendly"): 
       type: "custom",
       name: "book_appointment",
       description: "Book an appointment at a specific time.",
-      url: `${APP_URL}/api/tools/calendar/book`,
+      url: `${getAppUrl()}/api/tools/calendar/book`,
       method: "POST",
       speak_during_execution: true,
       execution_message_description: "Let the caller know you are booking the appointment",
@@ -195,7 +199,7 @@ function buildCrmTool(clientId: string): RetellLLMTool[] {
     type: "custom",
     name: "lookup_caller",
     description: "Look up a caller by phone number in the CRM.",
-    url: `${APP_URL}/api/tools/hubspot/lookup`,
+    url: `${getAppUrl()}/api/tools/hubspot/lookup`,
     method: "POST",
     speak_during_execution: true,
     execution_message_description: "Let the caller know you are looking them up",

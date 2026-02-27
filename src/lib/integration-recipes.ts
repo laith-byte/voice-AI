@@ -180,13 +180,8 @@ async function logSuccess(
     response_code: responseCode ?? null,
   });
 
-  await supabase
-    .from("client_automations")
-    .update({
-      last_triggered_at: new Date().toISOString(),
-      trigger_count: automation.trigger_count + 1,
-    })
-    .eq("id", automation.id);
+  // MEDIUM-02: Atomic increment to prevent race condition
+  await supabase.rpc("increment_automation_counter", { p_id: automation.id, p_field: "trigger_count" });
 }
 
 async function logFailure(
@@ -202,11 +197,11 @@ async function logFailure(
     response_code: responseCode ?? null,
   });
 
+  // MEDIUM-02: Atomic increment to prevent race condition
+  await supabase.rpc("increment_automation_counter", { p_id: automation.id, p_field: "error_count" });
+  // Update last_error separately (not a counter, no race condition)
   await supabase
     .from("client_automations")
-    .update({
-      error_count: automation.error_count + 1,
-      last_error: errorMessage,
-    })
+    .update({ last_error: errorMessage })
     .eq("id", automation.id);
 }

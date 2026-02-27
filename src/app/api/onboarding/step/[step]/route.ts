@@ -63,7 +63,8 @@ export async function PATCH(
 
       // Save language to the client record (not onboarding — no language column there)
       if (body.language !== undefined) {
-        await supabase.from("clients").update({ language: body.language }).eq("id", clientId);
+        const { error: langError } = await supabase.from("clients").update({ language: body.language }).eq("id", clientId);
+        if (langError) console.error("Failed to update client language:", langError.message);
       }
 
       // Also create or update business_settings row
@@ -89,7 +90,8 @@ export async function PATCH(
 
       // Keep sidebar name (clients.name) in sync with business name
       if (body.business_name) {
-        await supabase.from("clients").update({ name: body.business_name }).eq("id", clientId);
+        const { error: nameError } = await supabase.from("clients").update({ name: body.business_name }).eq("id", clientId);
+        if (nameError) console.error("Failed to update client name:", nameError.message);
       }
       break;
     }

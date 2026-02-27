@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         { onConflict: "agent_id,phone" }
       )
       .select("id, phone, name")
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
 

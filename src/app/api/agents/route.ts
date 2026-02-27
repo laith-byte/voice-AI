@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { safeJson } from "@/lib/api/safe-json";
 import { encrypt } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
+import { isSafeWebhookUrl } from "@/lib/url-validation";
 
 export async function GET() {
   const { supabase, response } = await requireAuth();
@@ -19,7 +21,13 @@ export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
-  const body = await request.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { body, error: jsonError } = await safeJson<Record<string, any>>(request);
+  if (jsonError) return jsonError;
+
+  if (body.webhook_url && !isSafeWebhookUrl(body.webhook_url)) {
+    return NextResponse.json({ error: "Invalid webhook URL" }, { status: 400 });
+  }
 
   const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user!.id).single();
   if (!userData) return NextResponse.json({ error: "User not found" }, { status: 404 });

@@ -3,6 +3,9 @@ import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
+if (!APP_URL) {
+  console.warn("[register-agent-tools] NEXT_PUBLIC_APP_URL not set — tool URLs will be invalid");
+}
 
 // Tool definitions for Retell custom tools (exported for reuse by flow deployer)
 export const CALENDAR_TOOLS = [

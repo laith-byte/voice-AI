@@ -39,20 +39,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 2. Increment test_calls_used in client_onboarding
-  const { data: onboarding } = await supabase
-    .from("client_onboarding")
-    .select("test_calls_used")
-    .eq("client_id", clientId)
-    .single();
-
-  await supabase
-    .from("client_onboarding")
-    .update({
-      test_calls_used: (onboarding?.test_calls_used ?? 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("client_id", clientId);
+  // MEDIUM-09: Atomic increment to prevent TOCTOU race condition
+  await supabase.rpc("increment_test_calls_used", { p_client_id: clientId });
 
   // 3. Create web call via Retell API
   try {

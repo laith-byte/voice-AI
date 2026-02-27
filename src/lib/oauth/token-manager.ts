@@ -77,6 +77,7 @@ async function doRefresh(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(refreshBody),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {

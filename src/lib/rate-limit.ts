@@ -23,6 +23,15 @@ export function createRateLimiter({ windowMs, maxRequests }: { windowMs: number;
         hits.set(key, filtered);
       }
     }
+
+    // Cap max entries to prevent memory leak from too many unique keys
+    if (hits.size > 10_000) {
+      const keys = Array.from(hits.keys());
+      const deleteCount = Math.floor(keys.length / 2);
+      for (let i = 0; i < deleteCount; i++) {
+        hits.delete(keys[i]);
+      }
+    }
   }
 
   function check(key: string): RateLimitResult {

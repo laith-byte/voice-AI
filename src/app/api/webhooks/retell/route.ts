@@ -13,6 +13,12 @@ import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
   try {
+    // MEDIUM-20: Reject oversized payloads (> 1MB)
+    const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
+    if (contentLength > 1_048_576) {
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+    }
+
     const rawBody = await request.text();
 
     // Verify webhook signature from Retell
@@ -140,7 +146,8 @@ export async function POST(request: NextRequest) {
           call_type: call.call_type,
         };
 
-        await supabase
+        // MEDIUM-15: Check for DB mutation errors
+        const { error: callEndedError } = await supabase
           .from("call_logs")
           .update({
             status: "completed",
@@ -153,6 +160,7 @@ export async function POST(request: NextRequest) {
               : new Date().toISOString(),
           })
           .eq("retell_call_id", call.call_id);
+        if (callEndedError) console.error("Failed to update call_log on call_ended:", callEndedError);
 
         // Handle callback call completion
         if (call.metadata?.source === "callback" && call.metadata?.pending_callback_id) {
@@ -196,7 +204,7 @@ export async function POST(request: NextRequest) {
                 tomorrowHour = tomorrow.getUTCHours();
               }
               const hoursToAdd = (9 - tomorrowHour + 24) % 24;
-              tomorrow.setHours(tomorrow.getHours() + hoursToAdd);
+              tomorrow.setTime(tomorrow.getTime() + hoursToAdd * 3600000);
               tomorrow.setMinutes(0, 0, 0);
 
               await supabase
@@ -243,10 +251,12 @@ export async function POST(request: NextRequest) {
           updateData.transcript = call.transcript_object;
 
         if (Object.keys(updateData).length > 0) {
-          await supabase
+          // MEDIUM-15: Check for DB mutation errors
+          const { error: analyzedError } = await supabase
             .from("call_logs")
             .update(updateData)
             .eq("retell_call_id", call.call_id);
+          if (analyzedError) console.error("Failed to update call_log on call_analyzed:", analyzedError);
         }
         break;
       }
@@ -368,23 +378,22 @@ export async function POST(request: NextRequest) {
         const { error: rpcError } = await supabase.rpc("increment_total_calls", { p_client_id: clientId });
         if (rpcError) console.error("increment_total_calls error:", rpcError);
 
-        // Check for first real call after go-live
-        const { data: onboarding } = await supabase
+        // MEDIUM-08: Atomic claim to prevent duplicate first-call emails
+        const { data: claimed } = await supabase
           .from("client_onboarding")
-          .select("go_live_at, first_call_notified_at, contact_email, business_name")
+          .update({ first_call_notified_at: new Date().toISOString() })
           .eq("client_id", clientId)
-          .single();
+          .not("go_live_at", "is", null)
+          .is("first_call_notified_at", null)
+          .select("contact_email, business_name")
+          .maybeSingle();
 
-        if (
-          onboarding?.go_live_at &&
-          !onboarding.first_call_notified_at &&
-          onboarding.contact_email
-        ) {
-          const bizName = onboarding.business_name || "Your Business";
+        if (claimed?.contact_email) {
+          const bizName = claimed.business_name || "Your Business";
           const safeBizName = bizName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
           const safeFromName = bizName.replace(/[<>"'\r\n]/g, "");
           await sendEmail({
-            to: onboarding.contact_email,
+            to: claimed.contact_email,
             subject: `Your first call just happened! - ${bizName}`,
             html: `<div style="font-family: sans-serif; max-width: 600px;">
               <h2 style="color: #1a1a2e;">Your AI agent just handled its first real call!</h2>
@@ -398,11 +407,6 @@ export async function POST(request: NextRequest) {
             </div>`,
             from: `${safeFromName} <notifications@invarialabs.com>`,
           }).catch((err: unknown) => console.error("First-call email error:", err));
-
-          await supabase
-            .from("client_onboarding")
-            .update({ first_call_notified_at: new Date().toISOString() })
-            .eq("client_id", clientId);
         }
       }
     }
@@ -457,12 +461,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Update webhook log with forwarding result
+      // MEDIUM-15: Check for DB mutation errors
       if (forwardResults.length > 0) {
-        await supabase
+        const { error: fwdLogError } = await supabase
           .from("webhook_logs")
           .update({ forwarding_result: forwardResults.join(", ") })
           .eq("platform_call_id", call.call_id)
           .eq("event", event);
+        if (fwdLogError) console.error("Failed to update webhook_logs forwarding_result:", fwdLogError);
       }
     }
 

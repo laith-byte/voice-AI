@@ -579,13 +579,16 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     }
 
     // Build request_callback tool for callback pipeline
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
+    const APP_URL = process.env.NEXT_PUBLIC_APP_URL;
+    if (!APP_URL) {
+      console.warn("NEXT_PUBLIC_APP_URL not set — callback tool URL will be empty");
+    }
     const callbackTool = {
       type: "custom" as const,
       name: "request_callback",
       description:
         "Use this when you cannot answer a caller's question and need to get the answer from the business owner. This emails the business owner and arranges a callback. You MUST collect the caller's phone number before using this tool.",
-      url: `${APP_URL}/api/tools/callback?client_id=${clientId}`,
+      url: `${APP_URL || ""}/api/tools/callback?client_id=${clientId}`,
       method: "POST",
       header: { Authorization: `Bearer ${process.env.RETELL_TOOLS_API_KEY}` },
       speak_during_execution: true,

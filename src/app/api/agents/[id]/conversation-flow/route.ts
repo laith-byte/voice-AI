@@ -14,6 +14,10 @@ import {
 import { compileFlowToRetellStates, filterStatesForRetell } from "@/lib/compile-flow-to-retell";
 import type { FlowNode } from "@/lib/conversation-flow-templates";
 
+// MEDIUM-13: Track redeploy timestamps to prevent infinite loop
+const redeployTimestamps = new Map<string, number>();
+const REDEPLOY_COOLDOWN_MS = 60_000; // 60 seconds
+
 // Helper: fetch from Retell API (same pattern as config/route.ts)
 async function retellFetch(
   path: string,
@@ -472,113 +476,119 @@ export async function GET(
           );
 
           if (needsRedeploy) {
-            console.log(
-              "[conversation-flow GET] Auto-redeploying",
-              compiledCount,
-              "states to LLM",
-              llmId,
-              "(was", llmStateCount, ")"
-            );
-
-            // Build redeploy payload: set states, preserve existing prompt/tools
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const redeployPayload: Record<string, any> = {
-              states: filterStatesForRetell(compiled.states),
-              starting_state: compiled.starting_state,
-            };
-
-            // Preserve existing general_prompt and begin_message
-            if (llmData.general_prompt) {
-              redeployPayload.general_prompt = llmData.general_prompt;
-            }
-            if (llmData.begin_message !== undefined) {
-              redeployPayload.begin_message = llmData.begin_message;
-            }
-
-            // Tools live on individual states (state.tools) now.
-            // Clear general_tools to avoid duplicate name conflicts.
-            redeployPayload.general_tools = [];
-
-            const redeployRes = await retellFetch(
-              `/update-retell-llm/${llmId}`,
-              retellApiKey,
-              {
-                method: "PATCH",
-                body: JSON.stringify(redeployPayload),
-              }
-            );
-
-            if (redeployRes.ok) {
-              const patchLlm = await redeployRes.json();
-              console.log(
-                "[conversation-flow GET] Auto-redeploy PATCH succeeded:",
-                (patchLlm.states || []).length,
-                "states on LLM",
-                llmId,
-                "| PATCH response has state tools:",
-                (patchLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-              );
-
-              // Verification GET: The Retell PATCH response may not include
-              // per-state tools in the response body. Do a fresh GET to ensure
-              // _retell_llm_data has the complete state including tools.
-              let finalLlm = patchLlm;
-              try {
-                const verifyRes = await retellFetch(
-                  `/get-retell-llm/${llmId}`,
-                  retellApiKey
-                );
-                if (verifyRes.ok) {
-                  finalLlm = await verifyRes.json();
-                  console.log(
-                    "[conversation-flow GET] Verification GET:",
-                    (finalLlm.states || []).length,
-                    "states",
-                    "| state tools:",
-                    (finalLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-                  );
-                }
-              } catch (verifyErr) {
-                console.warn("[conversation-flow GET] Verification GET failed:", verifyErr);
-              }
-
-              // Also update the flow's agent_id to point to this agent
-              // so future loads skip the client_id fallback.
-              if (activeFlow.agent_id !== id) {
-                Promise.resolve(
-                  adminDb
-                    .from("conversation_flows")
-                    .update({ agent_id: id })
-                    .eq("id", activeFlow.id)
-                ).then(() =>
-                  console.log(
-                    "[conversation-flow GET] Updated flow",
-                    activeFlow!.id,
-                    "agent_id to",
-                    id
-                  )
-                ).catch(() => {});
-              }
-
-              // Merge compiled tools into the LLM data for the editor.
-              // Retell may not store custom tools with localhost URLs, but
-              // the editor should show all configured tools.
-              const enrichedLlm = mergCompiledToolsIntoLlm(finalLlm, compiled);
-              const convertedFlow = convertLLMToFlow(enrichedLlm);
-              return NextResponse.json({
-                exists: true,
-                flow: convertedFlow,
-                conversation_flow_id: null,
-                engine_type: "retell-llm",
-                llm_id: llmId,
-                _retell_llm_data: enrichedLlm,
-              });
+            const lastRedeploy = redeployTimestamps.get(llmId);
+            if (lastRedeploy && Date.now() - lastRedeploy < REDEPLOY_COOLDOWN_MS) {
+              console.warn("[conversation-flow GET] Skipping auto-redeploy — cooldown active for LLM", llmId);
             } else {
-              console.error(
-                "[conversation-flow GET] Auto-redeploy PATCH failed:",
-                redeployRes.status,
-                await redeployRes.text().catch(() => "")
+              redeployTimestamps.set(llmId, Date.now());
+              console.log(
+                "[conversation-flow GET] Auto-redeploying",
+                compiledCount,
+                "states to LLM",
+                llmId,
+                "(was", llmStateCount, ")"
               );
+
+              // Build redeploy payload: set states, preserve existing prompt/tools
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const redeployPayload: Record<string, any> = {
+                states: filterStatesForRetell(compiled.states),
+                starting_state: compiled.starting_state,
+              };
+
+              // Preserve existing general_prompt and begin_message
+              if (llmData.general_prompt) {
+                redeployPayload.general_prompt = llmData.general_prompt;
+              }
+              if (llmData.begin_message !== undefined) {
+                redeployPayload.begin_message = llmData.begin_message;
+              }
+
+              // Tools live on individual states (state.tools) now.
+              // Clear general_tools to avoid duplicate name conflicts.
+              redeployPayload.general_tools = [];
+
+              const redeployRes = await retellFetch(
+                `/update-retell-llm/${llmId}`,
+                retellApiKey,
+                {
+                  method: "PATCH",
+                  body: JSON.stringify(redeployPayload),
+                }
+              );
+
+              if (redeployRes.ok) {
+                const patchLlm = await redeployRes.json();
+                console.log(
+                  "[conversation-flow GET] Auto-redeploy PATCH succeeded:",
+                  (patchLlm.states || []).length,
+                  "states on LLM",
+                  llmId,
+                  "| PATCH response has state tools:",
+                  (patchLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
+                );
+
+                // Verification GET: The Retell PATCH response may not include
+                // per-state tools in the response body. Do a fresh GET to ensure
+                // _retell_llm_data has the complete state including tools.
+                let finalLlm = patchLlm;
+                try {
+                  const verifyRes = await retellFetch(
+                    `/get-retell-llm/${llmId}`,
+                    retellApiKey
+                  );
+                  if (verifyRes.ok) {
+                    finalLlm = await verifyRes.json();
+                    console.log(
+                      "[conversation-flow GET] Verification GET:",
+                      (finalLlm.states || []).length,
+                      "states",
+                      "| state tools:",
+                      (finalLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
+                    );
+                  }
+                } catch (verifyErr) {
+                  console.warn("[conversation-flow GET] Verification GET failed:", verifyErr);
+                }
+
+                // Also update the flow's agent_id to point to this agent
+                // so future loads skip the client_id fallback.
+                if (activeFlow.agent_id !== id) {
+                  Promise.resolve(
+                    adminDb
+                      .from("conversation_flows")
+                      .update({ agent_id: id })
+                      .eq("id", activeFlow.id)
+                  ).then(() =>
+                    console.log(
+                      "[conversation-flow GET] Updated flow",
+                      activeFlow!.id,
+                      "agent_id to",
+                      id
+                    )
+                  ).catch(() => {});
+                }
+
+                // Merge compiled tools into the LLM data for the editor.
+                // Retell may not store custom tools with localhost URLs, but
+                // the editor should show all configured tools.
+                const enrichedLlm = mergCompiledToolsIntoLlm(finalLlm, compiled);
+                const convertedFlow = convertLLMToFlow(enrichedLlm);
+                return NextResponse.json({
+                  exists: true,
+                  flow: convertedFlow,
+                  conversation_flow_id: null,
+                  engine_type: "retell-llm",
+                  llm_id: llmId,
+                  _retell_llm_data: enrichedLlm,
+                });
+              } else {
+                console.error(
+                  "[conversation-flow GET] Auto-redeploy PATCH failed:",
+                  redeployRes.status,
+                  await redeployRes.text().catch(() => "")
+                );
+              }
             }
           }
         } else if (llmStateCount === 0) {

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
           .from("agents")
           .select("id")
           .eq("retell_agent_id", body.agent_id)
-          .single();
+          .maybeSingle();
 
         if (agentRow) {
           const { data: wc } = await supabase
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
           .select("organization_id")
           .eq("retell_agent_id", body.agent_id)
           .limit(1)
-          .single();
+          .maybeSingle();
         if (agent?.organization_id) {
           orgApiKey = await getIntegrationKey(agent.organization_id, "retell");
         }
