@@ -28,6 +28,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
+  // CRITICAL-01: Origin validation via widget_config allowed_origins
+  const origin = request.headers.get("origin");
+  const { data: widgetConfig } = await supabase
+    .from("widget_config")
+    .select("allowed_origins")
+    .eq("agent_id", agent_id)
+    .single();
+
+  if (widgetConfig?.allowed_origins && widgetConfig.allowed_origins.length > 0) {
+    if (!origin || !widgetConfig.allowed_origins.includes(origin)) {
+      return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+    }
+  }
+
   const retellApiKey = (agent.retell_api_key_encrypted ? decrypt(agent.retell_api_key_encrypted) : null)
     || await getIntegrationKey(agent.organization_id, "retell")
     || process.env.RETELL_API_KEY;

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api/auth";
+import { requireRole } from "@/lib/api/require-role";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireRole(["startup_admin"]);
   if (response) return response;
 
   try {
@@ -60,7 +60,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { user, supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireRole(["startup_admin"]);
   if (response) return response;
 
   try {

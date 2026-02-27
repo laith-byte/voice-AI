@@ -70,8 +70,13 @@ export async function executeSalesforce(
 
   // Search for existing contact by phone (SOQL query)
   const phone = callLog.from_number;
-  const safePhone = phone.replace(/'/g, "\\'");
-  const soql = `SELECT Id, FirstName, LastName, Phone, Email FROM Contact WHERE Phone = '${safePhone}' LIMIT 1`;
+
+  // CRITICAL-06: Validate phone format to prevent SOQL injection
+  if (!/^\+?\d{7,15}$/.test(phone)) {
+    throw new Error("Invalid phone number format");
+  }
+
+  const soql = `SELECT Id, FirstName, LastName, Phone, Email FROM Contact WHERE Phone = '${phone}' LIMIT 1`;
   const searchRes = await salesforceRequest(
     instanceUrl,
     accessToken,

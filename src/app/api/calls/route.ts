@@ -30,10 +30,34 @@ export async function POST(request: NextRequest) {
 
   if (action === "create_web_call") {
     try {
+      // CRITICAL-01: Origin validation via widget_config allowed_origins
+      const supabase = await createClient();
+      if (body.agent_id) {
+        const { data: agentRow } = await supabase
+          .from("agents")
+          .select("id")
+          .eq("retell_agent_id", body.agent_id)
+          .single();
+
+        if (agentRow) {
+          const { data: wc } = await supabase
+            .from("widget_config")
+            .select("allowed_origins")
+            .eq("agent_id", agentRow.id)
+            .single();
+
+          if (wc?.allowed_origins && wc.allowed_origins.length > 0) {
+            const reqOrigin = request.headers.get("origin");
+            if (!reqOrigin || !wc.allowed_origins.includes(reqOrigin)) {
+              return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+            }
+          }
+        }
+      }
+
       // Resolve per-org integration key if possible
       let orgApiKey: string | null = null;
       if (body.agent_id) {
-        const supabase = await createClient();
         const { data: agent } = await supabase
           .from("agents")
           .select("organization_id")

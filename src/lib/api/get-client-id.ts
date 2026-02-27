@@ -34,17 +34,20 @@ export async function getClientId(
     .eq("id", user.id)
     .single();
 
-  if (userOrg?.organization_id) {
-    const { data: client } = await supabase
-      .from("clients")
-      .select("id")
-      .eq("id", clientId)
-      .eq("organization_id", userOrg.organization_id)
-      .single();
+  // CRITICAL-10: Treat null organization_id as an error to prevent bypass
+  if (!userOrg?.organization_id) {
+    return { clientId: null, error: NextResponse.json({ error: "Organization not found" }, { status: 403 }) };
+  }
 
-    if (!client) {
-      return { clientId: null, error: NextResponse.json({ error: "Client not found" }, { status: 404 }) };
-    }
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("organization_id", userOrg.organization_id)
+    .single();
+
+  if (!client) {
+    return { clientId: null, error: NextResponse.json({ error: "Client not found" }, { status: 404 }) };
   }
 
   return { clientId };

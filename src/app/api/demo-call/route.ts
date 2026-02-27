@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
+import { createRateLimiter, getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+
+// CRITICAL-02: Per-phone rate limit — max 2 calls per phone number per day
+const phoneRateLimiter = createRateLimiter({ windowMs: 86_400_000, maxRequests: 2 });
 
 // Map industry slugs to Retell agent IDs
 const AGENT_MAP: Record<string, string> = {
@@ -30,6 +33,22 @@ export async function POST(request: NextRequest) {
   try {
     const { industry, callerName, phoneNumber, email, companyName } =
       await request.json();
+
+    // CRITICAL-02: Validate phone number — restrict to US/Canada (+1) only
+    if (!phoneNumber || typeof phoneNumber !== "string") {
+      return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
+    }
+    const e164Phone = toE164(phoneNumber);
+    if (!/^\+1\d{10}$/.test(e164Phone)) {
+      return NextResponse.json(
+        { error: "Only US/Canada phone numbers (+1) are supported for demo calls" },
+        { status: 400 }
+      );
+    }
+
+    // CRITICAL-02: Per-phone rate limit
+    const { allowed: phoneAllowed, resetMs: phoneResetMs } = phoneRateLimiter.check(e164Phone);
+    if (!phoneAllowed) return rateLimitExceeded(phoneResetMs);
 
     const retellAgentId = AGENT_MAP[industry];
     if (!retellAgentId) {

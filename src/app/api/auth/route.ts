@@ -187,9 +187,34 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: passwordError.message }, { status: 400 });
       }
       if (cId) {
-        const { error: clientError } = await supabase.from("clients").update({ name: businessName }).eq("id", cId);
-        if (clientError) {
-          return NextResponse.json({ error: "Failed to update business name" }, { status: 500 });
+        // CRITICAL-07: Verify ownership before updating client
+        const { data: setupUserData } = await supabase
+          .from("users")
+          .select("organization_id, client_id")
+          .eq("id", user.id)
+          .single();
+
+        if (setupUserData?.client_id) {
+          // Client users can only update their own client
+          if (setupUserData.client_id !== cId) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+          }
+          const { error: clientError } = await supabase.from("clients").update({ name: businessName }).eq("id", cId);
+          if (clientError) {
+            return NextResponse.json({ error: "Failed to update business name" }, { status: 500 });
+          }
+        } else if (setupUserData?.organization_id) {
+          // Startup users: verify client belongs to their org
+          const { error: clientError } = await supabase
+            .from("clients")
+            .update({ name: businessName })
+            .eq("id", cId)
+            .eq("organization_id", setupUserData.organization_id);
+          if (clientError) {
+            return NextResponse.json({ error: "Failed to update business name" }, { status: 500 });
+          }
+        } else {
+          return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
       }
       await supabase.auth.updateUser({ data: { full_name: businessName } });

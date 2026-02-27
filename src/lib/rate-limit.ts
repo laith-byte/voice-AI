@@ -6,7 +6,7 @@ interface RateLimitResult {
   resetMs: number;
 }
 
-function createRateLimiter({ windowMs, maxRequests }: { windowMs: number; maxRequests: number }) {
+export function createRateLimiter({ windowMs, maxRequests }: { windowMs: number; maxRequests: number }) {
   const hits = new Map<string, number[]>();
   let lastCleanup = Date.now();
 

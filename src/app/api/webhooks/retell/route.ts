@@ -8,6 +8,7 @@ import { dispatchMakeEvent } from "@/lib/make";
 import { dispatchN8nEvent } from "@/lib/n8n";
 import { sendEmail } from "@/lib/resend";
 import { scoreLeadFromCall } from "@/lib/lead-scoring";
+import { isSafeWebhookUrl } from "@/lib/url-validation";
 import Retell from "retell-sdk";
 
 export async function POST(request: NextRequest) {
@@ -118,6 +119,14 @@ export async function POST(request: NextRequest) {
       }
 
       case "call_ended": {
+        // CRITICAL-12: Idempotency check — skip if already processed
+        const { data: existingEndedLog } = await supabase
+          .from("call_logs")
+          .select("status")
+          .eq("retell_call_id", call.call_id)
+          .single();
+        if (existingEndedLog?.status === "completed") break;
+
         const durationMs =
           call.end_timestamp && call.start_timestamp
             ? call.end_timestamp - call.start_timestamp
@@ -212,6 +221,14 @@ export async function POST(request: NextRequest) {
       }
 
       case "call_analyzed": {
+        // CRITICAL-12: Idempotency check — skip if already analyzed
+        const { data: existingAnalyzedLog } = await supabase
+          .from("call_logs")
+          .select("post_call_analysis")
+          .eq("retell_call_id", call.call_id)
+          .single();
+        if (existingAnalyzedLog?.post_call_analysis) break;
+
         const updateData: Record<string, unknown> = {};
         if (call.call_summary) updateData.summary = call.call_summary;
         if (call.custom_analysis_data)
@@ -416,6 +433,12 @@ export async function POST(request: NextRequest) {
       // Forward payload to all webhook URLs
       const forwardResults: string[] = [];
       for (const url of urls) {
+        // CRITICAL-09: SSRF protection — validate URL before fetching
+        if (!isSafeWebhookUrl(url)) {
+          console.warn("Skipping unsafe webhook URL:", url);
+          forwardResults.push(`${url}: blocked (SSRF)`);
+          continue;
+        }
         try {
           const fwdRes = await fetch(url, {
             method: "POST",
