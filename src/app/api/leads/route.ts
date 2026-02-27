@@ -45,6 +45,9 @@ export async function POST(request: NextRequest) {
 
   // Support bulk import
   if (Array.isArray(body.leads)) {
+    if (body.leads.length > 500) {
+      return NextResponse.json({ error: "Too many leads — maximum 500 per request" }, { status: 400 });
+    }
     const { data, error } = await supabase.from("leads").upsert(
       body.leads.map((lead: { phone: string; name?: string; tags?: string[]; dynamic_vars?: Record<string, string> }) => ({
         ...lead,

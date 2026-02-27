@@ -158,7 +158,8 @@ async function sendEmailSummary(
   }
 
   if (includeRecording && callLog.recording_url) {
-    html += `<p style="margin-top: 16px;"><a href="${escapeHtml(callLog.recording_url)}" style="color: #6366f1;">Listen to recording</a></p>`;
+    const safeRecordingUrl = /^https?:\/\//.test(callLog.recording_url) ? escapeHtml(callLog.recording_url) : "#";
+    html += `<p style="margin-top: 16px;"><a href="${safeRecordingUrl}" style="color: #6366f1;">Listen to recording</a></p>`;
   }
 
   html += `<hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />`;

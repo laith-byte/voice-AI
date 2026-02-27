@@ -1,12 +1,16 @@
 import Stripe from "stripe";
 
+let _stripeInstance: Stripe | null = null;
+
 function getStripe() {
+  if (_stripeInstance) return _stripeInstance;
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-  return new Stripe(key, {
+  _stripeInstance = new Stripe(key, {
     apiVersion: "2025-01-27.acacia" as Stripe.LatestApiVersion,
     typescript: true,
   });
+  return _stripeInstance;
 }
 
 export async function createConnectAccount(email: string) {

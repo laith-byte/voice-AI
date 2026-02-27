@@ -69,15 +69,22 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
+
+  // HIGH-14: Verify agent belongs to user's organization
+  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!userData?.organization_id) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 403 });
+  }
 
   const { data: agent, error } = await supabase
     .from("agents")
     .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id")
     .eq("id", id)
+    .eq("organization_id", userData.organization_id)
     .single();
 
   if (error || !agent) {
@@ -272,16 +279,23 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
   const body = await request.json();
 
+  // HIGH-14: Verify agent belongs to user's organization
+  const { data: patchUserData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
+  if (!patchUserData?.organization_id) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 403 });
+  }
+
   const { data: agent, error } = await supabase
     .from("agents")
     .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id")
     .eq("id", id)
+    .eq("organization_id", patchUserData.organization_id)
     .single();
 
   if (error || !agent) {

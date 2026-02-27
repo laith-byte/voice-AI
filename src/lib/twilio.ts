@@ -14,7 +14,7 @@ export function getTwilioClient() {
 export async function sendSms(to: string, body: string) {
   const client = getTwilioClient();
   if (!client) {
-    console.log("[SMS] Twilio not configured:", body);
+    console.warn("[SMS] Twilio not configured — message not sent");
     return;
   }
   const from = process.env.TWILIO_PHONE_NUMBER;
