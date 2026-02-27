@@ -83,88 +83,88 @@ describe("publicEndpointLimiter", () => {
     vi.useRealTimers();
   });
 
-  it("allows the first request", () => {
+  it("allows the first request", async () => {
     const ip = `test-ip-${Date.now()}`;
-    const result = publicEndpointLimiter.check(ip);
+    const result = await publicEndpointLimiter.check(ip);
     expect(result.allowed).toBe(true);
   });
 
-  it("reports correct remaining count after first request", () => {
+  it("reports correct remaining count after first request", async () => {
     const ip = `test-ip-remaining-${Date.now()}`;
-    const result = publicEndpointLimiter.check(ip);
+    const result = await publicEndpointLimiter.check(ip);
     expect(result.remaining).toBe(19);
   });
 
-  it("allows up to 20 requests within the window", () => {
+  it("allows up to 20 requests within the window", async () => {
     const ip = `test-ip-20-${Date.now()}`;
     let result;
     for (let i = 0; i < 20; i++) {
-      result = publicEndpointLimiter.check(ip);
+      result = await publicEndpointLimiter.check(ip);
       expect(result.allowed).toBe(true);
     }
     expect(result!.remaining).toBe(0);
   });
 
-  it("blocks the 21st request", () => {
+  it("blocks the 21st request", async () => {
     const ip = `test-ip-21-${Date.now()}`;
     for (let i = 0; i < 20; i++) {
-      publicEndpointLimiter.check(ip);
+      await publicEndpointLimiter.check(ip);
     }
-    const result = publicEndpointLimiter.check(ip);
+    const result = await publicEndpointLimiter.check(ip);
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
   });
 
-  it("returns positive resetMs when blocked", () => {
+  it("returns positive resetMs when blocked", async () => {
     const ip = `test-ip-reset-${Date.now()}`;
     for (let i = 0; i < 21; i++) {
-      publicEndpointLimiter.check(ip);
+      await publicEndpointLimiter.check(ip);
     }
-    const result = publicEndpointLimiter.check(ip);
+    const result = await publicEndpointLimiter.check(ip);
     expect(result.resetMs).toBeGreaterThan(0);
   });
 
-  it("different IPs have independent limits", () => {
+  it("different IPs have independent limits", async () => {
     const ipA = `test-ip-A-${Date.now()}`;
     const ipB = `test-ip-B-${Date.now()}`;
 
     // Exhaust IP A
     for (let i = 0; i < 20; i++) {
-      publicEndpointLimiter.check(ipA);
+      await publicEndpointLimiter.check(ipA);
     }
-    const blockedA = publicEndpointLimiter.check(ipA);
+    const blockedA = await publicEndpointLimiter.check(ipA);
     expect(blockedA.allowed).toBe(false);
 
     // IP B should still be allowed
-    const resultB = publicEndpointLimiter.check(ipB);
+    const resultB = await publicEndpointLimiter.check(ipB);
     expect(resultB.allowed).toBe(true);
     expect(resultB.remaining).toBe(19);
   });
 
-  it("allows requests again after window expires", () => {
+  it("allows requests again after window expires", async () => {
     const ip = `test-ip-window-${Date.now()}`;
 
     // Exhaust the limit
     for (let i = 0; i < 21; i++) {
-      publicEndpointLimiter.check(ip);
+      await publicEndpointLimiter.check(ip);
     }
-    const blocked = publicEndpointLimiter.check(ip);
+    const blocked = await publicEndpointLimiter.check(ip);
     expect(blocked.allowed).toBe(false);
 
     // Advance time past the 60-second window
     vi.advanceTimersByTime(60_001);
 
-    const result = publicEndpointLimiter.check(ip);
+    const result = await publicEndpointLimiter.check(ip);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(19);
   });
 
-  it("boundary: 20th request is allowed with remaining=0", () => {
+  it("boundary: 20th request is allowed with remaining=0", async () => {
     const ip = `test-ip-boundary-${Date.now()}`;
     for (let i = 0; i < 19; i++) {
-      publicEndpointLimiter.check(ip);
+      await publicEndpointLimiter.check(ip);
     }
-    const result = publicEndpointLimiter.check(ip);
+    const result = await publicEndpointLimiter.check(ip);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(0);
   });

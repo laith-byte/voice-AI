@@ -20,9 +20,16 @@ function buildSelectChain(result: { data: unknown[] | null; error: unknown }) {
     }),
     update: (data: unknown) => {
       mockUpdate(data);
-      return {
-        eq: () => Promise.resolve({ error: null }),
-      };
+      // Support both simple .eq() → resolve and atomic claim .eq().eq().select().maybeSingle()
+      const eqFn = () => ({
+        eq: () => ({
+          select: () => ({
+            maybeSingle: () => Promise.resolve({ data: { id: "item-1" }, error: null }),
+          }),
+        }),
+        then: (resolve: (v: unknown) => void) => resolve({ error: null }),
+      });
+      return { eq: eqFn };
     },
     insert: (data: unknown) => {
       mockInsert(data);
