@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   // 3. Create web call via Retell API
   try {
-    const retellRes = await fetch("https://api.retellai.com/v2/create-web-call", {
+    const retellRes = await fetch(`${RETELL_API_BASE}/v2/create-web-call`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${retellApiKey}`,

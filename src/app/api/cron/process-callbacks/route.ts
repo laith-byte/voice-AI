@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
 
         // Create outbound call via Retell
         const retellRes = await fetch(
-          "https://api.retellai.com/v2/create-phone-call",
+          `${RETELL_API_BASE}/v2/create-phone-call`,
           {
             method: "POST",
             headers: {

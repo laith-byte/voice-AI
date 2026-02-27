@@ -6,6 +6,26 @@ import { regenerateKnowledgeBase } from "@/lib/knowledge-base-generator";
 import { regeneratePrompt } from "@/lib/prompt-generator";
 import { encrypt, decrypt } from "@/lib/crypto";
 import Retell from "retell-sdk";
+import { AGENT_NAME_GENDERS } from "@/lib/conversation-flow-templates";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
+
+async function pickVoiceForGender(
+  retellApiKey: string,
+  gender: "male" | "female"
+): Promise<string | null> {
+  try {
+    const retell = new Retell({ apiKey: retellApiKey });
+    const voices = await retell.voice.list();
+    const match =
+      voices.find((v) => v.gender === gender && v.provider === "elevenlabs") ||
+      voices.find((v) => v.gender === gender);
+    return match?.voice_id ?? null;
+  } catch (err) {
+    logger.warn("Voice list fetch failed, falling back", { error: String(err) });
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -101,7 +121,7 @@ export async function POST(request: NextRequest) {
       // Step A: ALWAYS clear old data and re-seed from the new template.
       // This must run even if the template has no retell_agent_id.
       // ----------------------------------------------------------------
-      console.log("[create-agent] Re-seeding template data for client", clientId, "from template", template.id, template.name);
+      logger.info("Re-seeding template data for client", { clientId, templateId: template.id, templateName: template.name });
 
       await Promise.all([
         adminDb.from("business_services").delete().eq("client_id", clientId),
@@ -110,7 +130,18 @@ export async function POST(request: NextRequest) {
         adminDb.from("business_hours").delete().eq("client_id", clientId),
         adminDb.from("business_locations").delete().eq("client_id", clientId),
         adminDb.from("conversation_flows").update({ is_active: false }).eq("client_id", clientId),
+        adminDb.from("call_logs").delete().eq("agent_id", existingAgent.id),
       ]);
+
+      // Reset onboarding counters so the dashboard starts fresh
+      await adminDb.from("client_onboarding").update({
+        test_calls_used: 0,
+        test_call_completed: false,
+        go_live_at: null,
+        completed_at: null,
+        first_call_notified_at: null,
+        conversation_flow_deployed: false,
+      }).eq("client_id", clientId);
 
       const reseedPromises: PromiseLike<unknown>[] = [];
 
@@ -191,7 +222,7 @@ export async function POST(request: NextRequest) {
       }
 
       await Promise.all(reseedPromises);
-      console.log("[create-agent] Re-seed complete for client", clientId);
+      logger.info("Re-seed complete for client", { clientId });
 
       // ----------------------------------------------------------------
       // Step B: Reconfigure the Retell agent (only if template has one)
@@ -200,7 +231,7 @@ export async function POST(request: NextRequest) {
         const selectedLanguage = (onboarding.language || "en-US") as "en-US";
 
         const templateRes = await fetch(
-          `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
+          `${RETELL_API_BASE}/v2/agents/${template.retell_agent_id}`,
           { headers: { Authorization: `Bearer ${retellApiKey}` } }
         );
 
@@ -216,10 +247,19 @@ export async function POST(request: NextRequest) {
               response_engine: templateConfig.response_engine,
             });
           } else {
+            // Override voice to match template agent's gender
+            const genderKeyR = template.industry && template.use_case
+              ? `${template.industry}_${template.use_case}`
+              : null;
+            const genderR = genderKeyR ? AGENT_NAME_GENDERS[genderKeyR] : null;
+            const matchedVoiceR = genderR
+              ? await pickVoiceForGender(retellApiKey, genderR)
+              : null;
+
             // Update non-engine agent settings
             const agentSettingsPayload = {
               agent_name: onboarding.business_name || "AI Agent",
-              voice_id: templateConfig.voice_id,
+              voice_id: matchedVoiceR || templateConfig.voice_id,
               ambient_sound: templateConfig.ambient_sound,
               ambient_sound_volume: templateConfig.ambient_sound_volume,
               responsiveness: templateConfig.responsiveness,
@@ -229,7 +269,7 @@ export async function POST(request: NextRequest) {
             };
 
             const agentUpdateRes = await fetch(
-              `https://api.retellai.com/update-agent/${existingAgent.retell_agent_id}`,
+              `${RETELL_API_BASE}/update-agent/${existingAgent.retell_agent_id}`,
               {
                 method: "PATCH",
                 headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
@@ -237,12 +277,13 @@ export async function POST(request: NextRequest) {
               }
             );
             if (!agentUpdateRes.ok) {
-              console.warn("Agent settings update warning:", await agentUpdateRes.text());
+              const agentUpdateText = await agentUpdateRes.text();
+              logger.warn("Agent settings update warning", { response: agentUpdateText });
             }
 
             // Update the existing LLM — clear old states, apply template LLM content
             const getAgentRes = await fetch(
-              `https://api.retellai.com/get-agent/${existingAgent.retell_agent_id}`,
+              `${RETELL_API_BASE}/get-agent/${existingAgent.retell_agent_id}`,
               { headers: { Authorization: `Bearer ${retellApiKey}` } }
             );
 
@@ -258,7 +299,7 @@ export async function POST(request: NextRequest) {
 
                 if (templateLlmId) {
                   const templateLlmRes = await fetch(
-                    `https://api.retellai.com/get-retell-llm/${templateLlmId}`,
+                    `${RETELL_API_BASE}/get-retell-llm/${templateLlmId}`,
                     { headers: { Authorization: `Bearer ${retellApiKey}` } }
                   );
                   if (templateLlmRes.ok) {
@@ -279,7 +320,7 @@ export async function POST(request: NextRequest) {
                 if (templateBeginMsg !== null) llmUpdate.begin_message = templateBeginMsg;
 
                 const llmUpdateRes = await fetch(
-                  `https://api.retellai.com/update-retell-llm/${existingLlmId}`,
+                  `${RETELL_API_BASE}/update-retell-llm/${existingLlmId}`,
                   {
                     method: "PATCH",
                     headers: { Authorization: `Bearer ${retellApiKey}`, "Content-Type": "application/json" },
@@ -287,13 +328,15 @@ export async function POST(request: NextRequest) {
                   }
                 );
                 if (!llmUpdateRes.ok) {
-                  console.warn("LLM update warning:", await llmUpdateRes.text());
+                  const llmUpdateText = await llmUpdateRes.text();
+                  logger.warn("LLM update warning", { response: llmUpdateText });
                 }
               }
             }
           }
         } else {
-          console.warn("Retell template fetch failed:", await templateRes.text());
+          const templateResText = await templateRes.text();
+        logger.warn("Retell template fetch failed", { response: templateResText });
         }
       }
 
@@ -342,7 +385,7 @@ export async function POST(request: NextRequest) {
       if (template.retell_agent_id) {
         try {
           const templateRes = await fetch(
-            `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
+            `${RETELL_API_BASE}/v2/agents/${template.retell_agent_id}`,
             { headers: { Authorization: `Bearer ${retellApiKey}` } }
           );
           if (templateRes.ok) {
@@ -356,7 +399,7 @@ export async function POST(request: NextRequest) {
 
       if (!responseEngine) {
         // No template Retell agent — use a basic inline LLM config
-        console.log("[create-agent] No retell_agent_id on template — using default chat response engine");
+        logger.info("No retell_agent_id on template — using default chat response engine");
         responseEngine = {
           type: "retell-llm",
           llm: {
@@ -384,7 +427,7 @@ export async function POST(request: NextRequest) {
 
       if (template.retell_agent_id) {
         const templateRes = await fetch(
-          `https://api.retellai.com/v2/agents/${template.retell_agent_id}`,
+          `${RETELL_API_BASE}/v2/agents/${template.retell_agent_id}`,
           {
             headers: { Authorization: `Bearer ${retellApiKey}` },
           }
@@ -400,10 +443,19 @@ export async function POST(request: NextRequest) {
         }
 
         const templateConfig = await templateRes.json();
+        // Override voice to match template agent's gender
+        const genderKeyA = template.industry && template.use_case
+          ? `${template.industry}_${template.use_case}`
+          : null;
+        const genderA = genderKeyA ? AGENT_NAME_GENDERS[genderKeyA] : null;
+        const matchedVoiceA = genderA
+          ? await pickVoiceForGender(retellApiKey, genderA)
+          : null;
+
         agentPayload = {
           ...agentPayload,
           response_engine: templateConfig.response_engine,
-          voice_id: templateConfig.voice_id,
+          voice_id: matchedVoiceA || templateConfig.voice_id,
           ambient_sound: templateConfig.ambient_sound,
           ambient_sound_volume: templateConfig.ambient_sound_volume,
           responsiveness: templateConfig.responsiveness,
@@ -414,9 +466,9 @@ export async function POST(request: NextRequest) {
       } else {
         // No template Retell agent — create a fresh LLM and agent from scratch.
         // regeneratePrompt() will overwrite the prompt with the industry-specific one.
-        console.log("[create-agent] No retell_agent_id on template — creating fresh LLM + agent");
+        logger.info("No retell_agent_id on template — creating fresh LLM + agent");
 
-        const llmRes = await fetch("https://api.retellai.com/create-retell-llm", {
+        const llmRes = await fetch(`${RETELL_API_BASE}/create-retell-llm`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${retellApiKey}`,
@@ -439,13 +491,22 @@ export async function POST(request: NextRequest) {
         }
 
         const newLlm = await llmRes.json();
+        // Pick a voice matching the template agent's gender
+        const genderKey = template.industry && template.use_case
+          ? `${template.industry}_${template.use_case}`
+          : null;
+        const gender = genderKey ? AGENT_NAME_GENDERS[genderKey] : null;
+        const matchedVoice = gender
+          ? await pickVoiceForGender(retellApiKey, gender)
+          : null;
+
         agentPayload = {
           ...agentPayload,
           response_engine: {
             type: "retell-llm",
             llm_id: newLlm.llm_id,
           },
-          voice_id: "11labs-Adrian",
+          voice_id: matchedVoice || "11labs-Adrian",
           ambient_sound: "coffee-shop",
           ambient_sound_volume: 0.5,
           responsiveness: 1,
@@ -455,7 +516,7 @@ export async function POST(request: NextRequest) {
         };
       }
 
-      const createRes = await fetch("https://api.retellai.com/create-agent", {
+      const createRes = await fetch(`${RETELL_API_BASE}/create-agent`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,

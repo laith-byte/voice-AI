@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
+import { logger } from "@/lib/logger";
+import { notificationFrom } from "@/lib/email";
 
 // Runs hourly. Sends a 24-hour check-in email to clients who went live
 // approximately 24 hours ago and haven't received a check-in yet.
@@ -71,7 +73,7 @@ export async function GET(request: NextRequest) {
         to: client.contact_email,
         subject: `24-Hour Check-In: ${bizName} - ${totalCalls} call${totalCalls === 1 ? "" : "s"} handled`,
         html,
-        from: `${bizName.replace(/[<>"'\r\n]/g, "")} <notifications@invarialabs.com>`,
+        from: notificationFrom(bizName),
       });
 
       await supabase

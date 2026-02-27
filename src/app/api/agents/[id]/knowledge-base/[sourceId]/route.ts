@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function DELETE(
   _request: NextRequest,
@@ -50,7 +51,7 @@ export async function DELETE(
     if (retellApiKey) {
       try {
         await fetch(
-          `https://api.retellai.com/delete-knowledge-base/${source.retell_kb_id}`,
+          `${RETELL_API_BASE}/delete-knowledge-base/${source.retell_kb_id}`,
           {
             method: "DELETE",
             headers: { Authorization: `Bearer ${retellApiKey}` },

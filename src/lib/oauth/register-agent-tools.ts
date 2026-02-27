@@ -1,10 +1,12 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
 if (!APP_URL) {
-  console.warn("[register-agent-tools] NEXT_PUBLIC_APP_URL not set — tool URLs will be invalid");
+  logger.warn("NEXT_PUBLIC_APP_URL not set — tool URLs will be invalid");
 }
 
 // Tool definitions for Retell custom tools (exported for reuse by flow deployer)
@@ -573,7 +575,7 @@ async function retellFetch(
   apiKey: string,
   options?: RequestInit
 ) {
-  return fetch(`https://api.retellai.com${path}`, {
+  return fetch(`${RETELL_API_BASE}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${apiKey}`,

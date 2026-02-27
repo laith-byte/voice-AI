@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (url.searchParams.get("secret")) {
-    console.warn("[resend-inbound] Secret passed via query param — migrate to x-webhook-secret header");
+    logger.warn("[resend-inbound] Secret passed via query param — migrate to x-webhook-secret header");
   }
 
   try {

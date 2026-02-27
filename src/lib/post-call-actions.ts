@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSms } from "@/lib/twilio";
+import { notificationFrom, noReplyFrom } from "@/lib/email";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,7 +175,7 @@ async function sendEmailSummary(
       to: recipient.trim(),
       subject,
       html,
-      from: `${businessName} <notifications@invarialabs.com>`,
+      from: notificationFrom(businessName),
     });
   }
 }
@@ -238,7 +239,7 @@ async function sendCallerFollowup(
     .replace(/\{\{caller_name\}\}/g, callerName);
 
   const delayMinutes = (config.delay_minutes as number) || 0;
-  const fromAddress = `${businessName} <noreply@invarialabs.com>`;
+  const fromAddress = noReplyFrom(businessName);
   const htmlBody = `<div style="font-family: sans-serif; max-width: 600px; line-height: 1.6;">${body.replace(/\n/g, "<br/>")}</div>`;
 
   if (delayMinutes > 0) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
+import { logger } from "@/lib/logger";
+import { notificationFrom } from "@/lib/email";
 
 // This route is designed to be called by a cron job (e.g. Vercel Cron).
 // It runs hourly and checks which clients have a daily_digest action
@@ -151,7 +153,7 @@ export async function GET(request: NextRequest) {
           to: recipient.trim(),
           subject,
           html,
-          from: `${clientName.replace(/[<>"'\r\n]/g, "")} <notifications@invarialabs.com>`,
+          from: notificationFrom(clientName),
         });
       }
 

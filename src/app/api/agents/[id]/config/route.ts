@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 // ---------------------------------------------------------------------------
 // Language directive helpers
@@ -53,7 +55,7 @@ function injectLanguageDirective(prompt: string, langCode: string): string {
 
 // Helper: fetch from Retell API (15s timeout to prevent hanging requests)
 async function retellFetch(path: string, apiKey: string, options?: RequestInit) {
-  return fetch(`https://api.retellai.com${path}`, {
+  return fetch(`${RETELL_API_BASE}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -382,7 +384,7 @@ export async function PATCH(
 
     // If the agent uses a separate LLM (llm_id), update the LLM object
     if (body.llm_id) {
-      console.log("[config PATCH] body.llm_id present:", body.llm_id, "| updating standalone LLM");
+      logger.info("body.llm_id present, updating standalone LLM", { llmId: body.llm_id });
       const llmUpdate: Record<string, unknown> = {};
       if (effectivePrompt !== undefined) llmUpdate.general_prompt = effectivePrompt;
       if (body.llm_model) llmUpdate.model = body.llm_model;
@@ -405,19 +407,19 @@ export async function PATCH(
               if (existingLlm.starting_state) {
                 llmUpdate.starting_state = existingLlm.starting_state;
               }
-              console.log("[config PATCH] Preserving", existingLlm.states.length, "states from LLM", body.llm_id, "| starting_state:", existingLlm.starting_state);
+              logger.info("Preserving states from LLM", { llmId: body.llm_id, statesCount: existingLlm.states.length, startingState: existingLlm.starting_state });
             } else {
-              console.log("[config PATCH] LLM", body.llm_id, "has 0 states — nothing to preserve");
+              logger.info("LLM has 0 states — nothing to preserve", { llmId: body.llm_id });
             }
           } else {
-            console.warn("[config PATCH] Failed to GET LLM", body.llm_id, "for state preservation:", existingLlmRes.status);
+            logger.warn("Failed to GET LLM for state preservation", { llmId: body.llm_id, status: existingLlmRes.status });
           }
         } catch (stateErr) {
           // LLM fetch failed — proceed without preserving states
-          console.warn("[config PATCH] State preservation GET failed:", stateErr);
+          logger.warn("State preservation GET failed", { error: String(stateErr) });
         }
 
-        console.log("[config PATCH] Updating LLM", body.llm_id, "| fields:", Object.keys(llmUpdate), "| has states:", !!llmUpdate.states);
+        logger.info("Updating LLM", { llmId: body.llm_id, fields: Object.keys(llmUpdate), hasStates: !!llmUpdate.states });
         const llmRes = await retellFetch(`/update-retell-llm/${body.llm_id}`, retellApiKey, {
           method: "PATCH",
           body: JSON.stringify(llmUpdate),
@@ -447,12 +449,12 @@ export async function PATCH(
 
     // Only set response_engine for inline LLM (no llm_id)
     if (!body.llm_id && (effectivePrompt !== undefined || body.llm_model || body.first_message || body.functions || body.model_high_priority !== undefined || body.tool_call_strict_mode !== undefined || body.kb_config !== undefined || body.knowledge_base_ids !== undefined)) {
-      console.log("[config PATCH] llm_id in body:", body.llm_id, "| currentEngine llm_id:", currentEngine?.llm_id, "| isConversationFlow:", isConversationFlow);
+      logger.info("Inline LLM update path", { bodyLlmId: body.llm_id, currentEngineLlmId: currentEngine?.llm_id, isConversationFlow });
 
       if (isConversationFlow) {
         // Agent uses conversation-flow engine — update the flow's global_prompt
         // instead of switching to retell-llm (which would destroy the flow)
-        console.log("[config PATCH] Detected conversation-flow engine, flowId:", currentFlowId);
+        logger.info("Detected conversation-flow engine", { flowId: currentFlowId });
         if (effectivePrompt !== undefined) {
           try {
             const flowUpdateRes = await retellFetch(
@@ -465,10 +467,10 @@ export async function PATCH(
             );
             if (!flowUpdateRes.ok) {
               const flowErr = await flowUpdateRes.text().catch(() => "");
-              console.warn("[config PATCH] Failed to update conversation-flow global_prompt:", flowUpdateRes.status, flowErr);
+              logger.warn("Failed to update conversation-flow global_prompt", { status: flowUpdateRes.status, response: flowErr });
             }
           } catch (flowErr) {
-            console.warn("[config PATCH] conversation-flow update failed:", flowErr);
+            logger.warn("conversation-flow update failed", { error: String(flowErr) });
           }
         }
         // For conversation-flow engines, first_message lives inside the flow
@@ -481,7 +483,7 @@ export async function PATCH(
         // existing standalone LLM instead of switching to inline (which would
         // disconnect the agent from its LLM and wipe prompt-tree states).
         const fallbackLlmId = currentEngine.llm_id as string;
-        console.log("[config PATCH] Standalone LLM fallback — updating LLM", fallbackLlmId, "instead of switching to inline");
+        logger.info("Standalone LLM fallback — updating LLM instead of switching to inline", { llmId: fallbackLlmId });
 
         const llmUpdate: Record<string, unknown> = {};
         if (effectivePrompt !== undefined) llmUpdate.general_prompt = effectivePrompt;
@@ -503,7 +505,7 @@ export async function PATCH(
               if (existingLlm.starting_state) {
                 llmUpdate.starting_state = existingLlm.starting_state;
               }
-              console.log("[config PATCH] Preserving", existingLlm.states.length, "states from standalone LLM");
+              logger.info("Preserving states from standalone LLM", { statesCount: existingLlm.states.length });
             }
           }
         } catch {
@@ -678,7 +680,7 @@ export async function PATCH(
       const updateEndpoint = isChat
         ? `/update-chat-agent/${agent.retell_agent_id}`
         : `/update-agent/${agent.retell_agent_id}`;
-      console.log("[config PATCH] Updating agent via", updateEndpoint, "keys:", Object.keys(retellUpdate));
+      logger.info("Updating agent", { endpoint: updateEndpoint, keys: Object.keys(retellUpdate) });
       const retellRes = await retellFetch(updateEndpoint, retellApiKey, {
         method: "PATCH",
         body: JSON.stringify(retellUpdate),
@@ -700,7 +702,7 @@ export async function PATCH(
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("[config PATCH] Unexpected error:", err);
+    logger.warn("Unexpected error", { error: String(err) });
     return NextResponse.json({ error: "Failed to update agent config" }, { status: 500 });
   }
 }

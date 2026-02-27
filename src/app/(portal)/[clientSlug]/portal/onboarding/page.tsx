@@ -45,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import confetti from "canvas-confetti";
 import { RetellWebClient } from "retell-client-js-sdk";
 import { createClient } from "@/lib/supabase/client";
+import { mergeTranscript } from "@/lib/transcript-utils";
 
 import { WizardProgress } from "@/components/onboarding/wizard-progress";
 import { TestCallCoaching } from "@/components/onboarding/test-call-coaching";
@@ -58,6 +59,7 @@ import { ServicesList } from "@/components/knowledge-base/services-list";
 import { FaqsList } from "@/components/knowledge-base/faqs-list";
 import { PoliciesList } from "@/components/knowledge-base/policies-list";
 import { INDUSTRIES, generateTemplateNodes, replaceFlowPlaceholders, AGENT_NAMES, type FlowNode } from "@/lib/conversation-flow-templates";
+import { AGENT_PERSONALITIES } from "@/lib/prompt-templates";
 import { ConversationFlowEditor } from "@/components/onboarding/conversation-flow-editor";
 
 // ---------------------------------------------------------------------------
@@ -181,6 +183,7 @@ export default function OnboardingWizardPage() {
   const [selectedScenario, setSelectedScenario] = useState<number | null>(null);
   const [showQuickFix, setShowQuickFix] = useState(false);
   const callStartTimeRef = useRef<number | null>(null);
+  const testCallIdRef = useRef<string | null>(null);
   const [callDurationSeconds, setCallDurationSeconds] = useState(0);
 
   // Step 5 state (Conversation Flow)
@@ -319,16 +322,24 @@ export default function OnboardingWizardPage() {
     const industryKey = selectedIndustry || currentTemplate?.industry;
     const useCaseKey = currentTemplate?.use_case;
     if (industryKey && useCaseKey) {
-      // Prefer DB-stored flow nodes, fall back to code generation
+      // When personality data is available, always regenerate from code so the
+      // first node gets personality-driven content instead of generic tone text.
+      // Fall back to DB-stored nodes only when no personality exists.
       let rawNodes: FlowNode[] = [];
       let agentName: string | undefined;
 
-      if (currentTemplate?.default_flow_nodes?.length) {
+      const personalityKey = `${industryKey}_${useCaseKey}`;
+      const personality = AGENT_PERSONALITIES[personalityKey];
+
+      if (personality) {
+        rawNodes = generateTemplateNodes(industryKey, useCaseKey, personality);
+        agentName = AGENT_NAMES[personalityKey];
+      } else if (currentTemplate?.default_flow_nodes?.length) {
         rawNodes = currentTemplate.default_flow_nodes;
         agentName = currentTemplate.agent_name || undefined;
       } else {
         rawNodes = generateTemplateNodes(industryKey, useCaseKey);
-        agentName = AGENT_NAMES[`${industryKey}_${useCaseKey}`];
+        agentName = AGENT_NAMES[personalityKey];
       }
 
       if (rawNodes.length) {
@@ -595,7 +606,8 @@ export default function OnboardingWizardPage() {
         const err = await res.json().catch(() => null);
         throw new Error(err?.error ?? "Failed to start test call");
       }
-      const { access_token } = await res.json();
+      const { access_token, call_id } = await res.json();
+      testCallIdRef.current = call_id || null;
 
       const client = new RetellWebClient();
       retellClient.current = client;
@@ -614,11 +626,33 @@ export default function OnboardingWizardPage() {
             Math.round((Date.now() - callStartTimeRef.current) / 1000)
           );
         }
+
+        // Fetch the full formatted transcript from Retell
+        if (testCallIdRef.current && chatAgentId) {
+          setTimeout(async () => {
+            try {
+              const syncRes = await fetch("/api/agents/sync-call", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ call_id: testCallIdRef.current, agent_id: chatAgentId }),
+              });
+              if (syncRes.ok) {
+                const data = await syncRes.json();
+                if (data.transcript?.length) {
+                  setTranscript(data.transcript.map((e: { role: string; content: string }) => ({
+                    role: e.role,
+                    content: e.content,
+                  })));
+                }
+              }
+            } catch { /* post-call sync is best-effort */ }
+          }, 1500);
+        }
       });
 
       client.on("update", (update: { transcript?: TranscriptEntry[] }) => {
         if (update.transcript) {
-          setTranscript([...update.transcript]);
+          setTranscript(prev => mergeTranscript(prev, update.transcript!));
         }
       });
 
@@ -2830,7 +2864,7 @@ export default function OnboardingWizardPage() {
                     </p>
                     <div className="relative">
                       <pre className="bg-gray-950 text-gray-100 text-xs p-4 rounded-lg overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
-{`<script src="https://cdn.invaria.ai/chat-widget.js"
+{`<script src="${process.env.NEXT_PUBLIC_CDN_WIDGET_URL || "https://cdn.invaria.ai/chat-widget.js"}"
   data-agent-id="${chatAgentId || "YOUR_AGENT_ID"}"
   data-client="${clientSlug}">
 </script>`}
@@ -2841,7 +2875,7 @@ export default function OnboardingWizardPage() {
                         className="absolute top-2 right-2 h-7 w-7 p-0 text-gray-400 hover:text-white hover:bg-white/10"
                         onClick={() => {
                           navigator.clipboard.writeText(
-                            `<script src="https://cdn.invaria.ai/chat-widget.js"\n  data-agent-id="${chatAgentId || "YOUR_AGENT_ID"}"\n  data-client="${clientSlug}">\n</script>`
+                            `<script src="${process.env.NEXT_PUBLIC_CDN_WIDGET_URL || "https://cdn.invaria.ai/chat-widget.js"}"\n  data-agent-id="${chatAgentId || "YOUR_AGENT_ID"}"\n  data-client="${clientSlug}">\n</script>`
                           );
                           toast.success("Embed code copied to clipboard!");
                         }}

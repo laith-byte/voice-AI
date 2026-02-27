@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logIntegrationEvent } from "@/lib/integration-events";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   // W3: Verify webhook secret (header only — no query param)
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     // W1: Look up client_id from oauth_connections using provider metadata
     const companyId = body.company_id || body.company?.id;
     if (!companyId) {
-      console.warn("HCP webhook missing company_id, skipping event log");
+      logger.warn("HCP webhook missing company_id, skipping event log");
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!connection?.client_id) {
-      console.warn(`HCP webhook: no oauth_connection found for company_id=${companyId}`);
+      logger.warn("HCP webhook: no oauth_connection found", { companyId });
       return NextResponse.json({ received: true }, { status: 200 });
     }
 

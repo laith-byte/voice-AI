@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function GET(
   _request: NextRequest,
@@ -123,7 +124,7 @@ export async function POST(
         formData.append("enable_auto_refresh", String(enable_auto_refresh));
       }
 
-      const res = await fetch("https://api.retellai.com/create-knowledge-base", {
+      const res = await fetch(`${RETELL_API_BASE}/create-knowledge-base`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,
@@ -138,7 +139,7 @@ export async function POST(
         console.error("Retell KB file upload failed:", retellError);
       }
     } else if (source_type === "text" && content) {
-      const res = await fetch("https://api.retellai.com/create-knowledge-base", {
+      const res = await fetch(`${RETELL_API_BASE}/create-knowledge-base`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,
@@ -158,7 +159,7 @@ export async function POST(
         console.error("Retell KB creation failed:", retellError);
       }
     } else if (source_type === "url" && url) {
-      const res = await fetch("https://api.retellai.com/create-knowledge-base", {
+      const res = await fetch(`${RETELL_API_BASE}/create-knowledge-base`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,

@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 import { createServiceClient } from "@/lib/supabase/server";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch the full call object from Retell API
     const retellRes = await fetch(
-      `https://api.retellai.com/v2/get-call/${call_id}`,
+      `${RETELL_API_BASE}/v2/get-call/${call_id}`,
       {
         method: "GET",
         headers: {
@@ -128,7 +129,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      transcript: call.transcript_object || null,
+    });
   } catch (error) {
     console.error("Sync call error:", error);
     return NextResponse.json(

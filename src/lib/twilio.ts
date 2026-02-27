@@ -1,4 +1,5 @@
 import Twilio from "twilio";
+import { logger } from "@/lib/logger";
 
 let _client: ReturnType<typeof Twilio> | null = null;
 
@@ -14,7 +15,7 @@ export function getTwilioClient() {
 export async function sendSms(to: string, body: string) {
   const client = getTwilioClient();
   if (!client) {
-    console.warn("[SMS] Twilio not configured — message not sent");
+    logger.warn("Twilio not configured — message not sent");
     return;
   }
   const from = process.env.TWILIO_PHONE_NUMBER;

@@ -4,6 +4,7 @@ import { getIntegrationKey } from "@/lib/integrations";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function GET(request: NextRequest) {
   const { supabase, response } = await requireAuth();
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
       if (!apiKey) {
         return NextResponse.json({ error: "No API key configured. Please check your integrations settings." }, { status: 500 });
       }
-      const retellRes = await fetch("https://api.retellai.com/v2/create-web-call", {
+      const retellRes = await fetch(`${RETELL_API_BASE}/v2/create-web-call`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,

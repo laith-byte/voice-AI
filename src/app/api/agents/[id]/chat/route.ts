@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 import Retell from "retell-sdk";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 function getRetellClient(apiKey: string) {
   return new Retell({ apiKey });
@@ -57,7 +58,7 @@ export async function POST(
       const retellApiKey2 = retellApiKey;
       try {
         const agentRes = await fetch(
-          `https://api.retellai.com/get-chat-agent/${agent.retell_agent_id}`,
+          `${RETELL_API_BASE}/get-chat-agent/${agent.retell_agent_id}`,
           { headers: { Authorization: `Bearer ${retellApiKey2}` } }
         );
         if (agentRes.ok) {
@@ -65,7 +66,7 @@ export async function POST(
           const llmId = agentData.response_engine?.llm_id;
           if (llmId) {
             const llmRes = await fetch(
-              `https://api.retellai.com/get-retell-llm/${llmId}`,
+              `${RETELL_API_BASE}/get-retell-llm/${llmId}`,
               { headers: { Authorization: `Bearer ${retellApiKey2}` } }
             );
             if (llmRes.ok) {

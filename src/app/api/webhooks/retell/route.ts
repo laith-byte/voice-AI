@@ -10,6 +10,10 @@ import { sendEmail } from "@/lib/resend";
 import { scoreLeadFromCall } from "@/lib/lead-scoring";
 import { isSafeWebhookUrl } from "@/lib/url-validation";
 import Retell from "retell-sdk";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
+import { notificationFrom } from "@/lib/email";
+import { retellWebhookSchema } from "@/lib/schemas/retell-webhook";
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,6 +33,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = JSON.parse(rawBody);
+
+    const parsed = retellWebhookSchema.safeParse(body);
+    if (!parsed.success) {
+      logger.warn("Invalid webhook payload", { error: parsed.error.message });
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
+
     const event: string = body.event;
     const call = body.call || {};
 
@@ -67,7 +78,7 @@ export async function POST(request: NextRequest) {
     switch (event) {
       case "call_started": {
         if (!internalAgentId) {
-          console.warn("call_started: no matching agent for retell agent_id:", call.agent_id);
+          logger.warn("call_started: no matching agent for retell agent_id", { agentId: call.agent_id });
           break;
         }
 
@@ -77,7 +88,7 @@ export async function POST(request: NextRequest) {
           const snapshotApiKey = process.env.RETELL_API_KEY;
           if (snapshotApiKey && call.agent_id) {
             const agentConfigRes = await fetch(
-              `https://api.retellai.com/get-agent/${call.agent_id}`,
+              `${RETELL_API_BASE}/get-agent/${call.agent_id}`,
               {
                 headers: {
                   Authorization: `Bearer ${snapshotApiKey}`,
@@ -405,7 +416,7 @@ export async function POST(request: NextRequest) {
               <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
               <p style="color: #999; font-size: 12px;">Sent by ${safeBizName} via Invaria Labs</p>
             </div>`,
-            from: `${safeFromName} <notifications@invarialabs.com>`,
+            from: notificationFrom(safeFromName),
           }).catch((err: unknown) => console.error("First-call email error:", err));
         }
       }
@@ -444,7 +455,7 @@ export async function POST(request: NextRequest) {
       for (const url of urls) {
         // CRITICAL-09: SSRF protection — validate URL before fetching
         if (!isSafeWebhookUrl(url)) {
-          console.warn("Skipping unsafe webhook URL:", url);
+          logger.warn("Skipping unsafe webhook URL", { url });
           forwardResults.push(`${url}: blocked (SSRF)`);
           continue;
         }

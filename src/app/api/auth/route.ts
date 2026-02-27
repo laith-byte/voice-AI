@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { sendEmail } from "@/lib/resend";
 import { logger } from "@/lib/logger";
+import { noReplyFrom } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -235,7 +236,7 @@ async function sendResetEmail(to: string, actionLink: string) {
     await sendEmail({
       to,
       subject: "Reset Your Password — Invaria Labs",
-      from: "Invaria Labs <noreply@invarialabs.com>",
+      from: noReplyFrom("Invaria Labs"),
       html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
@@ -279,7 +280,7 @@ async function sendInviteEmail(to: string, role: string, actionLink: string) {
     await sendEmail({
       to,
       subject: "You've Been Invited to Invaria Labs",
-      from: "Invaria Labs <noreply@invarialabs.com>",
+      from: noReplyFrom("Invaria Labs"),
       html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>

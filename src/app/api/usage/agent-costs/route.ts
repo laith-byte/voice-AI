@@ -3,9 +3,10 @@ import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 import { computeAgentCost, type AgentCostBreakdown } from "@/lib/retell-costs";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 async function retellFetch(path: string, apiKey: string) {
-  return fetch(`https://api.retellai.com${path}`, {
+  return fetch(`${RETELL_API_BASE}${path}`, {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",

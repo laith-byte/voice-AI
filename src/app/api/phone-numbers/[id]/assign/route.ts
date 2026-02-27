@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function PATCH(
   request: NextRequest,
@@ -51,7 +52,7 @@ export async function PATCH(
           }
 
           const retellRes = await fetch(
-            `https://api.retellai.com/update-phone-number/${encodeURIComponent(phoneRecord.retell_number_id)}`,
+            `${RETELL_API_BASE}/update-phone-number/${encodeURIComponent(phoneRecord.retell_number_id)}`,
             {
               method: "PATCH",
               headers: {

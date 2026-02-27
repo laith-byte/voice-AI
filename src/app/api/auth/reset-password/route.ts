@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { noReplyFrom } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
     await sendEmail({
       to: email,
       subject: "Reset Your Password — Invaria Labs",
-      from: "Invaria Labs <noreply@invarialabs.com>",
+      from: noReplyFrom("Invaria Labs"),
       html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { logIntegrationEvent } from "@/lib/integration-events";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: NextRequest) {
   // W3: Verify webhook secret (header only — no query param)
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     // W2: Look up client_id from oauth_connections using account_id
     const accountId = body.account_id;
     if (!accountId) {
-      console.warn("Jobber webhook missing account_id, skipping event log");
+      logger.warn("Jobber webhook missing account_id, skipping event log");
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (!connection?.client_id) {
-      console.warn(`Jobber webhook: no oauth_connection found for account_id=${accountId}`);
+      logger.warn("Jobber webhook: no oauth_connection found", { accountId });
       return NextResponse.json({ received: true }, { status: 200 });
     }
 

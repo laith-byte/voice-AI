@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function GET(
   _request: NextRequest,
@@ -109,7 +110,7 @@ export async function PATCH(
           : process.env.RETELL_API_KEY;
 
         if (apiKey) {
-          await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
+          await fetch(`${RETELL_API_BASE}/update-agent/${agent.retell_agent_id}`, {
             method: "PATCH",
             headers: {
               Authorization: `Bearer ${apiKey}`,

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 async function retellFetch(path: string, apiKey: string, options?: RequestInit) {
-  return fetch(`https://api.retellai.com${path}`, {
+  return fetch(`${RETELL_API_BASE}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${apiKey}`,

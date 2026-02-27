@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function GET(
   _request: NextRequest,
@@ -32,7 +33,7 @@ export async function GET(
 
   try {
     const res = await fetch(
-      `https://api.retellai.com/get-agent-versions/${agent.retell_agent_id}`,
+      `${RETELL_API_BASE}/get-agent-versions/${agent.retell_agent_id}`,
       {
         headers: {
           Authorization: `Bearer ${retellApiKey}`,
@@ -102,7 +103,7 @@ export async function POST(
   try {
     // Fetch all versions to find the target
     const versionsRes = await fetch(
-      `https://api.retellai.com/get-agent-versions/${agent.retell_agent_id}`,
+      `${RETELL_API_BASE}/get-agent-versions/${agent.retell_agent_id}`,
       { headers: { Authorization: `Bearer ${retellApiKey}` } }
     );
 
@@ -128,8 +129,8 @@ export async function POST(
     if (Object.keys(agentPayload).length > 0) {
       const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
       const updateEndpoint = isChat
-        ? `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`
-        : `https://api.retellai.com/update-agent/${agent.retell_agent_id}`;
+        ? `${RETELL_API_BASE}/update-chat-agent/${agent.retell_agent_id}`
+        : `${RETELL_API_BASE}/update-agent/${agent.retell_agent_id}`;
       await fetch(updateEndpoint, {
         method: "PATCH",
         headers: {
@@ -144,8 +145,8 @@ export async function POST(
     if (target.response_engine) {
       const isChat = agent.platform === "retell-chat" || agent.platform === "retell-sms";
       const updateEndpoint = isChat
-        ? `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`
-        : `https://api.retellai.com/update-agent/${agent.retell_agent_id}`;
+        ? `${RETELL_API_BASE}/update-chat-agent/${agent.retell_agent_id}`
+        : `${RETELL_API_BASE}/update-agent/${agent.retell_agent_id}`;
       await fetch(updateEndpoint, {
         method: "PATCH",
         headers: {

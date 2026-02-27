@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { noReplyFrom } from "@/lib/email";
 
 function getResend() {
   const key = process.env.RESEND_API_KEY;
@@ -20,7 +21,7 @@ export async function sendEmail({
   replyTo?: string;
 }) {
   return getResend().emails.send({
-    from: from || "Invaria Labs <noreply@invarialabs.com>",
+    from: from || noReplyFrom("Invaria Labs"),
     to,
     subject,
     html,

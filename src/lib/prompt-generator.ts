@@ -2,6 +2,8 @@ import Handlebars from "handlebars";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import { filterToolsForRetell } from "@/lib/compile-flow-to-retell";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 // Re-export from standalone module (no Next.js deps) so seed scripts can import directly
 export { AGENT_PERSONALITIES, generateFlowPromptTemplate, generateFirstMessageTemplate, type AgentPersonality } from "./prompt-templates";
@@ -493,7 +495,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
   if (isChat) {
     // Push to Retell Chat Agent API
     const res = await fetch(
-      `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`,
+      `${RETELL_API_BASE}/update-chat-agent/${agent.retell_agent_id}`,
       {
         method: "PATCH",
         headers: {
@@ -542,7 +544,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
 
     // Fetch current agent config to get existing LLM ID or inline config
     const agentConfigRes = await fetch(
-      `https://api.retellai.com/get-agent/${agent.retell_agent_id}`,
+      `${RETELL_API_BASE}/get-agent/${agent.retell_agent_id}`,
       { headers: { Authorization: `Bearer ${apiKey}` } }
     );
 
@@ -560,7 +562,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
         llmId = engine.llm_id;
         // Fetch existing tools from the standalone LLM
         const llmRes = await fetch(
-          `https://api.retellai.com/get-retell-llm/${llmId}`,
+          `${RETELL_API_BASE}/get-retell-llm/${llmId}`,
           { headers: { Authorization: `Bearer ${apiKey}` } }
         );
         if (llmRes.ok) {
@@ -569,7 +571,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
           existingStates = llm.states || [];
           existingStartingState = llm.starting_state;
           if (existingStates.length > 0) {
-            console.log("[regeneratePrompt] Preserving", existingStates.length, "states, starting_state:", existingStartingState);
+            logger.info("Preserving states", { count: existingStates.length, startingState: existingStartingState });
           }
         }
       } else if (engine?.llm) {
@@ -581,7 +583,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     // Build request_callback tool for callback pipeline
     const APP_URL = process.env.NEXT_PUBLIC_APP_URL;
     if (!APP_URL) {
-      console.warn("NEXT_PUBLIC_APP_URL not set — callback tool URL will be empty");
+      logger.warn("NEXT_PUBLIC_APP_URL not set — callback tool URL will be empty");
     }
     const callbackTool = {
       type: "custom" as const,
@@ -634,7 +636,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
     if (usesLlmId && llmId) {
       // Push prompt + tools to the standalone LLM
       const llmUpdateRes = await fetch(
-        `https://api.retellai.com/update-retell-llm/${llmId}`,
+        `${RETELL_API_BASE}/update-retell-llm/${llmId}`,
         {
           method: "PATCH",
           headers: {
@@ -660,7 +662,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
       }
 
       // Still update agent-level settings (max duration)
-      await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
+      await fetch(`${RETELL_API_BASE}/update-agent/${agent.retell_agent_id}`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -672,7 +674,7 @@ export async function regeneratePrompt(clientId: string): Promise<void> {
       });
     } else {
       // Push to Retell Voice Agent API (inline LLM)
-      const res = await fetch(`https://api.retellai.com/update-agent/${agent.retell_agent_id}`, {
+      const res = await fetch(`${RETELL_API_BASE}/update-agent/${agent.retell_agent_id}`, {
         method: "PATCH",
         headers: {
           Authorization: `Bearer ${apiKey}`,

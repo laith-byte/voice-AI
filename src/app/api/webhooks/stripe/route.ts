@@ -3,6 +3,7 @@ import { constructWebhookEvent } from "@/lib/stripe";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
 import { logger } from "@/lib/logger";
+import { noReplyFrom } from "@/lib/email";
 
 // Disable body parsing — Stripe needs the raw body for signature verification
 export const dynamic = "force-dynamic";
@@ -365,7 +366,7 @@ async function sendWelcomeEmail(to: string, businessName: string, actionLink: st
     await sendEmail({
       to,
       subject: "Welcome to Invaria Labs — Set Up Your Account",
-      from: "Invaria Labs <noreply@invarialabs.com>",
+      from: noReplyFrom("Invaria Labs"),
       html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>

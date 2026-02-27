@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRateLimiter, getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 // CRITICAL-02: Per-phone rate limit — max 2 calls per phone number per day
 const phoneRateLimiter = createRateLimiter({ windowMs: 86_400_000, maxRequests: 2 });
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // Create an outbound phone call via Retell API
     const retellRes = await fetch(
-      "https://api.retellai.com/v2/create-phone-call",
+      `${RETELL_API_BASE}/v2/create-phone-call`,
       {
         method: "POST",
         headers: {

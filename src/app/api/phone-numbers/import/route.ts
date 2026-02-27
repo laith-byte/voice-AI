@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const retellRes = await fetch("https://api.retellai.com/import-phone-number", {
+      const retellRes = await fetch(`${RETELL_API_BASE}/import-phone-number`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${retellApiKey}`,

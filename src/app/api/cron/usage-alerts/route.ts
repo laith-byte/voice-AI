@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/resend";
 import { FALLBACK_COST_PER_MINUTE } from "@/lib/retell-costs";
+import { logger } from "@/lib/logger";
+import { notificationFrom } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   // Verify cron secret to prevent unauthorized access
@@ -145,7 +147,7 @@ export async function GET(request: NextRequest) {
                 to: email,
                 subject,
                 html,
-                from: `${clientName.replace(/[<>"'\r\n]/g, "")} <notifications@invarialabs.com>`,
+                from: notificationFrom(clientName),
               });
             } catch (err) {
               console.error(`Failed to send usage alert to ${email}:`, err);

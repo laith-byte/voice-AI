@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function PATCH(request: NextRequest) {
   const { supabase, response } = await requireAuth();
@@ -54,7 +55,7 @@ export async function PATCH(request: NextRequest) {
     if (apiKey) {
       try {
         await fetch(
-          `https://api.retellai.com/update-phone-number/${phoneNumber.retell_number_id}`,
+          `${RETELL_API_BASE}/update-phone-number/${phoneNumber.retell_number_id}`,
           {
             method: "PATCH",
             headers: {

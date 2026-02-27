@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 /**
  * Public checkout endpoint — no auth required.
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (!stripeConn) {
-    console.warn(`No Stripe connected account for org ${org.id} — checkout will use platform account`);
+    logger.warn("No Stripe connected account for org — checkout will use platform account", { orgId: org.id });
   }
 
   // 4. Validate return_url if provided (must be an allowed origin)

@@ -99,7 +99,7 @@ export default function EmbedUrlPage() {
               Embed Code Preview
             </p>
             <pre className="text-xs text-[#6b7280] bg-white p-3 rounded border border-[#e5e7eb] overflow-x-auto">
-              <code>{`<script src="https://embed.invarialabs.com/widget.js"
+              <code>{`<script src="${process.env.NEXT_PUBLIC_EMBED_WIDGET_URL || "https://embed.invarialabs.com/widget.js"}"
   data-client-id="${params.id}"
   data-domain="${domain || 'your-domain.com'}"
 ></script>`}</code>

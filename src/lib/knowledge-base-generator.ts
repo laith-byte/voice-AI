@@ -1,5 +1,6 @@
 import { createClient as createServerClient, createServiceClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 const DAY_NAMES = [
   "Monday",
@@ -223,7 +224,7 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
     if (existingSource?.retell_kb_id) {
       try {
         await fetch(
-          `https://api.retellai.com/delete-knowledge-base/${existingSource.retell_kb_id}`,
+          `${RETELL_API_BASE}/delete-knowledge-base/${existingSource.retell_kb_id}`,
           {
             method: "DELETE",
             headers: { Authorization: `Bearer ${apiKey}` },
@@ -241,7 +242,7 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
     }
 
     // Create new KB in Retell
-    const createRes = await fetch("https://api.retellai.com/create-knowledge-base", {
+    const createRes = await fetch(`${RETELL_API_BASE}/create-knowledge-base`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -282,8 +283,8 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
 
     // Fetch current agent config to get existing KB IDs
     const agentEndpoint = isChat
-      ? `https://api.retellai.com/get-chat-agent/${agent.retell_agent_id}`
-      : `https://api.retellai.com/get-agent/${agent.retell_agent_id}`;
+      ? `${RETELL_API_BASE}/get-chat-agent/${agent.retell_agent_id}`
+      : `${RETELL_API_BASE}/get-agent/${agent.retell_agent_id}`;
 
     const agentConfigRes = await fetch(agentEndpoint, {
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -304,8 +305,8 @@ export async function regenerateKnowledgeBase(clientId: string): Promise<void> {
 
     // Update agent with new KB IDs
     const updateEndpoint = isChat
-      ? `https://api.retellai.com/update-chat-agent/${agent.retell_agent_id}`
-      : `https://api.retellai.com/update-agent/${agent.retell_agent_id}`;
+      ? `${RETELL_API_BASE}/update-chat-agent/${agent.retell_agent_id}`
+      : `${RETELL_API_BASE}/update-agent/${agent.retell_agent_id}`;
 
     const updateRes = await fetch(updateEndpoint, {
       method: "PATCH",

@@ -5,6 +5,8 @@ import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 import { compileFlowToRetellStates, filterStatesForRetell } from "@/lib/compile-flow-to-retell";
 import type { FlowNode } from "@/lib/conversation-flow-templates";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 // ---------------------------------------------------------------------------
 // CRUD handlers
@@ -131,7 +133,7 @@ export async function POST(
     .single();
 
   if (flowError || !flow) {
-    console.error("[conversation-flows] Flow lookup failed:", flowError?.message);
+    logger.warn("Flow lookup failed", { error: String(flowError?.message) });
     return NextResponse.json({ error: "Flow not found" }, { status: 404 });
   }
 
@@ -167,8 +169,8 @@ export async function POST(
 
   // Step 1: GET the agent to find response_engine.llm_id
   const getEndpoint = isChat
-    ? `https://api.retellai.com/get-chat-agent/${retellAgentId}`
-    : `https://api.retellai.com/get-agent/${retellAgentId}`;
+    ? `${RETELL_API_BASE}/get-chat-agent/${retellAgentId}`
+    : `${RETELL_API_BASE}/get-agent/${retellAgentId}`;
 
   let llmId: string | null = null;
 
@@ -213,7 +215,7 @@ export async function POST(
 
   try {
     const llmRes = await fetch(
-      `https://api.retellai.com/get-retell-llm/${llmId}`,
+      `${RETELL_API_BASE}/get-retell-llm/${llmId}`,
       {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
@@ -222,25 +224,25 @@ export async function POST(
     if (llmRes.ok) {
       existingLLM = await llmRes.json();
     } else {
-      console.warn("[conversation-flows] GET LLM failed:", llmRes.status);
+      logger.warn("GET LLM failed", { status: llmRes.status });
     }
   } catch (err) {
-    console.warn("[conversation-flows] GET LLM error:", err);
+    logger.warn("GET LLM error", { error: String(err) });
   }
 
   // Step 3: Compile FlowNodes into retell-llm states
   const nodes = flow.nodes as FlowNode[];
   const compiled = compileFlowToRetellStates(nodes, clientId!);
 
-  console.log(
-    "[conversation-flows] Deploying flow", id,
-    "\u2192 LLM", llmId,
-    "| states:", compiled.states.length,
-    "| tools:", compiled.general_tools.length,
-    "| starting_state:", compiled.starting_state,
-    "| existing general_prompt length:", (existingLLM.general_prompt || "").length,
-    "| existing tools:", (existingLLM.general_tools || []).length
-  );
+  logger.info("Deploying flow", {
+    flowId: id,
+    llmId,
+    statesCount: compiled.states.length,
+    toolsCount: compiled.general_tools.length,
+    startingState: compiled.starting_state,
+    existingPromptLength: (existingLLM.general_prompt || "").length,
+    existingToolsCount: (existingLLM.general_tools || []).length,
+  });
 
   // Step 4: Build PATCH payload — merge new states with all existing LLM fields
   // We preserve everything that exists and only overwrite states + starting_state
@@ -273,7 +275,7 @@ export async function POST(
 
   try {
     const updateRes = await fetch(
-      `https://api.retellai.com/update-retell-llm/${llmId}`,
+      `${RETELL_API_BASE}/update-retell-llm/${llmId}`,
       {
         method: "PATCH",
         headers: {
@@ -293,7 +295,7 @@ export async function POST(
           error: "Failed to deploy flow to Retell. Please try again.",
           debug_status: updateRes.status,
           debug_retell_error: errText,
-          debug_endpoint: `https://api.retellai.com/update-retell-llm/${llmId}`,
+          debug_endpoint: `${RETELL_API_BASE}/update-retell-llm/${llmId}`,
           debug_payload_summary: {
             states_count: compiled.states.length,
             tools_count: compiled.general_tools.length,
@@ -305,19 +307,19 @@ export async function POST(
     }
 
     const updatedLLM = await updateRes.json();
-    console.log(
-      "[conversation-flows] Deploy PATCH response for flow", id,
-      "\u2192 LLM", llmId,
-      "| response states:", (updatedLLM.states || []).length,
-      "| response starting_state:", updatedLLM.starting_state,
-      "| state names:", (updatedLLM.states || []).map((s: { name: string }) => s.name),
-      "| PATCH response state tools:", (updatedLLM.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-    );
+    logger.info("Deploy PATCH response", {
+      flowId: id,
+      llmId,
+      responseStatesCount: (updatedLLM.states || []).length,
+      responseStartingState: updatedLLM.starting_state,
+      stateNames: (updatedLLM.states || []).map((s: { name: string }) => s.name),
+      stateTools: (updatedLLM.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+    });
 
     // Verification read-back: GET the LLM to confirm states + tools persisted
     try {
       const verifyRes = await fetch(
-        `https://api.retellai.com/get-retell-llm/${llmId}`,
+        `${RETELL_API_BASE}/get-retell-llm/${llmId}`,
         {
           headers: { Authorization: `Bearer ${apiKey}` },
           signal: AbortSignal.timeout(EXTERNAL_API_TIMEOUT_MS),
@@ -326,12 +328,12 @@ export async function POST(
       if (verifyRes.ok) {
         const verifyLlm = await verifyRes.json();
         const verifyCount = (verifyLlm.states || []).length;
-        console.log(
-          "[conversation-flows] Deploy VERIFIED: LLM", llmId,
-          "has", verifyCount, "states after deploy",
-          "| starting_state:", verifyLlm.starting_state,
-          "| GET response state tools:", (verifyLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-        );
+        logger.info("Deploy VERIFIED", {
+          llmId,
+          statesCount: verifyCount,
+          startingState: verifyLlm.starting_state,
+          stateTools: (verifyLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+        });
         if (verifyCount === 0) {
           console.error(
             "[conversation-flows] DEPLOY VERIFICATION FAILED:",
@@ -341,7 +343,7 @@ export async function POST(
         }
       }
     } catch (verifyErr) {
-      console.warn("[conversation-flows] Deploy verification read-back failed:", verifyErr);
+      logger.warn("Deploy verification read-back failed", { error: String(verifyErr) });
     }
   } catch (err) {
     console.error("[conversation-flows] LLM update timed out:", err);

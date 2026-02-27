@@ -13,6 +13,8 @@ import {
 } from "@/lib/prompt-tree-types";
 import { compileFlowToRetellStates, filterStatesForRetell } from "@/lib/compile-flow-to-retell";
 import type { FlowNode } from "@/lib/conversation-flow-templates";
+import { logger } from "@/lib/logger";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 // MEDIUM-13: Track redeploy timestamps to prevent infinite loop
 const redeployTimestamps = new Map<string, number>();
@@ -24,7 +26,7 @@ async function retellFetch(
   apiKey: string,
   options?: RequestInit
 ) {
-  return fetch(`https://api.retellai.com${path}`, {
+  return fetch(`${RETELL_API_BASE}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -67,7 +69,7 @@ function extractFlowId(engine: Record<string, unknown> | undefined | null): stri
  * URLs), but Retell only stores the ones it can validate. This function
  * ensures the editor sees all configured tools, even on localhost.
  */
-function mergCompiledToolsIntoLlm(
+function mergeCompiledToolsIntoLlm(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   llmData: Record<string, any>,
   compiled: { states: { name: string; tools?: unknown[] }[] }
@@ -377,7 +379,7 @@ export async function GET(
 
     const retellAgent = await agentRes.json();
     const engine = retellAgent.response_engine;
-    console.log("[conversation-flow GET] engine type:", engine?.type, "| llm_id:", engine?.llm_id, "| has inline llm:", !!engine?.llm);
+    logger.info("GET engine type", { engineType: engine?.type, llmId: engine?.llm_id, hasInlineLlm: !!engine?.llm });
 
     // ── Handle retell-llm engine type (multi-prompt states) ──────────
     if (engine?.type === "retell-llm" && engine.llm_id) {
@@ -399,7 +401,7 @@ export async function GET(
       }
 
       const llmData = await llmRes.json();
-      console.log("[conversation-flow GET] LLM", llmId, "| states:", (llmData.states || []).length, "| starting_state:", llmData.starting_state, "| state names:", (llmData.states || []).map((s: { name: string }) => s.name));
+      logger.info("GET LLM data", { llmId, statesCount: (llmData.states || []).length, startingState: llmData.starting_state, stateNames: (llmData.states || []).map((s: { name: string }) => s.name) });
 
       // ── Self-healing: check Supabase for a deployed conversation flow ──
       // The onboarding wizard may deploy to a different agent than the one
@@ -463,31 +465,25 @@ export async function GET(
             compiledCount > llmStateCount ||
             (compiledHasStateTools && !llmHasStateTools);
 
-          console.log(
-            "[conversation-flow GET] Supabase flow", activeFlow.id,
-            "| flow agent_id:", activeFlow.agent_id,
-            "| this agent:", id,
-            "| Supabase nodes:", (activeFlow.nodes as unknown[]).length,
-            "| compiled states:", compiledCount,
-            "| compiled tools:", compiled.general_tools.length,
-            "| LLM states:", llmStateCount,
-            "| LLM tools:", (llmData.general_tools || []).length,
-            "| needs redeploy:", needsRedeploy
-          );
+          logger.info("Supabase flow comparison", {
+            flowId: activeFlow.id,
+            flowAgentId: activeFlow.agent_id,
+            thisAgent: id,
+            supabaseNodes: (activeFlow.nodes as unknown[]).length,
+            compiledStates: compiledCount,
+            compiledTools: compiled.general_tools.length,
+            llmStates: llmStateCount,
+            llmTools: (llmData.general_tools || []).length,
+            needsRedeploy,
+          });
 
           if (needsRedeploy) {
             const lastRedeploy = redeployTimestamps.get(llmId);
             if (lastRedeploy && Date.now() - lastRedeploy < REDEPLOY_COOLDOWN_MS) {
-              console.warn("[conversation-flow GET] Skipping auto-redeploy — cooldown active for LLM", llmId);
+              logger.warn("Skipping auto-redeploy — cooldown active", { llmId });
             } else {
               redeployTimestamps.set(llmId, Date.now());
-              console.log(
-                "[conversation-flow GET] Auto-redeploying",
-                compiledCount,
-                "states to LLM",
-                llmId,
-                "(was", llmStateCount, ")"
-              );
+              logger.info("Auto-redeploying states to LLM", { compiledCount, llmId, previousCount: llmStateCount });
 
               // Build redeploy payload: set states, preserve existing prompt/tools
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -519,14 +515,11 @@ export async function GET(
 
               if (redeployRes.ok) {
                 const patchLlm = await redeployRes.json();
-                console.log(
-                  "[conversation-flow GET] Auto-redeploy PATCH succeeded:",
-                  (patchLlm.states || []).length,
-                  "states on LLM",
+                logger.info("Auto-redeploy PATCH succeeded", {
                   llmId,
-                  "| PATCH response has state tools:",
-                  (patchLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-                );
+                  statesCount: (patchLlm.states || []).length,
+                  stateTools: (patchLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+                });
 
                 // Verification GET: The Retell PATCH response may not include
                 // per-state tools in the response body. Do a fresh GET to ensure
@@ -539,16 +532,13 @@ export async function GET(
                   );
                   if (verifyRes.ok) {
                     finalLlm = await verifyRes.json();
-                    console.log(
-                      "[conversation-flow GET] Verification GET:",
-                      (finalLlm.states || []).length,
-                      "states",
-                      "| state tools:",
-                      (finalLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-                    );
+                    logger.info("Verification GET", {
+                      statesCount: (finalLlm.states || []).length,
+                      stateTools: (finalLlm.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+                    });
                   }
                 } catch (verifyErr) {
-                  console.warn("[conversation-flow GET] Verification GET failed:", verifyErr);
+                  logger.warn("Verification GET failed", { error: String(verifyErr) });
                 }
 
                 // Also update the flow's agent_id to point to this agent
@@ -560,19 +550,14 @@ export async function GET(
                       .update({ agent_id: id })
                       .eq("id", activeFlow.id)
                   ).then(() =>
-                    console.log(
-                      "[conversation-flow GET] Updated flow",
-                      activeFlow!.id,
-                      "agent_id to",
-                      id
-                    )
+                    logger.info("Updated flow agent_id", { flowId: activeFlow!.id, agentId: id })
                   ).catch(() => {});
                 }
 
                 // Merge compiled tools into the LLM data for the editor.
                 // Retell may not store custom tools with localhost URLs, but
                 // the editor should show all configured tools.
-                const enrichedLlm = mergCompiledToolsIntoLlm(finalLlm, compiled);
+                const enrichedLlm = mergeCompiledToolsIntoLlm(finalLlm, compiled);
                 const convertedFlow = convertLLMToFlow(enrichedLlm);
                 return NextResponse.json({
                   exists: true,
@@ -592,12 +577,7 @@ export async function GET(
             }
           }
         } else if (llmStateCount === 0) {
-          console.log(
-            "[conversation-flow GET] No active Supabase flow found for agent",
-            id,
-            "or client",
-            agent.client_id
-          );
+          logger.info("No active Supabase flow found", { agentId: id, clientId: agent.client_id });
         }
       } catch (fallbackErr) {
         console.error(
@@ -636,17 +616,16 @@ export async function GET(
             flowForTools.nodes as FlowNode[],
             flowForTools.client_id || agent.client_id || ""
           );
-          enrichedLlmData = mergCompiledToolsIntoLlm(llmData, compiledForTools);
+          enrichedLlmData = mergeCompiledToolsIntoLlm(llmData, compiledForTools);
         }
       } catch {
         // Proceed with Retell data only
       }
 
       // Log per-state tools for debugging
-      console.log(
-        "[conversation-flow GET] LLM state tools (enriched):",
-        (enrichedLlmData.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-      );
+      logger.info("LLM state tools (enriched)", {
+        stateTools: (enrichedLlmData.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+      });
 
       // Convert LLM states to our ConversationFlowData format
       const convertedFlow = convertLLMToFlow(enrichedLlmData);
@@ -781,18 +760,13 @@ export async function PUT(
         llmPayload.states = filterStatesForRetell(llmPayload.states);
       }
 
-      console.log(
-        "[conversation-flow PUT] Saving retell-llm",
+      logger.info("Saving retell-llm", {
         llmId,
-        "| states:",
-        (llmPayload.states || []).length,
-        "| state tools:",
-        (llmPayload.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
-        "| general_tools:",
-        (llmPayload.general_tools || []).length,
-        "| payload keys:",
-        Object.keys(llmPayload)
-      );
+        statesCount: (llmPayload.states || []).length,
+        stateTools: (llmPayload.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+        generalToolsCount: (llmPayload.general_tools || []).length,
+        payloadKeys: Object.keys(llmPayload),
+      });
 
       const updateRes = await retellFetch(
         `/update-retell-llm/${llmId}`,
@@ -822,16 +796,13 @@ export async function PUT(
         );
         if (verifyRes.ok) {
           finalLLM = await verifyRes.json();
-          console.log(
-            "[conversation-flow PUT] Verification GET:",
-            (finalLLM.states || []).length,
-            "states",
-            "| state tools:",
-            (finalLLM.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`)
-          );
+          logger.info("PUT Verification GET", {
+            statesCount: (finalLLM.states || []).length,
+            stateTools: (finalLLM.states || []).map((s: { name: string; tools?: unknown[] }) => `${s.name}:${(s.tools || []).length}`),
+          });
         }
       } catch (verifyErr) {
-        console.warn("[conversation-flow PUT] Verification GET failed:", verifyErr);
+        logger.warn("PUT Verification GET failed", { error: String(verifyErr) });
       }
 
       // Merge compiled tools back into the response for the editor.
@@ -843,7 +814,7 @@ export async function PUT(
         // The originalLLM (from body._retell_llm_data) already has the
         // enriched tools from the GET handler. Use it to fill in any
         // tools that Retell didn't store.
-        enrichedFinalLLM = mergCompiledToolsIntoLlm(finalLLM, {
+        enrichedFinalLLM = mergeCompiledToolsIntoLlm(finalLLM, {
           states: (originalLLM.states as { name: string; tools?: unknown[] }[]),
         });
       }

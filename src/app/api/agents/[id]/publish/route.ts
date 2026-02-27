@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function POST(
   _request: NextRequest,
@@ -32,7 +33,7 @@ export async function POST(
 
   try {
     const res = await fetch(
-      `https://api.retellai.com/publish-agent/${agent.retell_agent_id}`,
+      `${RETELL_API_BASE}/publish-agent/${agent.retell_agent_id}`,
       {
         method: "POST",
         headers: {

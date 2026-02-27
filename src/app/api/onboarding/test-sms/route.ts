@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/api/auth";
 import { getClientId } from "@/lib/api/get-client-id";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function POST(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -47,8 +48,8 @@ export async function POST(request: NextRequest) {
   try {
     // Verify the agent exists on Retell by fetching its config
     const agentEndpoint = agent.platform === "retell-sms" || agent.platform === "retell-chat"
-      ? `https://api.retellai.com/get-chat-agent/${agent.retell_agent_id}`
-      : `https://api.retellai.com/get-agent/${agent.retell_agent_id}`;
+      ? `${RETELL_API_BASE}/get-chat-agent/${agent.retell_agent_id}`
+      : `${RETELL_API_BASE}/get-agent/${agent.retell_agent_id}`;
 
     const verifyRes = await fetch(agentEndpoint, {
       method: "GET",
