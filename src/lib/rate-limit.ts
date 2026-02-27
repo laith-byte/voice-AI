@@ -68,4 +68,17 @@ export function rateLimitExceeded(resetMs: number): NextResponse {
   );
 }
 
-export const publicEndpointLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });
+// HIGH-01: Use persistent (Redis) rate limiter when Upstash env vars are set,
+// otherwise fall back to in-memory limiter.
+import { createPersistentRateLimiter, isPersistentRateLimitAvailable } from "@/lib/rate-limit-persistent";
+
+const inMemoryLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });
+const persistentLimiter = isPersistentRateLimitAvailable()
+  ? createPersistentRateLimiter({ windowMs: 60_000, maxRequests: 20, prefix: "pub" })
+  : null;
+
+export const publicEndpointLimiter = {
+  check: persistentLimiter
+    ? async (key: string) => persistentLimiter.check(key)
+    : async (key: string) => inMemoryLimiter.check(key),
+};

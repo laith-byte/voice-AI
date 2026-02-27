@@ -9,7 +9,7 @@ import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rat
  */
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
-  const { allowed, resetMs } = publicEndpointLimiter.check(ip);
+  const { allowed, resetMs } = await publicEndpointLimiter.check(ip);
   if (!allowed) return rateLimitExceeded(resetMs);
 
   const body = await request.json();
