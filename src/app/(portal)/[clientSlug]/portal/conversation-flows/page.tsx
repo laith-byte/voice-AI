@@ -78,6 +78,7 @@ import {
   generateTemplateNodes,
   replaceFlowPlaceholders,
 } from "@/lib/conversation-flow-templates";
+import { AGENT_PERSONALITIES } from "@/lib/prompt-templates";
 import { FeatureGate } from "@/components/portal/feature-gate";
 
 // ---------------------------------------------------------------------------
@@ -641,10 +642,16 @@ function ConversationFlowsContent() {
     setEditingFlow(null);
     setFlowName(template.name);
     setFlowAgentId("");
-    // Prefer DB-stored flow nodes, fall back to code generation
-    const templateNodes = template.defaultFlowNodes?.length
-      ? template.defaultFlowNodes
-      : generateTemplateNodes(template.industryKey, template.useCaseKey);
+    // When personality data is available, always regenerate from code so the
+    // first node gets personality-driven content instead of generic tone text.
+    // Fall back to DB-stored nodes only when no personality exists.
+    const personalityKey = `${template.industryKey}_${template.useCaseKey}`;
+    const personality = AGENT_PERSONALITIES[personalityKey];
+    const templateNodes = personality
+      ? generateTemplateNodes(template.industryKey, template.useCaseKey, personality)
+      : (template.defaultFlowNodes?.length
+          ? template.defaultFlowNodes
+          : generateTemplateNodes(template.industryKey, template.useCaseKey));
     setNodes(templateNodes);
     setCreating(true);
     setPromptPreview(null);

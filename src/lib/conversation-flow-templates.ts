@@ -202,7 +202,7 @@ export const AGENT_NAMES: Record<string, string> = {
   financial_services_dispatch: "Robert",
   insurance_lead_qualification: "Jennifer",
   insurance_customer_support: "Michael",
-  insurance_receptionist: "Karen",
+  insurance_receptionist: "Nadia",
   insurance_dispatch: "Brian",
   logistics_lead_qualification: "Alex",
   logistics_customer_support: "Chris",
@@ -242,6 +242,58 @@ export const AGENT_NAMES: Record<string, string> = {
   real_estate_dispatch: "Kevin",
 };
 
+// Gender for each agent name — used to pick a matching Retell voice at creation time
+export const AGENT_NAME_GENDERS: Record<string, "male" | "female"> = {
+  healthcare_lead_qualification: "female",      // Sarah
+  healthcare_customer_support: "female",         // Emily
+  healthcare_receptionist: "female",             // Rachel
+  healthcare_dispatch: "male",                   // James
+  financial_services_lead_qualification: "male", // David
+  financial_services_customer_support: "female", // Lisa
+  financial_services_receptionist: "female",     // Amanda
+  financial_services_dispatch: "male",           // Robert
+  insurance_lead_qualification: "female",        // Jennifer
+  insurance_customer_support: "male",            // Michael
+  insurance_receptionist: "female",              // Nadia
+  insurance_dispatch: "male",                    // Brian
+  logistics_lead_qualification: "male",          // Alex
+  logistics_customer_support: "male",            // Chris
+  logistics_receptionist: "female",              // Taylor
+  logistics_dispatch: "male",                    // Marcus
+  home_services_lead_qualification: "male",      // Jake
+  home_services_customer_support: "female",      // Samantha
+  home_services_receptionist: "female",          // Laura
+  home_services_dispatch: "male",                // Mike
+  retail_lead_qualification: "female",           // Olivia
+  retail_customer_support: "male",               // Daniel
+  retail_receptionist: "female",                 // Sophie
+  retail_dispatch: "male",                       // Tyler
+  travel_hospitality_lead_qualification: "female", // Isabella
+  travel_hospitality_customer_support: "male",     // Nathan
+  travel_hospitality_receptionist: "female",       // Grace
+  travel_hospitality_dispatch: "male",             // Connor
+  debt_collection_lead_qualification: "male",    // Thomas
+  debt_collection_customer_support: "female",    // Nicole
+  debt_collection_receptionist: "male",          // Ryan
+  debt_collection_dispatch: "female",            // Angela
+  automotive_lead_qualification: "male",         // Derek
+  automotive_customer_support: "female",         // Hannah
+  automotive_receptionist: "female",             // Megan
+  automotive_dispatch: "male",                   // Carlos
+  hospitality_lead_qualification: "female",      // Victoria
+  hospitality_customer_support: "male",          // Julian
+  hospitality_receptionist: "female",            // Claire
+  hospitality_dispatch: "male",                  // Marco
+  legal_lead_qualification: "female",            // Catherine
+  legal_customer_support: "male",                // Andrew
+  legal_receptionist: "female",                  // Patricia
+  legal_dispatch: "male",                        // Steven
+  real_estate_lead_qualification: "female",      // Jessica
+  real_estate_customer_support: "male",          // Brandon
+  real_estate_receptionist: "female",            // Monica
+  real_estate_dispatch: "male",                  // Kevin
+};
+
 /**
  * Replace [Company Name] and [Agent Name] placeholders in flow node text
  * with actual values. Returns a new array (does not mutate the input).
@@ -268,7 +320,27 @@ export function makeFlowId() {
   return crypto.randomUUID();
 }
 
-export function generateTemplateNodes(industryKey: string, useCaseKey: string): FlowNode[] {
+export interface PersonalityBrief {
+  personality: string;
+  tasks: string[];
+  styleNotes: string[];
+  industryRules: string[];
+}
+
+function buildPersonalityBlock(p: PersonalityBrief): string {
+  return [
+    `## YOUR PERSONALITY\n${p.personality}`,
+    `## YOUR KEY RESPONSIBILITIES\n${p.tasks.map(t => "- " + t).join("\n")}`,
+    `## HOW YOU COMMUNICATE\n${p.styleNotes.map(n => "- " + n).join("\n")}`,
+    `## RULES YOU MUST FOLLOW\n${p.industryRules.map(r => "- " + r).join("\n")}`,
+  ].join("\n\n");
+}
+
+export function generateTemplateNodes(
+  industryKey: string,
+  useCaseKey: string,
+  personality?: PersonalityBrief
+): FlowNode[] {
   const ind = INDUSTRIES[industryKey];
   if (!ind) return [];
 
@@ -279,7 +351,11 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
           id: makeFlowId(),
           type: "message",
           data: {
-            text: `Thank you for calling [Company Name]! I'm really glad you reached out. My name is [Agent Name], and I specialize in helping people explore our ${ind.servicePlural}. Before we dive in, let me quickly pull up your information so I can give you the most personalized experience possible.
+            text: personality
+              ? `Thank you for calling [Company Name]! I'm really glad you reached out. My name is [Agent Name], and I specialize in helping people explore our ${ind.servicePlural}. Before we dive in, let me quickly pull up your information so I can give you the most personalized experience possible.
+
+${buildPersonalityBlock(personality)}`
+              : `Thank you for calling [Company Name]! I'm really glad you reached out. My name is [Agent Name], and I specialize in helping people explore our ${ind.servicePlural}. Before we dive in, let me quickly pull up your information so I can give you the most personalized experience possible.
 
 **Tone:** Warm, enthusiastic, and genuinely interested. You want the caller to feel like they've reached someone who actually wants to help — not a generic answering service. Smile through your voice.
 
@@ -441,7 +517,11 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
           id: makeFlowId(),
           type: "message",
           data: {
-            text: `Hello, and thank you for reaching our ${ind.servicePlural} support team! I'm [Agent Name], and I'm here to help resolve whatever brought you in today. Let me quickly pull up your account so I can assist you as efficiently as possible.
+            text: personality
+              ? `Hello, and thank you for reaching our ${ind.servicePlural} support team! I'm [Agent Name], and I'm here to help resolve whatever brought you in today. Let me quickly pull up your account so I can assist you as efficiently as possible.
+
+${buildPersonalityBlock(personality)}`
+              : `Hello, and thank you for reaching our ${ind.servicePlural} support team! I'm [Agent Name], and I'm here to help resolve whatever brought you in today. Let me quickly pull up your account so I can assist you as efficiently as possible.
 
 **Tone:** Empathetic, patient, and solution-oriented. Support callers may be frustrated — your job is to make them feel heard and confident that their issue will be resolved.
 
@@ -619,7 +699,11 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
           id: makeFlowId(),
           type: "message",
           data: {
-            text: `Good [morning/afternoon/evening]! Thank you for calling [Company Name]. I'm [Agent Name], your virtual receptionist, and I'm happy to help you with whatever you need today. Let me quickly check if we have your information on file.
+            text: personality
+              ? `Good [morning/afternoon/evening]! Thank you for calling [Company Name]. I'm [Agent Name], your virtual receptionist, and I'm happy to help you with whatever you need today. Let me quickly check if we have your information on file.
+
+${buildPersonalityBlock(personality)}`
+              : `Good [morning/afternoon/evening]! Thank you for calling [Company Name]. I'm [Agent Name], your virtual receptionist, and I'm happy to help you with whatever you need today. Let me quickly check if we have your information on file.
 
 **Tone:** Professional yet warm — like the best front-desk person you've ever encountered. Welcoming, organized, and capable.
 
@@ -778,7 +862,11 @@ export function generateTemplateNodes(industryKey: string, useCaseKey: string): 
           id: makeFlowId(),
           type: "message",
           data: {
-            text: `Thank you for calling [Company Name]. I'm [Agent Name], and I'm here to help with your ${ind.servicePlural} needs as quickly as possible. Let me pull up your account while you tell me what's going on.
+            text: personality
+              ? `Thank you for calling [Company Name]. I'm [Agent Name], and I'm here to help with your ${ind.servicePlural} needs as quickly as possible. Let me pull up your account while you tell me what's going on.
+
+${buildPersonalityBlock(personality)}`
+              : `Thank you for calling [Company Name]. I'm [Agent Name], and I'm here to help with your ${ind.servicePlural} needs as quickly as possible. Let me pull up your account while you tell me what's going on.
 
 **Tone:** Calm, competent, and reassuring. Dispatch callers are often in stressful situations (emergencies, broken equipment, urgent needs). Your calm demeanor helps de-escalate their anxiety.
 
