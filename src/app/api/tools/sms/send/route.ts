@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
+import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
 
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
-  if (!apiKey || apiKey !== process.env.RETELL_TOOLS_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { body, error } = await verifyToolAuth(request);
+  if (error) return error;
 
-  const url = new URL(request.url);
-  const body = await request.json();
-  const client_id = url.searchParams.get("client_id") || body.client_id;
   const { to_number, message_body } = body;
 
-  if (!client_id || !to_number || !message_body) {
+  if (!to_number || !message_body) {
     return NextResponse.json(
-      { error: "client_id, to_number, and message_body are required" },
+      { error: "to_number and message_body are required" },
       { status: 400 }
     );
   }

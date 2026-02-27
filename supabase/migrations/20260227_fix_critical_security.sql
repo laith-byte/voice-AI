@@ -52,3 +52,12 @@ GRANT EXECUTE ON FUNCTION public.increment_total_calls TO service_role;
 
 -- CRITICAL-01: Add allowed_origins column to widget_config for origin validation
 ALTER TABLE public.widget_config ADD COLUMN IF NOT EXISTS allowed_origins TEXT[] DEFAULT NULL;
+
+-- HIGH-11: Fix plan_addons RLS — replace public read with org-scoped read
+-- The public_read_plan_addons policy lets any unauthenticated user read all active addons
+DROP POLICY IF EXISTS "public_read_plan_addons" ON public.plan_addons;
+
+CREATE POLICY "authenticated_read_plan_addons" ON public.plan_addons
+  FOR SELECT USING (
+    organization_id = public.get_user_org_id()
+  );

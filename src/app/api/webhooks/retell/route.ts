@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
         // CRITICAL-12: Idempotency check — skip if already processed
         const { data: existingEndedLog } = await supabase
           .from("call_logs")
-          .select("status")
+          .select("status, metadata")
           .eq("retell_call_id", call.call_id)
           .single();
         if (existingEndedLog?.status === "completed") break;
@@ -132,6 +132,14 @@ export async function POST(request: NextRequest) {
             ? call.end_timestamp - call.start_timestamp
             : 0;
 
+        // HIGH-13: Merge metadata instead of overwriting to prevent race with call_analyzed
+        const mergedMetadata = {
+          ...(existingEndedLog?.metadata as Record<string, unknown> || {}),
+          ...(call.metadata || {}),
+          reason_call_ended: call.disconnection_reason,
+          call_type: call.call_type,
+        };
+
         await supabase
           .from("call_logs")
           .update({
@@ -139,11 +147,7 @@ export async function POST(request: NextRequest) {
             duration_seconds: Math.round(durationMs / 1000),
             transcript: call.transcript_object || null,
             recording_url: call.recording_url || null,
-            metadata: {
-              ...(call.metadata || {}),
-              reason_call_ended: call.disconnection_reason,
-              call_type: call.call_type,
-            },
+            metadata: mergedMetadata,
             ended_at: call.end_timestamp
               ? new Date(call.end_timestamp).toISOString()
               : new Date().toISOString(),
@@ -224,7 +228,7 @@ export async function POST(request: NextRequest) {
         // CRITICAL-12: Idempotency check — skip if already analyzed
         const { data: existingAnalyzedLog } = await supabase
           .from("call_logs")
-          .select("post_call_analysis")
+          .select("post_call_analysis, transcript")
           .eq("retell_call_id", call.call_id)
           .single();
         if (existingAnalyzedLog?.post_call_analysis) break;
@@ -234,8 +238,9 @@ export async function POST(request: NextRequest) {
         if (call.custom_analysis_data)
           updateData.post_call_analysis = call.custom_analysis_data;
 
-        // Also capture transcript if not already stored
-        if (call.transcript_object) updateData.transcript = call.transcript_object;
+        // HIGH-13: Only set transcript if not already stored by call_ended
+        if (call.transcript_object && !existingAnalyzedLog?.transcript)
+          updateData.transcript = call.transcript_object;
 
         if (Object.keys(updateData).length > 0) {
           await supabase

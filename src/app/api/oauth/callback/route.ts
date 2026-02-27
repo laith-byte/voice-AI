@@ -70,9 +70,12 @@ export async function GET(request: NextRequest) {
         }
       }
     }
-  } catch {
-    // If session verification fails, continue with the encrypted state check
-    // The encrypted state with 10-min expiry is the primary protection
+  } catch (authCheckError) {
+    // HIGH-10: Log and fail if auth check throws — don't silently proceed
+    console.error("OAuth callback auth check failed:", authCheckError);
+    return NextResponse.redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL}${redirectPath}?oauth_error=auth_check_failed`
+    );
   }
 
   const config = getProviderConfig(provider);

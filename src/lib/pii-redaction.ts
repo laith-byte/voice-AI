@@ -1,3 +1,17 @@
+/**
+ * HIGH-12: Simple ReDoS detection — rejects patterns with nested quantifiers
+ * that can cause catastrophic backtracking (e.g., (a+)+, (a*)*b, (a|a)+).
+ */
+function isUnsafeRegex(pattern: string): boolean {
+  // Reject patterns longer than 200 chars (overly complex)
+  if (pattern.length > 200) return true;
+  // Detect nested quantifiers: (...)+ followed by +, *, {n,} etc.
+  if (/(\+|\*|\{)\s*\)\s*(\+|\*|\{)/.test(pattern)) return true;
+  // Detect (.+)+ or (.*)+  patterns
+  if (/\([^)]*[+*][^)]*\)[+*{]/.test(pattern)) return true;
+  return false;
+}
+
 const PATTERNS: Record<string, RegExp> = {
   phone: /(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/g,
   email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
@@ -32,6 +46,8 @@ function getActivePatterns(config: PiiConfig): { regex: RegExp; label: string }[
 
   for (const cp of config.custom_patterns || []) {
     try {
+      // HIGH-12: Reject patterns that could cause catastrophic backtracking (ReDoS)
+      if (isUnsafeRegex(cp.pattern)) continue;
       active.push({ regex: new RegExp(cp.pattern, "g"), label: cp.label || "[REDACTED]" });
     } catch {
       // Skip invalid regex
