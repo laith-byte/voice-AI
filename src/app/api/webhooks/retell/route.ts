@@ -381,11 +381,21 @@ export async function POST(request: NextRequest) {
           const callerPhone = callLogRow.from_number || callLogRow.to_number;
           const sanitizedPhone = sanitizePhone(callerPhone);
           if (sanitizedPhone && callLogRow.agent_id) {
+            // H3 normalization: match both +1XXXXXXXXXX and XXXXXXXXXX so stored format doesn't matter
+            const withoutCountryCode =
+              sanitizedPhone.startsWith("+1") && sanitizedPhone.length >= 12
+                ? sanitizedPhone.slice(2)
+                : "";
+            const phoneFilter =
+              withoutCountryCode && withoutCountryCode !== sanitizedPhone
+                ? `phone.eq.${sanitizedPhone},phone.eq.${withoutCountryCode}`
+                : `phone.eq.${sanitizedPhone}`;
+
             const { data: matchingLead } = await supabase
               .from("leads")
               .select("id")
               .eq("agent_id", callLogRow.agent_id)
-              .or(`phone.eq.${sanitizedPhone}`)
+              .or(phoneFilter)
               .limit(1)
               .single();
 

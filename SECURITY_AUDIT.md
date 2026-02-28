@@ -116,7 +116,7 @@ if (logError) {
 
 ### H3. Lead lookup uses unsanitized phone number in `.or()` filter
 
-**Status:** FIXED (2025-02-27)
+**Status:** FIXED (2025-02-27). Phone normalization gap addressed (2025-02-27): lead lookup queries with both sanitized phone and a +1-stripped variant so stored "5551234567" matches caller "+15551234567"; all lead create/update paths now store phone via `normalizeLeadPhone()` (10-digit US/Canada → +1 prefix).
 
 **File:** `src/app/api/webhooks/retell/route.ts`  
 **Line:** 369
@@ -342,6 +342,8 @@ fetch(webhookUrl, {
 
 ### L1. Middleware: role from `user.user_metadata.role` can be spoofed if auth is misconfigured
 
+**Status:** FIXED (2025-02-27). Comment added in middleware documenting that role must only be set server-side (auth hooks or service client), never by the client, and to restrict client-side metadata in Supabase dashboard if needed.
+
 **File:** `src/lib/supabase/middleware.ts`  
 **Line:** 96
 
@@ -352,6 +354,8 @@ fetch(webhookUrl, {
 ---
 
 ### L2. `.env` is in `.gitignore`; `.env.example` is not ignored
+
+**Status:** FIXED (2025-02-27). Warning comment added at top of `.env.example`: never add real secrets; use only variable names and dummy values; real values go in `.env.local`.
 
 **File:** `.gitignore`  
 **Lines:** 35–37
@@ -364,6 +368,8 @@ fetch(webhookUrl, {
 
 ### L3. No hardcoded secrets found
 
+**Status:** VERIFIED — NO CHANGE NEEDED (2025-02-27).
+
 **Search:** Codebase scanned for patterns like hardcoded API keys, Bearer tokens, and literal secrets.
 
 **Finding:** No hardcoded secrets were found. Credentials are read from `process.env`.
@@ -374,6 +380,8 @@ fetch(webhookUrl, {
 
 ### L4. `NEXT_PUBLIC_*` usage is appropriate
 
+**Status:** VERIFIED — NO CHANGE NEEDED (2025-02-27).
+
 **Finding:** Only intended public vars are used: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_APP_URL`, and optional Sentry/Stripe public keys. No server-only secrets are exposed via `NEXT_PUBLIC_`.
 
 **Fix:** None. Continue to avoid prefixing server secrets with `NEXT_PUBLIC_`.
@@ -381,6 +389,8 @@ fetch(webhookUrl, {
 ---
 
 ### L5. Portal slug validation in middleware is correct
+
+**Status:** VERIFIED — NO CHANGE NEEDED (2025-02-27).
 
 **File:** `src/lib/supabase/middleware.ts`  
 **Lines:** 166–184
@@ -393,6 +403,8 @@ fetch(webhookUrl, {
 
 ### L6. Post-call actions and integration recipes do not block each other
 
+**Status:** VERIFIED — NO CHANGE NEEDED (2025-02-27).
+
 **File:** `src/app/api/webhooks/retell/route.ts`  
 **Lines:** 336–355
 
@@ -404,6 +416,8 @@ fetch(webhookUrl, {
 
 ### L7. Integration recipes: one failure does not block others
 
+**Status:** VERIFIED — NO CHANGE NEEDED (2025-02-27).
+
 **File:** `src/lib/integration-recipes.ts`  
 **Lines:** 63–136
 
@@ -414,6 +428,8 @@ fetch(webhookUrl, {
 ---
 
 ### L8. Crypto: AES-256-GCM and unique IV per encryption
+
+**Status:** VERIFIED — NO CHANGE NEEDED (2025-02-27).
 
 **File:** `src/lib/crypto.ts`  
 **Lines:** 3–5, 17–18

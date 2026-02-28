@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
+import { normalizeLeadPhone } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   const { client_id, body, error } = await verifyToolAuth(request);
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
         {
           agent_id: resolvedAgentId,
           organization_id: agentData?.organization_id,
-          phone,
+          phone: normalizeLeadPhone(phone),
           name: name || null,
           tags: tags || [],
           dynamic_vars: dynamic_vars || {},

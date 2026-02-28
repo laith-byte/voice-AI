@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
+import { normalizeLeadPhone } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   const { client_id, body, error } = await verifyToolAuth(request);
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     const { data: lead, error } = await supabase
       .from("leads")
       .update(updates)
-      .eq("phone", phone)
+      .eq("phone", normalizeLeadPhone(phone))
       .in("agent_id", agentIds)
       .select("id, phone, name, tags, dynamic_vars")
       .single();

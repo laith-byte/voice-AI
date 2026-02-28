@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { logger } from "@/lib/logger";
+import { normalizeLeadPhone } from "@/lib/utils";
 
 const ALLOWED_FIELDS = new Set(["name", "tags", "dynamic_vars", "phone"]);
 
@@ -20,7 +21,9 @@ export async function PATCH(
   // Only allow safe fields
   const safeBody: Record<string, unknown> = {};
   for (const key of Object.keys(body)) {
-    if (ALLOWED_FIELDS.has(key)) safeBody[key] = body[key];
+    if (ALLOWED_FIELDS.has(key)) {
+      safeBody[key] = key === "phone" ? normalizeLeadPhone(body[key]) : body[key];
+    }
   }
 
   if (Object.keys(safeBody).length === 0) {

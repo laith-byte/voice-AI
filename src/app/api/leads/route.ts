@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { safeJson } from "@/lib/api/safe-json";
 import { logger } from "@/lib/logger";
+import { normalizeLeadPhone } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   const { user, supabase, response } = await requireAuth();
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
         ...lead,
         organization_id: userData.organization_id,
         agent_id: body.agent_id,
+        phone: normalizeLeadPhone(lead.phone),
       })),
       { onConflict: "phone,agent_id" }
     ).select();
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase.from("leads").insert({
     organization_id: userData.organization_id,
     agent_id: body.agent_id,
-    phone: body.phone,
+    phone: normalizeLeadPhone(body.phone),
     name: body.name,
     tags: body.tags || [],
     dynamic_vars: body.dynamic_vars || {},

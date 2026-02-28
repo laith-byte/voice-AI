@@ -94,6 +94,9 @@ export async function updateSession(request: NextRequest) {
   }
 
   // If authenticated, get user role from metadata or DB
+  // L1: role is read from user_metadata.role — this must only be set by server-side auth hooks
+  // or service client, never by the client. If Supabase allows client-side metadata writes,
+  // restrict it in Supabase dashboard (Auth > Settings > User Metadata).
   if (user) {
     const userRole = user.user_metadata?.role as string | undefined;
     const isClientUser = userRole === "client_admin" || userRole === "client_member";

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
+import { normalizeLeadPhone } from "@/lib/utils";
 
 const MAX_LEADS_PER_REQUEST = 500;
 const BATCH_SIZE = 100;
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     validatedLeads.push({
       organization_id: userData.organization_id,
       agent_id: body.agent_id,
-      phone: lead.phone.trim(),
+      phone: normalizeLeadPhone(lead.phone.trim()),
       name: typeof lead.name === "string" ? lead.name.trim() || null : null,
       tags: Array.isArray(lead.tags) ? lead.tags.filter((t: unknown) => typeof t === "string") : [],
       dynamic_vars:

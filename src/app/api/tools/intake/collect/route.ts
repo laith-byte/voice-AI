@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
+import { normalizeLeadPhone } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   const { client_id, body, error } = await verifyToolAuth(request);
@@ -32,11 +33,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedPhone = normalizeLeadPhone(caller_phone);
+
     // Try to find existing lead, or create one
     const { data: lead } = await supabase
       .from("leads")
       .select("id, dynamic_vars")
-      .eq("phone", caller_phone)
+      .eq("phone", normalizedPhone)
       .in("agent_id", agentIds)
       .limit(1)
       .single();
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
         .insert({
           agent_id: agentIds[0],
           organization_id: agents![0].organization_id,
-          phone: caller_phone,
+          phone: normalizedPhone,
           dynamic_vars: {
             intake_forms: [
               {
