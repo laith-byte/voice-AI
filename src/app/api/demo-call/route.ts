@@ -3,7 +3,8 @@ import { createRateLimiter, getClientIp, publicEndpointLimiter, rateLimitExceede
 import { logger } from "@/lib/logger";
 import { RETELL_API_BASE } from "@/lib/retell";
 
-// CRITICAL-02: Per-phone rate limit — max 2 calls per phone number per day
+// CRITICAL-02: Per-phone rate limit — max 2 calls per phone number per day.
+// M9: This limiter is always in-memory and per-instance only; use Redis in production for global enforcement.
 const phoneRateLimiter = createRateLimiter({ windowMs: 86_400_000, maxRequests: 2 });
 
 // Map industry slugs to Retell agent IDs

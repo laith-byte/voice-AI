@@ -1,20 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidToken } from "@/lib/oauth/token-manager";
+import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
 
 const HCP_API_BASE = "https://api.housecallpro.com";
 
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
-  if (!apiKey || apiKey !== process.env.RETELL_TOOLS_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { client_id, body, error } = await verifyToolAuth(request);
+  if (error) return error;
 
-  const url = new URL(request.url);
-  const body = await request.json();
-  const client_id = url.searchParams.get("client_id") || body.client_id;
   const { customer_name, customer_phone, service_type, notes } = body;
 
-  if (!client_id || !customer_name || !customer_phone || !service_type) {
+  if (!customer_name || !customer_phone || !service_type) {
     return NextResponse.json(
       { error: "client_id, customer_name, customer_phone, and service_type are required" },
       { status: 400 }

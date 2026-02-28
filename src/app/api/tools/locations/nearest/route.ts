@@ -1,23 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
 
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
-  if (!apiKey || apiKey !== process.env.RETELL_TOOLS_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { client_id, body, error } = await verifyToolAuth(request);
+  if (error) return error;
 
-  const url = new URL(request.url);
-  const body = await request.json();
-  const client_id = url.searchParams.get("client_id") || body.client_id;
   const { zip_code, city } = body;
-
-  if (!client_id) {
-    return NextResponse.json(
-      { error: "client_id is required" },
-      { status: 400 }
-    );
-  }
 
   try {
     const supabase = await createServiceClient();

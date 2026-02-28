@@ -5,6 +5,11 @@ const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 const PREFIX = "enc:";
 
+/**
+ * M8: ENCRYPTION_KEY must be 32 cryptographically random bytes encoded as 64 hex characters
+ * (e.g. generate with `openssl rand -hex 32`). A human-readable password must never be used
+ * as the value without a key derivation function (KDF).
+ */
 function getKey(): Buffer {
   const hex = process.env.ENCRYPTION_KEY;
   if (!hex || hex.length !== 64) {

@@ -1,5 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { executeNativeRecipe } from "@/lib/oauth/execute-native";
+import { isSafeWebhookUrl } from "@/lib/url-validation";
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,10 +94,17 @@ export async function executeRecipes(
           (config.webhook_url as string) || recipe.n8n_webhook_url;
         if (!webhookUrl) continue;
 
+        if (!isSafeWebhookUrl(webhookUrl)) {
+          logger.warn("Skipping unsafe webhook URL (SSRF)", { automationId: automation.id, url: webhookUrl });
+          await logFailure(supabase, automation, "Webhook URL blocked (SSRF)", 0);
+          continue;
+        }
+
         const response = await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(buildWebhookPayload(callLog, config, recipe, clientId)),
+          signal: AbortSignal.timeout(15_000),
         });
 
         if (response.ok) {
@@ -113,10 +122,17 @@ export async function executeRecipes(
         const webhookUrl = recipe.n8n_webhook_url;
         if (!webhookUrl) continue;
 
+        if (!isSafeWebhookUrl(webhookUrl)) {
+          logger.warn("Skipping unsafe webhook URL (SSRF)", { automationId: automation.id, url: webhookUrl });
+          await logFailure(supabase, automation, "Webhook URL blocked (SSRF)", 0);
+          continue;
+        }
+
         const response = await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(buildWebhookPayload(callLog, config, recipe, clientId)),
+          signal: AbortSignal.timeout(15_000),
         });
 
         if (response.ok) {
@@ -131,7 +147,12 @@ export async function executeRecipes(
         }
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage =
+        err instanceof Error && err.name === "AbortError"
+          ? "Webhook request timed out after 15s"
+          : err instanceof Error
+            ? err.message
+            : String(err);
       await logFailure(supabase, automation, errorMessage);
     }
   }

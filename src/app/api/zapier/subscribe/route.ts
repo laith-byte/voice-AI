@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { createHash } from "crypto";
+import { isSafeWebhookUrl } from "@/lib/url-validation";
 
 function hashApiKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
@@ -51,8 +52,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { hookUrl, event = "call.completed" } = body;
 
-  if (!hookUrl) {
+  if (!hookUrl || typeof hookUrl !== "string") {
     return NextResponse.json({ error: "hookUrl is required" }, { status: 400 });
+  }
+  if (!isSafeWebhookUrl(hookUrl)) {
+    return NextResponse.json(
+      { error: "URL targets a private or internal address" },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await auth.supabase

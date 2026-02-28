@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
 import { getClientIp, publicEndpointLimiter, rateLimitExceeded } from "@/lib/rate-limit";
@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
   const { allowed, resetMs } = await publicEndpointLimiter.check(ip);
   if (!allowed) return rateLimitExceeded(resetMs);
 
-  const supabase = await createClient();
+  const supabase = await createServiceClient();
   const body = await request.json();
   const { agent_id } = body;
 

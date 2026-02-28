@@ -71,14 +71,23 @@ export function rateLimitExceeded(resetMs: number): NextResponse {
 // HIGH-01: Use persistent (Redis) rate limiter when Upstash env vars are set,
 // otherwise fall back to in-memory limiter.
 import { createPersistentRateLimiter, isPersistentRateLimitAvailable } from "@/lib/rate-limit-persistent";
+import { logger } from "@/lib/logger";
 
 const inMemoryLimiter = createRateLimiter({ windowMs: 60_000, maxRequests: 20 });
 const persistentLimiter = isPersistentRateLimitAvailable()
   ? createPersistentRateLimiter({ windowMs: 60_000, maxRequests: 20, prefix: "pub" })
   : null;
 
+let inMemoryWarningLogged = false;
+
 export const publicEndpointLimiter = {
   check: persistentLimiter
     ? async (key: string) => persistentLimiter.check(key)
-    : async (key: string) => inMemoryLimiter.check(key),
+    : async (key: string) => {
+        if (!inMemoryWarningLogged) {
+          inMemoryWarningLogged = true;
+          logger.warn("Rate limiting using in-memory fallback — limits are per-instance only");
+        }
+        return inMemoryLimiter.check(key);
+      },
 };

@@ -1,19 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidToken } from "@/lib/oauth/token-manager";
 import { jobberGraphQL } from "@/lib/oauth/executors/jobber";
+import { verifyToolAuth } from "@/lib/api/verify-tool-auth";
 
 export async function POST(request: NextRequest) {
-  const apiKey = request.headers.get("authorization")?.replace("Bearer ", "");
-  if (!apiKey || apiKey !== process.env.RETELL_TOOLS_API_KEY) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { client_id, body, error } = await verifyToolAuth(request);
+  if (error) return error;
 
-  const url = new URL(request.url);
-  const body = await request.json();
-  const client_id = url.searchParams.get("client_id") || body.client_id;
   const { customer_name, customer_phone, service_type, preferred_date, preferred_time, notes } = body;
 
-  if (!client_id || !customer_name || !customer_phone || !service_type || !preferred_date || !preferred_time) {
+  if (!customer_name || !customer_phone || !service_type || !preferred_date || !preferred_time) {
     return NextResponse.json(
       { error: "client_id, customer_name, customer_phone, service_type, preferred_date, and preferred_time are required" },
       { status: 400 }

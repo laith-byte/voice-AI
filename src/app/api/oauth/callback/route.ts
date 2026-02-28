@@ -5,6 +5,17 @@ import { getProviderConfig } from "@/lib/oauth/providers";
 import { parseOAuthState } from "@/lib/oauth/state";
 import { registerAgentTools } from "@/lib/oauth/register-agent-tools";
 
+/** M5: Resolve redirect path from OAuth state when available; fallback to /portal/integrations. */
+function getRedirectPathFromState(stateParam: string | null): string {
+  try {
+    if (!stateParam) return "/portal/integrations";
+    const state = parseOAuthState(stateParam);
+    return state.redirectPath || "/portal/integrations";
+  } catch {
+    return "/portal/integrations";
+  }
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -13,14 +24,15 @@ export async function GET(request: NextRequest) {
 
   if (errorParam) {
     console.error("OAuth error from provider:", errorParam);
+    const path = getRedirectPathFromState(stateParam);
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/portal/integrations?oauth_error=${errorParam}`
+      `${process.env.NEXT_PUBLIC_APP_URL}${path}${path.includes("?") ? "&" : "?"}oauth_error=${encodeURIComponent(errorParam)}`
     );
   }
 
   if (!code || !stateParam) {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/portal/integrations?oauth_error=missing_params`
+      `${process.env.NEXT_PUBLIC_APP_URL}${getRedirectPathFromState(stateParam)}?oauth_error=missing_params`
     );
   }
 
@@ -29,7 +41,7 @@ export async function GET(request: NextRequest) {
     state = parseOAuthState(stateParam);
   } catch {
     return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/portal/integrations?oauth_error=invalid_state`
+      `${process.env.NEXT_PUBLIC_APP_URL}${getRedirectPathFromState(null)}?oauth_error=invalid_state`
     );
   }
 

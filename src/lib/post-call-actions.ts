@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendSms } from "@/lib/twilio";
 import { notificationFrom, noReplyFrom } from "@/lib/email";
+import { logger } from "@/lib/logger";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,12 +172,19 @@ async function sendEmailSummary(
   const { sendEmail } = await import("@/lib/resend");
 
   for (const recipient of recipients) {
-    await sendEmail({
-      to: recipient.trim(),
-      subject,
-      html,
-      from: notificationFrom(businessName),
-    });
+    try {
+      await sendEmail({
+        to: recipient.trim(),
+        subject,
+        html,
+        from: notificationFrom(businessName),
+      });
+    } catch (err) {
+      logger.error("Email summary failed for recipient", {
+        recipient: recipient.trim(),
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 

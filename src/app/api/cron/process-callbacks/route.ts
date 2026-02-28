@@ -4,6 +4,8 @@ import { decrypt } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
 import { RETELL_API_BASE } from "@/lib/retell";
 
+// M10: Handler is subject to platform timeout (e.g. Vercel serverless ~60s). Limiting to 10 callbacks per run is intentional to stay within timeout.
+
 function toE164(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   if (digits.startsWith("1") && digits.length === 11) return `+${digits}`;

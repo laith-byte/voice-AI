@@ -7,6 +7,7 @@ import { notificationFrom } from "@/lib/email";
 // This route is designed to be called by a cron job (e.g. Vercel Cron).
 // It runs hourly and checks which clients have a daily_digest action
 // configured for the current hour, then sends their digest.
+// M10: Handler is subject to platform timeout (e.g. Vercel serverless ~60s). Cap work per run to avoid exceeding it.
 
 export async function GET(request: NextRequest) {
   // Verify cron secret to prevent unauthorized access
@@ -29,9 +30,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "No digest actions found", sent: 0 });
   }
 
+  // M10: Cap clients per run to avoid exceeding platform timeout (e.g. Vercel 60s)
+  const MAX_CLIENTS_PER_RUN = 100;
+  const actionsToProcess = actions.slice(0, MAX_CLIENTS_PER_RUN);
+  if (actions.length > MAX_CLIENTS_PER_RUN) {
+    logger.warn("Daily digest: client cap hit", { cap: MAX_CLIENTS_PER_RUN, total: actions.length });
+  }
+
   let sentCount = 0;
 
-  for (const action of actions) {
+  for (const action of actionsToProcess) {
     const config = action.config as Record<string, unknown>;
     const sendAtHour = (config.send_at_hour as number) ?? 18;
 

@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger";
 import { RETELL_API_BASE } from "@/lib/retell";
 import { notificationFrom } from "@/lib/email";
 import { retellWebhookSchema } from "@/lib/schemas/retell-webhook";
+import { sanitizePhone } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log the webhook event
-    await supabase.from("webhook_logs").insert({
+    const { error: logError } = await supabase.from("webhook_logs").insert({
       organization_id: organizationId,
       event,
       agent_id: internalAgentId,
@@ -74,6 +75,10 @@ export async function POST(request: NextRequest) {
       import_result: "success",
       timestamp: new Date().toISOString(),
     });
+    if (logError) {
+      logger.error("Failed to insert webhook_log", { error: logError.message });
+      return NextResponse.json({ error: "Logging failed" }, { status: 500 });
+    }
 
     switch (event) {
       case "call_started": {
@@ -116,21 +121,25 @@ export async function POST(request: NextRequest) {
           ...(costSnapshot ? { cost_snapshot: costSnapshot } : {}),
         };
 
-        const { error: insertError } = await supabase.from("call_logs").insert({
-          organization_id: organizationId,
-          client_id: clientId,
-          agent_id: internalAgentId,
-          retell_call_id: call.call_id,
-          from_number: call.from_number || null,
-          to_number: call.to_number || null,
-          direction: call.direction || "inbound",
-          status: "in_progress",
-          duration_seconds: 0,
-          started_at: call.start_timestamp
-            ? new Date(call.start_timestamp).toISOString()
-            : new Date().toISOString(),
-          metadata: callMetadata,
-        });
+        // C1: Idempotent insert — upsert with ignoreDuplicates so duplicate call_started does not create a second row or race
+        const { error: insertError } = await supabase.from("call_logs").upsert(
+          {
+            organization_id: organizationId,
+            client_id: clientId,
+            agent_id: internalAgentId,
+            retell_call_id: call.call_id,
+            from_number: call.from_number || null,
+            to_number: call.to_number || null,
+            direction: call.direction || "inbound",
+            status: "in_progress",
+            duration_seconds: 0,
+            started_at: call.start_timestamp
+              ? new Date(call.start_timestamp).toISOString()
+              : new Date().toISOString(),
+            metadata: callMetadata,
+          },
+          { onConflict: "retell_call_id", ignoreDuplicates: true }
+        );
         if (insertError) console.error("Failed to insert call_log:", insertError);
         break;
       }
@@ -182,7 +191,7 @@ export async function POST(request: NextRequest) {
 
           if (!callFailed) {
             // Call was successfully connected — mark completed
-            await supabase
+            const { error: updateError } = await supabase
               .from("pending_callbacks")
               .update({
                 status: "completed",
@@ -190,6 +199,9 @@ export async function POST(request: NextRequest) {
                 updated_at: new Date().toISOString(),
               })
               .eq("id", pendingCallbackId);
+            if (updateError) {
+              logger.error("Failed to update pending_callbacks (completed)", { error: updateError.message });
+            }
           } else {
             // Call failed — check retry eligibility
             const { data: cb } = await supabase
@@ -218,7 +230,7 @@ export async function POST(request: NextRequest) {
               tomorrow.setTime(tomorrow.getTime() + hoursToAdd * 3600000);
               tomorrow.setMinutes(0, 0, 0);
 
-              await supabase
+              const { error: retryError } = await supabase
                 .from("pending_callbacks")
                 .update({
                   status: "answered",
@@ -227,15 +239,21 @@ export async function POST(request: NextRequest) {
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", pendingCallbackId);
+              if (retryError) {
+                logger.error("Failed to update pending_callbacks (retry)", { error: retryError.message });
+              }
             } else {
               // Max attempts reached — mark as failed
-              await supabase
+              const { error: failError } = await supabase
                 .from("pending_callbacks")
                 .update({
                   status: "failed",
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", pendingCallbackId);
+              if (failError) {
+                logger.error("Failed to update pending_callbacks (failed)", { error: failError.message });
+              }
             }
           }
         }
@@ -361,12 +379,13 @@ export async function POST(request: NextRequest) {
         // Score any matching lead after call log is saved
         try {
           const callerPhone = callLogRow.from_number || callLogRow.to_number;
-          if (callerPhone && callLogRow.agent_id) {
+          const sanitizedPhone = sanitizePhone(callerPhone);
+          if (sanitizedPhone && callLogRow.agent_id) {
             const { data: matchingLead } = await supabase
               .from("leads")
               .select("id")
               .eq("agent_id", callLogRow.agent_id)
-              .or(`phone.eq.${callerPhone}`)
+              .or(`phone.eq.${sanitizedPhone}`)
               .limit(1)
               .single();
 
@@ -464,10 +483,12 @@ export async function POST(request: NextRequest) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
+            signal: AbortSignal.timeout(15_000),
           });
           forwardResults.push(`${url}: ${fwdRes.status}`);
-        } catch {
-          forwardResults.push(`${url}: failed`);
+        } catch (err) {
+          const isTimeout = err instanceof Error && err.name === "AbortError";
+          forwardResults.push(`${url}: ${isTimeout ? "timeout" : "failed"}`);
         }
       }
 
@@ -487,14 +508,22 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Retell webhook error:", error);
 
+    // M11: Sanitize error before storing — message only, max 500 chars, no stack traces
+    const sanitizedMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    const truncated = sanitizedMessage.slice(0, 500);
+
     try {
       const supabase = await createServiceClient();
-      await supabase.from("webhook_logs").insert({
+      const { error: errLogError } = await supabase.from("webhook_logs").insert({
         event: "error",
-        raw_payload: { error: String(error) },
+        raw_payload: { error: truncated },
         import_result: "failed",
         timestamp: new Date().toISOString(),
       });
+      if (errLogError) {
+        logger.error("Failed to insert webhook_log (error handler)", { error: errLogError.message });
+      }
     } catch {
       // Ignore logging failure
     }

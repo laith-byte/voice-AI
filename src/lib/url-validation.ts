@@ -24,7 +24,13 @@ export function isSafeWebhookUrl(url: string): boolean {
       hostname.startsWith("192.168.") ||
       /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
       hostname === "metadata.google.internal" ||
-      hostname === "169.254.169.254"
+      hostname === "169.254.169.254" ||
+      // IPv6 link-local (fe80::/10)
+      hostname.startsWith("fe80:") ||
+      hostname.startsWith("[fe80:") ||
+      // IPv6 unique-local (fd00::/7: fd00::/8 and fc00::/8)
+      ((hostname.startsWith("fd") || hostname.startsWith("fc")) && hostname.includes(":")) ||
+      (hostname.startsWith("[fd") || hostname.startsWith("[fc"))
     ) {
       return false;
     }
