@@ -12,7 +12,7 @@ The project requires **Node.js 20** (per `.nvmrc`). The VM snapshot has Node 20 
 | Task | Command |
 |------|---------|
 | Install deps | `npm install` |
-| Dev server | `npm run dev` (port 3000, Turbopack) |
+| Dev server | `npm run dev --port 3001` (Turbopack) |
 | Lint | `npm run lint` (ESLint 9, flat config) |
 | Test | `npm run test` (Vitest, 12 test files, ~196 tests) |
 | Build | `npm run build` |
@@ -51,3 +51,4 @@ printf '\n# App\nNEXT_PUBLIC_APP_URL=http://localhost:3000\n' >> .env.local
 - The middleware (`src/lib/supabase/middleware.ts`) calls `supabase.auth.getUser()` on every request. With placeholder Supabase keys the call fails silently and unauthenticated users hit public routes normally.
 - The `/signup` page is a multi-step flow that first shows plan selection, then redirects to a plan-specific URL. The signup flow requires `PLATFORM_PLAN_ID_STARTER` and `PLATFORM_PLAN_ID_PROFESSIONAL` env vars to map to Stripe price IDs.
 - When killing the dev server and restarting, remove the stale lock file: `rm -f .next/dev/lock`.
+- Port 3000 is often held by a background process in the Cloud VM. Use `npm run dev -- --port 3001` to avoid conflicts.
