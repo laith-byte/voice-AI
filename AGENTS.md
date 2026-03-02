@@ -24,9 +24,30 @@ Copy `.env.example` to `.env.local`. Minimum required vars for the dev server to
 - `RETELL_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` — placeholders let the server start; real keys needed for voice-agent and billing features.
 - `NEXT_PUBLIC_APP_URL=http://localhost:3000`
 
+### Environment secrets (injected automatically)
+The following secrets are configured and injected as env vars into the VM:
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `RETELL_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+
+On fresh VM start, write `.env.local` from these env vars so Next.js can read them:
+```sh
+cat > .env.local << 'H'
+# Supabase
+H
+printf 'NEXT_PUBLIC_SUPABASE_URL=%s\n' "$NEXT_PUBLIC_SUPABASE_URL" >> .env.local
+printf 'NEXT_PUBLIC_SUPABASE_ANON_KEY=%s\n' "$NEXT_PUBLIC_SUPABASE_ANON_KEY" >> .env.local
+printf 'SUPABASE_SERVICE_ROLE_KEY=%s\n' "$SUPABASE_SERVICE_ROLE_KEY" >> .env.local
+printf '\n# Retell AI\nRETELL_API_KEY=%s\n' "$RETELL_API_KEY" >> .env.local
+printf '\n# Stripe\nSTRIPE_SECRET_KEY=%s\n' "$STRIPE_SECRET_KEY" >> .env.local
+printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$STRIPE_WEBHOOK_SECRET" >> .env.local
+printf '\n# Encryption\nENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" >> .env.local
+printf '\n# App\nNEXT_PUBLIC_APP_URL=http://localhost:3000\n' >> .env.local
+```
+
 ### Gotchas
 - The Sentry config in `next.config.ts` wraps with `withSentryConfig` but no-ops gracefully when `SENTRY_DSN` is unset. No action needed.
 - Rate limiting falls back to in-memory when Upstash Redis env vars are missing — expected in local dev.
 - The contact form submit (`/api/contact`) requires a real `RESEND_API_KEY` and `CONTACT_FORM_EMAIL` to work; without them it returns an error. This is expected.
 - Lint has 4 pre-existing errors and 10 warnings in the codebase. These are not caused by environment setup.
 - The middleware (`src/lib/supabase/middleware.ts`) calls `supabase.auth.getUser()` on every request. With placeholder Supabase keys the call fails silently and unauthenticated users hit public routes normally.
+- The `/signup` page is a multi-step flow that first shows plan selection, then redirects to a plan-specific URL. The signup flow requires `PLATFORM_PLAN_ID_STARTER` and `PLATFORM_PLAN_ID_PROFESSIONAL` env vars to map to Stripe price IDs.
+- When killing the dev server and restarting, remove the stale lock file: `rm -f .next/dev/lock`.
