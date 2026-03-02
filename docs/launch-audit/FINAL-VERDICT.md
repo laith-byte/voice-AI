@@ -152,7 +152,7 @@ There are critical blockers that will cause user-visible failures, a security vu
 | C-15 | Billing create subscription/invoice buttons show "coming soon" toast. | admin |
 | C-16 | Portal dashboard has no explicit error boundary (unlike marketing layout). | integration |
 | C-17 | Both cron jobs run hourly; daily digest internally checks the hour — most runs are no-ops. | integration |
-| C-18 | `.env.example` default `http://localhost:3000` could cause issues if copied without updating. | security |
+| C-18 | `.env.example` default `http://localhost:3001` could cause issues if copied without updating. | security |
 | C-19 | Dashboard onboarding banner dismiss is client-side only (reappears on refresh). | client |
 | C-20 | "Contact Sales" `mailto:sales@invarialabs.com` with Calendar icon — verify email is monitored. | client |
 | C-21 | Pricing cards use `<button>` for paid plans but `<Link>` for Enterprise — minor semantic mismatch. | marketing |

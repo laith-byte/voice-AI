@@ -461,7 +461,7 @@
 |---|---|
 | **Type** | Client-exposed (`NEXT_PUBLIC_`) |
 | **Service** | App configuration |
-| **In `.env.example`** | Yes (default `http://localhost:3000`) |
+| **In `.env.example`** | Yes (default `http://localhost:3001`) |
 | **In `.env.local`** | Yes |
 | **Required** | Mostly required -- some usages have fallbacks, many do not |
 | **Failure mode** | Mixed -- some redirect URLs will use fallback domain, others will be `undefined/...` producing broken URLs |

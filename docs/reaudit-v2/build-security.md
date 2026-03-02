@@ -22,7 +22,7 @@ Compiled successfully in 6.2s
 ```
 
 **Warnings only:**
-- `metadataBase` property not set for OG/Twitter images (falls back to localhost:3000)
+- `metadataBase` property not set for OG/Twitter images (falls back to localhost:3001)
 - `middleware` file convention deprecated -- should migrate to `proxy`
 
 ### ESLint
@@ -135,7 +135,7 @@ All API routes still use old names. Every frontend caller (components, pages) re
 ## WARNINGS
 
 ### W-1: metadataBase Not Set
-Build warning: OG/Twitter images fall back to `http://localhost:3000`. Set `metadataBase` in root layout to the production URL.
+Build warning: OG/Twitter images fall back to `http://localhost:3001`. Set `metadataBase` in root layout to the production URL.
 
 ### W-2: Middleware Convention Deprecated
 Next.js 16.1 warns that `middleware.ts` should be migrated to the new `proxy` convention.

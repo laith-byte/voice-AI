@@ -109,7 +109,12 @@ export async function GET(
       : `/get-agent/${agent.retell_agent_id}`;
     const agentRes = await retellFetch(endpoint, retellApiKey);
     if (!agentRes.ok) {
-      return NextResponse.json({ error: "Failed to fetch agent configuration" }, { status: agentRes.status });
+      const errText = await agentRes.text().catch(() => "");
+      logger.warn("Retell GET agent failed", { status: agentRes.status, endpoint, err: errText.slice(0, 200) });
+      return NextResponse.json(
+        { error: "Failed to fetch agent configuration from voice provider" },
+        { status: agentRes.status >= 500 ? 502 : agentRes.status }
+      );
     }
     const retellAgent = await agentRes.json();
 
@@ -271,8 +276,9 @@ export async function GET(
     config.language = retellAgent.language || "en-US";
 
     return NextResponse.json(config);
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch agent config" }, { status: 500 });
+  } catch (err) {
+    logger.warn("Config GET error", { error: String(err) });
+    return NextResponse.json({ error: "Failed to fetch agent config" }, { status: 502 });
   }
 }
 

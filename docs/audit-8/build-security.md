@@ -227,9 +227,9 @@ All logging in API routes uses `console.error` (for error handling) or the struc
 | `src/app/api/integrations/webhook-test/route.ts:51` | `hostname === "localhost"` | OK -- Intentional security check blocking localhost webhook URLs |
 | `src/app/api/integrations/webhook-test/route.ts:52` | `hostname === "127.0.0.1"` | OK -- Same security check |
 
-**No hardcoded `localhost:3000`, `:3001`, or `:8080` URLs found in source code.**
+**No hardcoded `localhost:3001`, `:3001`, or `:8080` URLs found in source code.**
 
-The `.env.example` has `NEXT_PUBLIC_APP_URL=http://localhost:3000` as a default -- this is correct for development; production would override via environment variables.
+The `.env.example` has `NEXT_PUBLIC_APP_URL=http://localhost:3001` as a default -- this is correct for development; production would override via environment variables.
 
 **Verdict: PASS**
 

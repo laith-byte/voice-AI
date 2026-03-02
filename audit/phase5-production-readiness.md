@@ -206,7 +206,7 @@ This fallback is reasonable as a last resort, but is documented in `.env.example
 
 ### 4.7 No Localhost References in Production Paths (GOOD)
 
-The codebase correctly filters out localhost URLs before sending to Retell via `isPublicUrl()` checks in `src/lib/compile-flow-to-retell.ts:88-89`. The `.env.example` has `NEXT_PUBLIC_APP_URL=http://localhost:3000` which is only a development default.
+The codebase correctly filters out localhost URLs before sending to Retell via `isPublicUrl()` checks in `src/lib/compile-flow-to-retell.ts:88-89`. The `.env.example` has `NEXT_PUBLIC_APP_URL=http://localhost:3001` which is only a development default.
 
 ---
 

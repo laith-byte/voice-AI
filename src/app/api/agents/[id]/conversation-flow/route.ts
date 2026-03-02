@@ -367,13 +367,11 @@ export async function GET(
     const agentRes = await retellFetch(endpoint, retellApiKey);
 
     if (!agentRes.ok) {
-      console.error(
-        `[conversation-flow] GET agent failed: ${agentRes.status}`,
-        await agentRes.text().catch(() => "")
-      );
+      const errText = await agentRes.text().catch(() => "");
+      logger.warn("[conversation-flow] GET agent failed", { status: agentRes.status, err: errText.slice(0, 200) });
       return NextResponse.json(
         { error: "Failed to fetch agent configuration" },
-        { status: agentRes.status }
+        { status: agentRes.status >= 500 ? 502 : agentRes.status }
       );
     }
 
@@ -707,10 +705,10 @@ export async function GET(
       conversation_flow_id: null,
     });
   } catch (err) {
-    console.error("Conversation flow fetch error:", err);
+    logger.warn("Conversation flow fetch error", { error: String(err) });
     return NextResponse.json(
       { error: "Failed to fetch conversation flow" },
-      { status: 500 }
+      { status: 502 }
     );
   }
 }
@@ -1015,10 +1013,10 @@ export async function PUT(
       engine_type: "conversation-flow",
     });
   } catch (err) {
-    console.error("Conversation flow save error:", err);
+    logger.warn("Conversation flow save error", { error: String(err) });
     return NextResponse.json(
       { error: "Failed to save conversation flow" },
-      { status: 500 }
+      { status: 502 }
     );
   }
 }

@@ -12,21 +12,32 @@ export async function GET() {
     .eq("id", user!.id)
     .single();
 
-  if (!userData?.client_id) {
-    return NextResponse.json({ error: "No client found" }, { status: 404 });
+  // Startup users have organization_id; client users have client_id. Support both.
+  const orgId = userData?.organization_id ?? null;
+  const clientId = userData?.client_id ?? null;
+
+  if (!orgId && !clientId) {
+    return NextResponse.json({ error: "No organization or client found" }, { status: 404 });
   }
 
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Fetch last 30 days of call logs
-  const { data: callLogs } = await supabase
+  // Fetch last 30 days of call logs: by organization_id (startup) or client_id (portal)
+  const logsQuery = supabase
     .from("call_logs")
     .select("duration_seconds, started_at, created_at")
-    .eq("client_id", userData.client_id)
     .gte("created_at", thirtyDaysAgo.toISOString())
     .order("created_at", { ascending: true });
+
+  if (clientId) {
+    logsQuery.eq("client_id", clientId);
+  } else {
+    logsQuery.eq("organization_id", orgId);
+  }
+
+  const { data: callLogs } = await logsQuery;
 
   if (!callLogs || callLogs.length === 0) {
     return NextResponse.json({

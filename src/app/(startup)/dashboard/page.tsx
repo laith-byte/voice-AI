@@ -540,7 +540,7 @@ export default function DashboardHomePage() {
                 </Link>
               </Button>
               <Button variant="outline" size="sm" className="justify-start" asChild>
-                <Link href="/billing">
+                <Link href="/billing/connect">
                   <Receipt className="w-3.5 h-3.5 mr-1.5" />
                   Manage Billing
                 </Link>

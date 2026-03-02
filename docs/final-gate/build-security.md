@@ -502,7 +502,7 @@ All webhook and OAuth callback URLs use `process.env.NEXT_PUBLIC_APP_URL` dynami
 - Stripe success/cancel: Uses `appUrl` from env
 - Billing portal: Uses `NEXT_PUBLIC_APP_URL`
 
-The `.env.example` defaults to `http://localhost:3000` for NEXT_PUBLIC_APP_URL, which is correct for development. Production Vercel deployment would set this to the production domain.
+The `.env.example` defaults to `http://localhost:3001` for NEXT_PUBLIC_APP_URL, which is correct for development. Production Vercel deployment would set this to the production domain.
 
 ### localhost/127.0.0.1 in source
 

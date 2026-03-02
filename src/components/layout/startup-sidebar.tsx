@@ -55,6 +55,11 @@ export function StartupSidebar() {
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [dropdownMounted, setDropdownMounted] = useState(false);
+
+  useEffect(() => {
+    setDropdownMounted(true);
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -120,7 +125,8 @@ export function StartupSidebar() {
         })}
       </nav>
 
-      {/* User profile */}
+      {/* User profile — render after mount to avoid Radix id hydration mismatch */}
+      {dropdownMounted && (
       <div className="p-3 border-t border-border">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -150,6 +156,7 @@ export function StartupSidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      )}
     </>
   );
 

@@ -37,7 +37,7 @@ The build is **clean** (zero TypeScript errors, zero compilation errors). Enviro
 
 - **[WARNING] [Security] In-memory rate limiter will not work in multi-instance deployments** -- `src/lib/rate-limit.ts` uses an in-memory `Map` for rate limiting. On Vercel (serverless), each function instance has its own memory, so rate limits are not shared across instances. A determined attacker could bypass rate limits by distributing requests across multiple cold starts. Consider Redis-based rate limiting for production (e.g., `@upstash/ratelimit`).
 
-- **[WARNING] [ENV] `.env.example` contains `NEXT_PUBLIC_APP_URL=http://localhost:3000`** -- The `.env.example` file has a hardcoded `http://localhost:3000` default for `NEXT_PUBLIC_APP_URL`. While this is a template file, if someone copies it to `.env.local` without updating, OAuth callback URLs, email links, and CORS origins will all point to localhost in production.
+- **[WARNING] [ENV] `.env.example` contains `NEXT_PUBLIC_APP_URL=http://localhost:3001`** -- The `.env.example` file has a hardcoded `http://localhost:3001` default for `NEXT_PUBLIC_APP_URL`. While this is a template file, if someone copies it to `.env.local` without updating, OAuth callback URLs, email links, and CORS origins will all point to localhost in production.
 
 ---
 
@@ -67,7 +67,7 @@ The build is **clean** (zero TypeScript errors, zero compilation errors). Enviro
 - [x] All `process.env.*` references in `src/` cross-referenced with `.env.example`
 - [x] **Gap found:** `TWILIO_FROM_NUMBER` used in code but not in `.env.example`
 - [x] Scanned for `localhost` / `127.0.0.1` in `src/` -- only found in webhook-test URL validation (appropriate)
-- [x] `.env.example` default `http://localhost:3000` noted as warning
+- [x] `.env.example` default `http://localhost:3001` noted as warning
 - [x] No test/sandbox env var values hardcoded (QuickBooks sandbox is env-controlled via `QUICKBOOKS_SANDBOX`)
 
 ### Code Hygiene

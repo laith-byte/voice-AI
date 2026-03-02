@@ -91,7 +91,7 @@
 
 ### B-10: metadataBase not set (NOT FIXED — build warning)
 - **File:** `src/app/layout.tsx`
-- **Issue:** OG images fall back to `http://localhost:3000`. Next.js emits build warning.
+- **Issue:** OG images fall back to `http://localhost:3001`. Next.js emits build warning.
 - **Fix:** Add `metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'https://invarialabs.com')` to the metadata export.
 - **Effort:** ~2min
 

@@ -106,6 +106,7 @@ export default function CampaignsPage() {
   useEffect(() => {
     if (!initialized || !configId) return;
 
+    const ac = new AbortController();
     const timer = setTimeout(async () => {
       setSaving(true);
 
@@ -123,22 +124,26 @@ export default function CampaignsPage() {
             fixed_calls: parseInt(fixedCalls) || 5,
             fixed_minutes: parseInt(fixedMinutes) || 15,
           }),
+          signal: ac.signal,
         });
 
         if (!res.ok) {
-          console.error("Error saving campaign_config");
           toast.error("Failed to save campaign configuration.");
         }
       } catch (err) {
-        console.error("Error saving campaign_config:", err);
-        toast.error("Failed to save campaign configuration.");
+        if ((err as Error).name !== "AbortError") {
+          toast.error("Failed to save campaign configuration.");
+        }
       }
 
       setLastSaved(formatTime(new Date()));
       setSaving(false);
     }, 800);
 
-    return () => clearTimeout(timer);
+    return () => {
+      ac.abort();
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     rateMode,

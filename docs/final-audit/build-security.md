@@ -54,7 +54,7 @@
 - **`example.com`** — All occurrences are in UI placeholder text (`placeholder="you@example.com"`, `placeholder="https://api.example.com/endpoint"`) or test files. Acceptable.
 - **`localhost` / `127.0.0.1`** — Found only in:
   - `src/app/api/automations/webhook-test/route.ts:51-52` — SSRF protection blocklist (correct usage)
-  - `.env.example:94` — `NEXT_PUBLIC_APP_URL=http://localhost:3000` (expected default)
+  - `.env.example:94` — `NEXT_PUBLIC_APP_URL=http://localhost:3001` (expected default)
   - Test files (expected)
 
 ### 2.5 `as any` Type Assertions in New Files — PASS
