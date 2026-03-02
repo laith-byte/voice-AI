@@ -79,7 +79,7 @@ export function FeatureGate({
         .select("enabled")
         .eq("client_id", userData.client_id)
         .eq("feature", feature)
-        .single();
+        .maybeSingle();
 
       // If explicit client_access record exists, use it
       if (access) {

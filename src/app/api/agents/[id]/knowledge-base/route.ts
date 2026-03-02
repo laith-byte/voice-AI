@@ -13,10 +13,10 @@ export async function GET(
 
   const { id } = await params;
 
-  // Verify agent exists and user has access
+  // Verify agent exists and user has access (startup: org match, portal: client match)
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, retell_agent_id, retell_api_key_encrypted, organization_id")
+    .select("id, retell_agent_id, retell_api_key_encrypted, organization_id, client_id")
     .eq("id", id)
     .single();
 
@@ -24,9 +24,15 @@ export async function GET(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  // Verify user belongs to same organization as the agent
-  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
-  if (!userData || userData.organization_id !== agent.organization_id) {
+  const { data: userData } = await supabase
+    .from("users")
+    .select("organization_id, client_id")
+    .eq("id", user.id)
+    .single();
+
+  const orgMatch = userData?.organization_id && userData.organization_id === agent.organization_id;
+  const clientMatch = userData?.client_id && userData.client_id === agent.client_id;
+  if (!orgMatch && !clientMatch) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
@@ -55,7 +61,7 @@ export async function POST(
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, retell_agent_id, retell_api_key_encrypted, organization_id")
+    .select("id, retell_agent_id, retell_api_key_encrypted, organization_id, client_id")
     .eq("id", id)
     .single();
 
@@ -63,9 +69,15 @@ export async function POST(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  // Verify user belongs to same organization as the agent
-  const { data: postUserData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
-  if (!postUserData || postUserData.organization_id !== agent.organization_id) {
+  const { data: postUserData } = await supabase
+    .from("users")
+    .select("organization_id, client_id")
+    .eq("id", user.id)
+    .single();
+
+  const orgMatch = postUserData?.organization_id && postUserData.organization_id === agent.organization_id;
+  const clientMatch = postUserData?.client_id && postUserData.client_id === agent.client_id;
+  if (!orgMatch && !clientMatch) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
