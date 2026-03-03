@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api/auth";
 import { decrypt } from "@/lib/crypto";
 import { getIntegrationKey } from "@/lib/integrations";
+import { createServiceClient } from "@/lib/supabase/server";
 import { RETELL_API_BASE } from "@/lib/retell";
 
 export async function GET(
@@ -36,12 +37,27 @@ export async function GET(
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
-  // Fetch KB sources from our database
-  const { data: sources, error: sourcesError } = await supabase
-    .from("knowledge_base_sources")
-    .select("*")
-    .eq("agent_id", id)
-    .order("created_at", { ascending: false });
+  // Prefer service client to bypass RLS; fall back to user client if service key is missing (e.g. dev)
+  let sources: unknown[] | null = null;
+  let sourcesError: { message: string } | null = null;
+  try {
+    const db = await createServiceClient();
+    const result = await db
+      .from("knowledge_base_sources")
+      .select("*")
+      .eq("agent_id", id)
+      .order("created_at", { ascending: false });
+    sources = result.data;
+    sourcesError = result.error;
+  } catch {
+    const result = await supabase
+      .from("knowledge_base_sources")
+      .select("*")
+      .eq("agent_id", id)
+      .order("created_at", { ascending: false });
+    sources = result.data;
+    sourcesError = result.error;
+  }
 
   if (sourcesError) {
     return NextResponse.json({ error: "Failed to fetch knowledge base" }, { status: 500 });
@@ -192,20 +208,43 @@ export async function POST(
       }
     }
 
-    // Save to our database
-    const { data: source, error: insertError } = await supabase
-      .from("knowledge_base_sources")
-      .insert({
-        agent_id: id,
-        source_type,
-        name,
-        content: content || null,
-        url: url || null,
-        retell_kb_id: retellKbId,
-        status: retellKbId ? "active" : "pending",
-      })
-      .select()
-      .single();
+    // Save to our database (prefer service client; fall back to user client if service key missing)
+    let source: { id: string; [k: string]: unknown } | null = null;
+    let insertError: { message: string } | null = null;
+    try {
+      const db = await createServiceClient();
+      const result = await db
+        .from("knowledge_base_sources")
+        .insert({
+          agent_id: id,
+          source_type,
+          name,
+          content: content || null,
+          url: url || null,
+          retell_kb_id: retellKbId,
+          status: retellKbId ? "active" : "pending",
+        })
+        .select()
+        .single();
+      source = result.data;
+      insertError = result.error;
+    } catch {
+      const result = await supabase
+        .from("knowledge_base_sources")
+        .insert({
+          agent_id: id,
+          source_type,
+          name,
+          content: content || null,
+          url: url || null,
+          retell_kb_id: retellKbId,
+          status: retellKbId ? "active" : "pending",
+        })
+        .select()
+        .single();
+      source = result.data;
+      insertError = result.error;
+    }
 
     if (insertError) {
       return NextResponse.json({ error: "Failed to save knowledge base source" }, { status: 500 });

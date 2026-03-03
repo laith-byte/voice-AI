@@ -8,18 +8,29 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, response } = await requireAuth();
+  const { user, supabase, response } = await requireAuth();
   if (response) return response;
 
   const { id } = await params;
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_api_key_encrypted, organization_id")
+    .select("retell_api_key_encrypted, organization_id, client_id")
     .eq("id", id)
     .single();
 
   if (error || !agent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  const { data: userData } = await supabase
+    .from("users")
+    .select("organization_id, client_id")
+    .eq("id", user.id)
+    .single();
+  const orgMatch = userData?.organization_id && userData.organization_id === agent.organization_id;
+  const clientMatch = userData?.client_id && userData.client_id === agent.client_id;
+  if (!orgMatch && !clientMatch) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 

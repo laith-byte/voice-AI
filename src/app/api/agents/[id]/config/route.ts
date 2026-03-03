@@ -76,20 +76,20 @@ export async function GET(
 
   const { id } = await params;
 
-  // HIGH-14: Verify agent belongs to user's organization
-  const { data: userData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
-  if (!userData?.organization_id) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 403 });
-  }
-
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id")
+    .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id, client_id")
     .eq("id", id)
-    .eq("organization_id", userData.organization_id)
     .single();
 
   if (error || !agent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  const { data: userData } = await supabase.from("users").select("organization_id, client_id").eq("id", user.id).single();
+  const orgMatch = userData?.organization_id && userData.organization_id === agent.organization_id;
+  const clientMatch = userData?.client_id && userData.client_id === agent.client_id;
+  if (!orgMatch && !clientMatch) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
@@ -293,20 +293,20 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json();
 
-  // HIGH-14: Verify agent belongs to user's organization
-  const { data: patchUserData } = await supabase.from("users").select("organization_id").eq("id", user.id).single();
-  if (!patchUserData?.organization_id) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 403 });
-  }
-
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id")
+    .select("retell_agent_id, retell_api_key_encrypted, platform, organization_id, client_id")
     .eq("id", id)
-    .eq("organization_id", patchUserData.organization_id)
     .single();
 
   if (error || !agent) {
+    return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  const { data: patchUserData } = await supabase.from("users").select("organization_id, client_id").eq("id", user.id).single();
+  const orgMatch = patchUserData?.organization_id && patchUserData.organization_id === agent.organization_id;
+  const clientMatch = patchUserData?.client_id && patchUserData.client_id === agent.client_id;
+  if (!orgMatch && !clientMatch) {
     return NextResponse.json({ error: "Agent not found" }, { status: 404 });
   }
 
